@@ -65,9 +65,9 @@ func TestRelationships_Imports_Multiple(t *testing.T) {
 		t.Fatalf("IMPORTS count = %d, want 3", len(rels))
 	}
 	wants := map[string]bool{
-		"System":                                 false,
-		"System.Linq":                            false,
-		"Microsoft.AspNetCore.Components.Web":    false,
+		"System":                              false,
+		"System.Linq":                         false,
+		"Microsoft.AspNetCore.Components.Web": false,
 	}
 	for _, r := range rels {
 		if _, ok := wants[r.ToID]; ok {

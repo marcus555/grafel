@@ -9,9 +9,9 @@
 //   - recipe_name [deps...]:          → Kind="SCOPE.Operation", Subtype="recipe"
 //   - variable := value                → Kind="SCOPE.Schema",   Subtype="variable"
 //   - import "<path>"                  → Kind="SCOPE.Component", Subtype="import"
-//                                        (carries one IMPORTS edge)
+//     (carries one IMPORTS edge)
 //   - file-level container            → Kind="SCOPE.Component", Subtype="file"
-//                                        (carries CONTAINS edges)
+//     (carries CONTAINS edges)
 //
 // (SCOPE.Schema matches the convention used by the Dockerfile extractor for
 // ENV/ARG — both are configuration-style name/value pairs bound at build

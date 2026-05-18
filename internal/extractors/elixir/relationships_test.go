@@ -250,10 +250,10 @@ end
 		local, mod, kind string
 	}
 	expect := map[string]want{
-		"SampleApi.User":      {"User", "SampleApi", "alias"},
-		"Ecto.Query":          {"Query", "Ecto", "import"},
-		"Phoenix.Controller":  {"Controller", "Phoenix", "use"},
-		"Logger":              {"Logger", "Logger", "require"},
+		"SampleApi.User":     {"User", "SampleApi", "alias"},
+		"Ecto.Query":         {"Query", "Ecto", "import"},
+		"Phoenix.Controller": {"Controller", "Phoenix", "use"},
+		"Logger":             {"Logger", "Logger", "require"},
 	}
 	seen := map[string]bool{}
 	for _, e := range ents {

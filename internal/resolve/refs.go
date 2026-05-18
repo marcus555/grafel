@@ -507,6 +507,27 @@ var (
 		// `controller.call(...)`). Keep them out of the JS catalog; the
 		// extractors tag truly reflective uses (e.g. `Reflect.apply`) which
 		// the explicit `Reflect\.` pattern above already covers.
+
+		// Wave-7 (TS/JS React frontend, #519) — React useState setter
+		// destructure pattern. The JS extractor strips the receiver from
+		// destructured tuples (`const [v, setV] = useState(...)`), leaving
+		// bare `setV` callee names that the resolver cannot bind because
+		// the symbol is component-local and the extractor doesn't know its
+		// origin. The `set[A-Z]...` convention is universal in the React
+		// community (RFC + React docs) and the per-language gate
+		// (js/ts only) prevents collision with `setHeader` / `setCookie`
+		// style helpers in non-JS code. Names are bare leaf identifiers.
+		regexp.MustCompile(`^set[A-Z][A-Za-z0-9_]*$`),
+		// Promise chain methods — `then`, `catch`, `finally` — bare-name
+		// callees on the result of `await`-able / Promise-returning
+		// functions. The extractor emits the chained method as a bare
+		// identifier with the receiver stripped, and the receiver is a
+		// Promise value the resolver cannot model. `then` alone is the
+		// dominant residual in client-fixture-b. JS-only gate keeps these
+		// out of Ruby (`then` is a real method) / Go / Python collisions.
+		regexp.MustCompile(`^then$`),
+		regexp.MustCompile(`^catch$`),
+		regexp.MustCompile(`^finally$`),
 	}
 
 	rubyDynamicPatterns = []*regexp.Regexp{
@@ -1544,21 +1565,21 @@ func MergeDispositions(dst, src *Stats) {
 //     so a stub like "View:User" matches an entity of kind "SCOPE.View".
 func BuildIndex(entities []types.EntityRecord) Index {
 	idx := Index{
-		byKind:          make(map[string]map[string]string),
-		ambigKind:       make(map[string]map[string]bool),
-		byName:          make(map[string]string),
-		ambigName:       make(map[string]bool),
-		nameKinds:       make(map[string]map[string]string),
-		nameKindsReal:   make(map[string]map[string]string),
-		byLocation:      make(LocationIndex),
-		ambigLocation:   make(map[string]map[string]bool),
+		byKind:             make(map[string]map[string]string),
+		ambigKind:          make(map[string]map[string]bool),
+		byName:             make(map[string]string),
+		ambigName:          make(map[string]bool),
+		nameKinds:          make(map[string]map[string]string),
+		nameKindsReal:      make(map[string]map[string]string),
+		byLocation:         make(LocationIndex),
+		ambigLocation:      make(map[string]map[string]bool),
 		byLocationKind:     make(LocationKindIndex),
 		byLocationKindReal: make(LocationKindIndex),
-		byMember:        make(map[string]map[string]map[string]string),
+		byMember:           make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
-		byQualifiedName: make(map[string]string),
+		byQualifiedName:    make(map[string]string),
 	}
 	for k := range entities {
 		e := &entities[k]
@@ -2457,31 +2478,33 @@ func isHeuristicScopeStub(s string) bool {
 // of names is enough — the stub-format prefix check makes this an
 // unambiguous classification gate.
 var dataAccessSQLOrms = map[string]struct{}{
-	"psycopg2":         {},
-	"sqlalchemy":       {},
-	"asyncpg":          {},
-	"aiopg":            {},
-	"mysql-connector":  {},
-	"pymysql":          {},
-	"pymongo":          {},
-	"mongoengine":      {},
-	"gorm":             {},
-	"sqlx":             {},
-	"database/sql":     {},
-	"sequelize":        {},
-	"typeorm":          {},
-	"prisma":           {},
-	"knex":             {},
-	"activerecord":     {},
-	"hibernate":        {},
-	"jdbc":             {},
-	"jdbi":             {},
-	"mybatis":          {},
+	"psycopg2":        {},
+	"sqlalchemy":      {},
+	"asyncpg":         {},
+	"aiopg":           {},
+	"mysql-connector": {},
+	"pymysql":         {},
+	"pymongo":         {},
+	"mongoengine":     {},
+	"gorm":            {},
+	"sqlx":            {},
+	"database/sql":    {},
+	"sequelize":       {},
+	"typeorm":         {},
+	"prisma":          {},
+	"knex":            {},
+	"activerecord":    {},
+	"hibernate":       {},
+	"jdbc":            {},
+	"jdbi":            {},
+	"mybatis":         {},
 }
 
 // isDataAccessSQLStub reports whether s is a SCOPE.DataAccess structural
 // ref emitted by the cross-language dbmap extractor in the form
-//   scope:dataaccess:<file>#<orm>:<op>:<table>
+//
+//	scope:dataaccess:<file>#<orm>:<op>:<table>
+//
 // (where <orm> is one of dataAccessSQLOrms). These refs are intentional
 // — they identify SQL surface area — and should resolve to a real
 // SCOPE.DataAccess entity when one exists (extractor sets QualifiedName).
