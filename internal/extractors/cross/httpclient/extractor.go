@@ -304,13 +304,17 @@ func apiRef(url string) string {
 func buildEntitiesAndRels(filePath string, calls []call, importedModules map[string]bool) []types.EntityRecord {
 	var out []types.EntityRecord
 	cRef := callerRef(filePath)
-	seenURLs := map[string]bool{}
+	// indexOf maps url -> position in `out` of the SCOPE.ExternalAPI for that
+	// URL, so the CALLS edge can be embedded on the real entity instead of a
+	// synthetic "relationship"-kind container (#560). Multiple call sites with
+	// distinct HTTP methods to the same URL each contribute an embedded edge.
+	indexOf := map[string]int{}
 
 	for _, c := range calls {
 		aRef := apiRef(c.url)
 
-		if !seenURLs[c.url] {
-			seenURLs[c.url] = true
+		idx, seen := indexOf[c.url]
+		if !seen {
 			out = append(out, types.EntityRecord{
 				Name:       c.url,
 				Kind:       "SCOPE.ExternalAPI",
@@ -322,6 +326,8 @@ func buildEntitiesAndRels(filePath string, calls []call, importedModules map[str
 				},
 				QualityScore: 0.8,
 			})
+			idx = len(out) - 1
+			indexOf[c.url] = idx
 		}
 
 		protocol := detectProtocol(c.url, importedModules)
@@ -334,24 +340,11 @@ func buildEntitiesAndRels(filePath string, calls []call, importedModules map[str
 			relProps["http_method"] = c.method
 		}
 
-		relName := "CALLS:" + cRef + "->" + aRef
-		if c.method != "" {
-			relName += ":" + c.method
-		}
-		out = append(out, types.EntityRecord{
-			Name:       relName,
-			Kind:       "relationship",
-			Subtype:    "calls",
-			SourceFile: filePath,
-			Relationships: []types.RelationshipRecord{
-				{
-					FromID:     cRef,
-					ToID:       aRef,
-					Kind:       "CALLS",
-					Properties: relProps,
-				},
-			},
-			QualityScore: 0.8,
+		out[idx].Relationships = append(out[idx].Relationships, types.RelationshipRecord{
+			FromID:     cRef,
+			ToID:       aRef,
+			Kind:       "CALLS",
+			Properties: relProps,
 		})
 	}
 

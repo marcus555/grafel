@@ -31,11 +31,16 @@ func depEntities(records []types.EntityRecord) []types.EntityRecord {
 	return out
 }
 
-func relEntities(records []types.EntityRecord) []types.EntityRecord {
-	var out []types.EntityRecord
+// dependsOnRels returns every DEPENDS_ON edge embedded across all records.
+// #560: edges are now embedded on the SCOPE.Component for each dep rather
+// than on a synthetic "relationship"-kind container entity.
+func dependsOnRels(records []types.EntityRecord) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
 	for _, r := range records {
-		if r.Kind == "relationship" {
-			out = append(out, r)
+		for _, rel := range r.Relationships {
+			if rel.Kind == "DEPENDS_ON" {
+				out = append(out, rel)
+			}
 		}
 	}
 	return out
@@ -312,11 +317,11 @@ func TestNonManifest_ReturnsEmpty(t *testing.T) {
 func TestRelationshipsEmitted(t *testing.T) {
 	src := `{"dependencies":{"lodash":"4.17.21"}}`
 	records := runExtract(t, "package.json", src)
-	rels := relEntities(records)
+	rels := dependsOnRels(records)
 	if len(rels) != 1 {
-		t.Fatalf("expected 1 relationship entity, got %d", len(rels))
+		t.Fatalf("expected 1 DEPENDS_ON edge, got %d", len(rels))
 	}
-	r := rels[0].Relationships[0]
+	r := rels[0]
 	if r.Kind != "DEPENDS_ON" {
 		t.Errorf("rel kind=%q want DEPENDS_ON", r.Kind)
 	}
