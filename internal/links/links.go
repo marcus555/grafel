@@ -237,6 +237,9 @@ type entityNode struct {
 	ID         string            // local entity id
 	Name       string            // raw name
 	Kind       string            // class/function/...
+	Subtype    string            // package/function/...; required to discriminate
+	// real external packages (subtype=package) from bare-name built-in
+	// placeholders (subtype=function). See issue #566 / import_pass.go.
 	SourceFile string            // relative path
 	Properties map[string]string // optional
 }
@@ -254,6 +257,7 @@ type onDiskGraph struct {
 		ID         string            `json:"id"`
 		Name       string            `json:"name"`
 		Kind       string            `json:"kind"`
+		Subtype    string            `json:"subtype,omitempty"`
 		SourceFile string            `json:"source_file"`
 		Properties map[string]string `json:"properties,omitempty"`
 	} `json:"entities"`
@@ -331,6 +335,7 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 				ID:         e.ID,
 				Name:       e.Name,
 				Kind:       e.Kind,
+				Subtype:    e.Subtype,
 				SourceFile: e.SourceFile,
 				Properties: e.Properties,
 			})
