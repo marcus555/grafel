@@ -234,10 +234,10 @@ type repoGraph struct {
 }
 
 type entityNode struct {
-	ID         string            // local entity id
-	Name       string            // raw name
-	Kind       string            // class/function/...
-	Subtype    string            // package/function/...; required to discriminate
+	ID      string // local entity id
+	Name    string // raw name
+	Kind    string // class/function/...
+	Subtype string // package/function/...; required to discriminate
 	// real external packages (subtype=package) from bare-name built-in
 	// placeholders (subtype=function). See issue #566 / import_pass.go.
 	SourceFile string            // relative path

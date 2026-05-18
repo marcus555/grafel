@@ -608,7 +608,29 @@ func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
 		// HOC-shape utilities
 		"compose", "pipe",
 		// React Query / TanStack
-		"createMutation", "createQuery":
+		"createMutation", "createQuery",
+		// antd-style v5 — `const useStyle = createStyles(({css, token}) =>
+		// ({...}))` is the canonical antd-style hook-factory shape. The
+		// returned value is a hook (function), not a value, so SCOPE.Operation
+		// is correct.
+		"createStyles",
+		// Wave-8 (#567 chain-fix A) — React hook wrappers whose
+		// argument is a function/callback. Lifting `const handleX
+		// = useCallback((...) => {...}, [...])` and `const value
+		// = useMemo(() => ..., [...])` to SCOPE.Operation lets
+		// the resolver bind same-file CALLS targets through the
+		// existing function-targeted path (same shape as the
+		// arrow_function case above). Without this, useCallback/
+		// useMemo handlers fall into the default branch and emit
+		// SCOPE.Component subtype="const_call", which produces
+		// bug-resolver ambiguity for any caller in another file
+		// that uses the same handler name. Conservative selection:
+		// only hook wrappers whose canonical first arg is a
+		// function (useCallback, useMemo). useEffect / useLayoutEffect
+		// also take a function but are imperative side-effects,
+		// not values bound to a name — the `const cleanup =
+		// useEffect(...)` shape is not idiomatic.
+		"useCallback", "useMemo":
 		return true
 	}
 	return false

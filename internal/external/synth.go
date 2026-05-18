@@ -6312,6 +6312,61 @@ var jsBareNames = map[string]struct{}{
 	// builtins. `add` is Set.prototype.add (also a generic verb). The
 	// receiver-strip in the JS extractor surfaces it bare. js/ts gate.
 	"add": {},
+
+	// Wave-8 (#567 chain-fix B) — Array.prototype builtins that the JS
+	// extractor receiver-strips (`xs.findIndex(p)` → `findIndex`,
+	// `xs.indexOf(x)` → `indexOf`). Per #104's safer-bias rule these names
+	// stayed off the JS list because they're collision-prone IF the gate
+	// were language-agnostic. With the per-language `lang ==
+	// "javascript" || "typescript"` gate, the namespace is sealed off
+	// from non-JS user-defined methods of the same name (a Go/Ruby/Java
+	// class with an `indexOf` method still resolves correctly because
+	// the JS gate doesn't fire).
+	//
+	// Names already in OTHER language allowlists (`indexOf` in
+	// kotlinBareNames, etc.) are still safe to add here — `stdlibFunction`
+	// checks lang-specific maps independently and returns on first match,
+	// so a Kotlin source still resolves `indexOf` via kotlinBareNames and
+	// a JS source resolves it via jsBareNames.
+	//
+	// Rejected (kept off the list) per #104 — collision-prone enough
+	// that the language gate alone isn't sufficient: `find`, `forEach`,
+	// `reduce`, `map`, `filter`. The JS extractor still receiver-strips
+	// these but they fall through to bug-extractor — the documented
+	// acceptable trade-off vs masking real user methods named `find` /
+	// `reduce` on JS classes.
+	"findIndex":     {},
+	"findLast":      {},
+	"findLastIndex": {},
+	"reduceRight":   {},
+	"indexOf":       {},
+
+	// Wave-8 (#567 chain-fix C) — antd Form-instance methods. The
+	// antd `Form.useForm()` hook returns a Form instance whose API
+	// surface is a fixed set of method names. The JS extractor
+	// receiver-strips `form.setFieldsValue(...)` → `setFieldsValue`,
+	// `form.validateFields(...)` → `validateFields`, etc. Each is
+	// distinctive enough that a user-defined non-Form method
+	// colliding on the same name is rare (no generic verbs like
+	// `submit` — that one would collide with too many user methods).
+	// The `Fields`/`Field` suffix is a clear antd signal. Gated to
+	// JS/TS via the lang switch above. Parent `antd` package is
+	// already in knownExternalPackages so receiver-typed binding via
+	// IMPORTS is not enough — the receiver is `form` (the hook
+	// return) which loses its antd provenance after destructure.
+	"setFieldsValue":    {},
+	"getFieldsValue":    {},
+	"setFieldValue":     {},
+	"getFieldValue":     {},
+	"validateFields":    {},
+	"validateField":     {},
+	"resetFields":       {},
+	"scrollToField":     {},
+	"getFieldError":     {},
+	"getFieldsError":    {},
+	"isFieldTouched":    {},
+	"isFieldsTouched":   {},
+	"isFieldValidating": {},
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
@@ -8488,21 +8543,21 @@ var pythonBareNames = map[string]struct{}{
 	"When":  {},
 	"Value": {},
 	// `F` excluded (single-letter, collision-prone with type-params).
-	"QueryDict":           {}, // django.http.QueryDict
-	"DRFValidationError":  {}, // re-export alias of rest_framework ValidationError
+	"QueryDict":          {}, // django.http.QueryDict
+	"DRFValidationError": {}, // re-export alias of rest_framework ValidationError
 	// Django shortcuts + atomic transactions.
-	"get_object_or_404":  {},
-	"get_list_or_404":    {},
-	"atomic":             {}, // django.db.transaction.atomic
-	"parse_datetime":     {}, // django.utils.dateparse
-	"parse_date":         {},
-	"parse_time":         {},
-	"parse_duration":     {},
+	"get_object_or_404": {},
+	"get_list_or_404":   {},
+	"atomic":            {}, // django.db.transaction.atomic
+	"parse_datetime":    {}, // django.utils.dateparse
+	"parse_date":        {},
+	"parse_time":        {},
+	"parse_duration":    {},
 	// Django management BaseCommand handler attributes / writers.
 	// `handle` and `write` are too generic — excluded.
-	"add_arguments":               {},
+	"add_arguments":                {},
 	"add_mutually_exclusive_group": {},
-	"add_argument":                {}, // argparse + Command.add_arguments
+	"add_argument":                 {}, // argparse + Command.add_arguments
 	// BaseCommand style-helper constants (SUCCESS / WARNING / ERROR)
 	// — actual usage is `self.style.SUCCESS(...)` receiver-stripped.
 	// `ERROR` excluded — collides too broadly (logging, JS, etc).
@@ -8511,64 +8566,64 @@ var pythonBareNames = map[string]struct{}{
 	// unittest TestCase assertion methods — receiver-stripped from
 	// `self.assertEqual(...)`. These are unambiguously stdlib unittest
 	// when seen Python-side.
-	"assertEqual":         {},
-	"assertNotEqual":      {},
-	"assertTrue":          {},
-	"assertFalse":         {},
-	"assertIs":            {},
-	"assertIsNot":         {},
-	"assertIsNone":        {},
-	"assertIsNotNone":     {},
-	"assertIn":            {},
-	"assertNotIn":         {},
-	"assertIsInstance":    {},
-	"assertNotIsInstance": {},
-	"assertRaises":        {},
-	"assertRaisesMessage": {},
-	"assertRaisesRegex":   {},
-	"assertWarns":         {},
-	"assertLogs":          {},
-	"assertAlmostEqual":   {},
+	"assertEqual":          {},
+	"assertNotEqual":       {},
+	"assertTrue":           {},
+	"assertFalse":          {},
+	"assertIs":             {},
+	"assertIsNot":          {},
+	"assertIsNone":         {},
+	"assertIsNotNone":      {},
+	"assertIn":             {},
+	"assertNotIn":          {},
+	"assertIsInstance":     {},
+	"assertNotIsInstance":  {},
+	"assertRaises":         {},
+	"assertRaisesMessage":  {},
+	"assertRaisesRegex":    {},
+	"assertWarns":          {},
+	"assertLogs":           {},
+	"assertAlmostEqual":    {},
 	"assertNotAlmostEqual": {},
-	"assertGreater":       {},
-	"assertGreaterEqual":  {},
-	"assertLess":          {},
-	"assertLessEqual":     {},
-	"assertRegex":         {},
-	"assertNotRegex":      {},
-	"assertCountEqual":    {},
-	"assertListEqual":     {},
-	"assertTupleEqual":    {},
-	"assertSetEqual":      {},
-	"assertDictEqual":     {},
-	"assertSequenceEqual": {},
+	"assertGreater":        {},
+	"assertGreaterEqual":   {},
+	"assertLess":           {},
+	"assertLessEqual":      {},
+	"assertRegex":          {},
+	"assertNotRegex":       {},
+	"assertCountEqual":     {},
+	"assertListEqual":      {},
+	"assertTupleEqual":     {},
+	"assertSetEqual":       {},
+	"assertDictEqual":      {},
+	"assertSequenceEqual":  {},
 	"assertMultiLineEqual": {},
-	"assertNumQueries":    {},
-	"assertQuerysetEqual": {},
-	"assertContains":      {},
-	"assertNotContains":   {},
-	"assertRedirects":     {},
-	"assertTemplateUsed":  {},
-	"assertFormError":     {},
-	"assertJSONEqual":     {},
-	"assertHTMLEqual":     {},
-	"assertXMLEqual":      {},
+	"assertNumQueries":     {},
+	"assertQuerysetEqual":  {},
+	"assertContains":       {},
+	"assertNotContains":    {},
+	"assertRedirects":      {},
+	"assertTemplateUsed":   {},
+	"assertFormError":      {},
+	"assertJSONEqual":      {},
+	"assertHTMLEqual":      {},
+	"assertXMLEqual":       {},
 	// importlib — `import_module` is the canonical helper.
 	"import_module": {},
 	// pandas read/transform helpers (Excel + DataFrame). Receiver-
 	// stripped from `pd.read_excel(...)` / `df.iterrows()` / etc.
 	// `apply` excluded — too generic (collides with JS Function.apply,
 	// Ruby Proc.call patterns, etc.). `fillna` is distinctly pandas.
-	"read_excel":    {},
-	"read_csv":      {},
-	"to_datetime":   {},
-	"to_numeric":    {},
-	"iterrows":      {},
-	"itertuples":    {},
-	"fillna":        {},
-	"dropna":        {},
-	"isnull":        {},
-	"notnull":       {},
+	"read_excel":  {},
+	"read_csv":    {},
+	"to_datetime": {},
+	"to_numeric":  {},
+	"iterrows":    {},
+	"itertuples":  {},
+	"fillna":      {},
+	"dropna":      {},
+	"isnull":      {},
+	"notnull":     {},
 	// Celery task DSL — `delay` is `Task.delay(...)` the canonical
 	// async-submit shortcut.
 	"delay": {},
@@ -9466,47 +9521,47 @@ var knownExternalPackages = map[string]struct{}{
 	"importlib":   {},
 	// Wave-7 third-party additions (Django/Channels/AWS/PDF/Excel
 	// stack from client-fixture-a residual).
-	"asgiref":           {},
-	"channels":          {},
-	"botocore":          {},
-	"django_celery_beat": {},
-	"django_filters":    {},
-	"django_redis":      {},
-	"docx":              {}, // python-docx (`from docx import ...`)
-	"fitz":              {}, // PyMuPDF (`import fitz`)
-	"pdfplumber":        {},
-	"pytz":              {},
-	"pgcrypto":          {},
-	"mysql":             {}, // `mysql.connector`
-	"environ":           {}, // django-environ (`from environ import ...`)
-	"daphne":            {},
-	"social_django":     {},
-	"social_core":       {},
-	"corsheaders":       {},
-	"django_extensions": {},
-	"django_storages":   {},
-	"storages":          {},
-	"whitenoise":        {},
-	"silk":              {},
-	"debug_toolbar":     {},
-	"reversion":         {},
-	"taggit":            {},
-	"mptt":              {},
-	"oauth2_provider":   {},
-	"allauth":           {},
-	"dj_database_url":   {},
-	"drf_yasg":          {},
-	"drf_spectacular":   {},
-	"phonenumber_field": {},
-	"phonenumbers":      {},
-	"djoser":            {},
+	"asgiref":                  {},
+	"channels":                 {},
+	"botocore":                 {},
+	"django_celery_beat":       {},
+	"django_filters":           {},
+	"django_redis":             {},
+	"docx":                     {}, // python-docx (`from docx import ...`)
+	"fitz":                     {}, // PyMuPDF (`import fitz`)
+	"pdfplumber":               {},
+	"pytz":                     {},
+	"pgcrypto":                 {},
+	"mysql":                    {}, // `mysql.connector`
+	"environ":                  {}, // django-environ (`from environ import ...`)
+	"daphne":                   {},
+	"social_django":            {},
+	"social_core":              {},
+	"corsheaders":              {},
+	"django_extensions":        {},
+	"django_storages":          {},
+	"storages":                 {},
+	"whitenoise":               {},
+	"silk":                     {},
+	"debug_toolbar":            {},
+	"reversion":                {},
+	"taggit":                   {},
+	"mptt":                     {},
+	"oauth2_provider":          {},
+	"allauth":                  {},
+	"dj_database_url":          {},
+	"drf_yasg":                 {},
+	"drf_spectacular":          {},
+	"phonenumber_field":        {},
+	"phonenumbers":             {},
+	"djoser":                   {},
 	"rest_framework_simplejwt": {},
-	"simplejwt":         {},
-	"xlsxwriter":        {},
-	"reportlab":         {},
-	"weasyprint":        {},
-	"PyPDF2":            {},
-	"pypdf":             {},
+	"simplejwt":                {},
+	"xlsxwriter":               {},
+	"reportlab":                {},
+	"weasyprint":               {},
+	"PyPDF2":                   {},
+	"pypdf":                    {},
 	// JS / TS ecosystem (unscoped)
 	"react":        {},
 	"vue":          {},
