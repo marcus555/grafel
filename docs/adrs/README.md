@@ -20,15 +20,15 @@ decision itself, and the consequences we accepted.
 | [0012](0012-receiver-type-stdlib-dispatch.md) | Accepted | Receiver-type stdlib dispatch |
 | [0013](0013-cross-file-import-aware-resolution.md) | Accepted | Cross-file import-aware resolution |
 | [0014](0014-corpus-expansion-strategy.md) | Accepted | Corpus expansion strategy — sample apps, not framework internals |
-| [0016](0016-residual-repair-agent-enrichment.md) | Proposed | Residual repair via agent-side enrichment |
+| [0015](0015-residual-repair-agent-enrichment.md) | Proposed | Residual repair via agent-side enrichment |
 
-Numbers are append-only; gaps (e.g. 0015) indicate a reserved number whose ADR has not yet landed.
+Numbers are append-only.
 
 ## Spec sidecars
 
 ADRs that introduce on-disk or wire-format contracts publish the schemas as sibling files under [`../specs/`](../specs/):
 
-- [`enrichment-candidates-v2.schema.json`](../specs/enrichment-candidates-v2.schema.json) — ADR-0016
-- [`repair-v1.schema.json`](../specs/repair-v1.schema.json) — ADR-0016
-- [`mcp-residual-repair-tools.md`](../specs/mcp-residual-repair-tools.md) — ADR-0016
-- [`repair-trust-model.md`](../specs/repair-trust-model.md) — ADR-0016
+- [`enrichment-candidates-v2.schema.json`](../specs/enrichment-candidates-v2.schema.json) — ADR-0015
+- [`repair-v1.schema.json`](../specs/repair-v1.schema.json) — ADR-0015
+- [`mcp-residual-repair-tools.md`](../specs/mcp-residual-repair-tools.md) — ADR-0015
+- [`repair-trust-model.md`](../specs/repair-trust-model.md) — ADR-0015

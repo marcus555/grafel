@@ -1,6 +1,6 @@
 # MCP tool surface — residual repair
 
-This document specifies the MCP tools introduced by ADR-0016. Tools are registered alongside the existing surface in `internal/mcp/tools.go` and the registration table in `internal/mcp/server.go` (compare the `query_graph` / `get_node` / `submit_resolution` family — these new tools follow the same conventions).
+This document specifies the MCP tools introduced by ADR-0015. Tools are registered alongside the existing surface in `internal/mcp/tools.go` and the registration table in `internal/mcp/server.go` (compare the `query_graph` / `get_node` / `submit_resolution` family — these new tools follow the same conventions).
 
 All tool input/output schemas are JSON Schema Draft-07.
 
@@ -196,4 +196,4 @@ loop:
 reindex(repo)   # optional: confirm bug_rate dropped
 ```
 
-This loop is the centerpiece of the v1.0 demo (ADR-0016 Phase 2).
+This loop is the centerpiece of the v1.0 demo (ADR-0015 Phase 2).

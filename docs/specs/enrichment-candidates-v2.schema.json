@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://archigraph.dev/schemas/enrichment-candidates-v2.json",
   "title": "enrichment-candidates.json (v2)",
-  "description": "On-disk format for <repo>/.archigraph/enrichment-candidates.json. Extends v1 (internal/enrichment/candidates.go) with the repair_edge kind required by ADR-0016. v1 readers may safely skip-by-kind on unknown kinds.",
+  "description": "On-disk format for <repo>/.archigraph/enrichment-candidates.json. Extends v1 (internal/enrichment/candidates.go) with the repair_edge kind required by ADR-0015. v1 readers may safely skip-by-kind on unknown kinds.",
   "type": "object",
   "required": ["schema_version", "candidates"],
   "additionalProperties": true,
@@ -10,7 +10,7 @@
     "schema_version": {
       "type": "integer",
       "const": 2,
-      "description": "Bumped from 1 -> 2 by ADR-0016. The constant matches CandidatesSchemaVersion in internal/enrichment/candidates.go."
+      "description": "Bumped from 1 -> 2 by ADR-0015. The constant matches CandidatesSchemaVersion in internal/enrichment/candidates.go."
     },
     "generated_at": {
       "type": "string",

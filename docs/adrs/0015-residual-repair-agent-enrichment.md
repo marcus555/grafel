@@ -1,4 +1,4 @@
-# ADR-0016: Residual repair via agent-side enrichment
+# ADR-0015: Residual repair via agent-side enrichment
 
 - **Status**: Proposed
 - **Date**: 2026-05-19
@@ -11,13 +11,13 @@ archigraph's resolver classifies every cross-symbol reference into one of seven 
 
 - synthetic ship-gate corpus: 12% bug-rate
 - `django-realworld`: 7.83%
-- `client-fixture-a` group: 11.34% across three repos (per current ship-gate state)
+- `client-fixture` group: 11.34% across three repos (per current ship-gate state)
 
-The strategy used through sprints 14-18 was per-language allowlist expansion: every wave (#494 receiver-type primitive, #533 dynamic URL match, #535 React npm allowlist, #525/#526/#527 in flight) pushed the bug-rate down by chipping at one framework's idioms inside `internal/external/synth.go` (currently 11,333 lines) and `internal/resolve/refs.go` (3,196 lines). Each wave costs multi-day engineering and only buys a fixed-stack improvement.
+The strategy used through sprints 14-18 was per-language allowlist expansion: every wave (#494 receiver-type primitive, #533 dynamic URL match, #535 React npm allowlist, #525/#526/#527 in flight) pushed the bug-rate down by chipping at one framework's idioms inside `internal/external/synth.go` (currently 11,333 lines) and `internal/resolve/refs.go` (3,196 lines). That work is genuinely effective for popular, stable stacks (React, Django, Flask, SwiftNIO, etc.) — it is cheap, deterministic, free, offline, and reduces the workload of any downstream pass. It will continue. What it does not cover is the long tail: novel/obscure frameworks the indexer hasn't been taught, dynamic URL construction, runtime/distributed edges, and ambiguities that need 50 lines of semantic context to resolve.
 
-Meanwhile, since #15 we have already run an agent-driven loop for *subjective* enrichment (entity descriptions, domain classification, role descriptions). The mechanics — emit a candidate JSON, let an LLM-equipped agent reason over it, merge back on the next index — are proven in `internal/enrichment/candidates.go`. We have an MCP server (`internal/mcp/server.go`, `internal/mcp/tools.go`) the agent already speaks to. The architectural ingredients to push the *residual* through the same loop are all in place; they have not been wired up because the bug-rate work has been treated as an indexer problem.
+Since #15 we have already run an agent-driven loop for *subjective* enrichment (entity descriptions, domain classification, role descriptions). The mechanics — emit a candidate JSON, let an LLM-equipped agent reason over it, merge back on the next index — are proven in `internal/enrichment/candidates.go`. We have an MCP server (`internal/mcp/server.go`, `internal/mcp/tools.go`) the agent already speaks to. The architectural ingredients to push the residual through the same loop are all in place; they have not been wired up yet.
 
-This ADR makes the pivot: bug-extractor + bug-resolver residuals become a first-class enrichment surface, the agent does the per-call-site reasoning the indexer cannot, and the indexer becomes responsible for *applying* and *verifying* — not *guessing*.
+This ADR adds residual repair as a **first-class indexer phase that complements deterministic static analysis**, not a replacement for it. Indexer continues to be the deterministic default for everything statically visible (and per-language waves continue to land for popular stable stacks); repair is the long-tail closure path for what static analysis structurally cannot reach. Both ship in v1.0.
 
 ADR-0007 already established the doc-as-bridge precedent for dynamic edges; this ADR generalizes that pattern to the structural residual.
 
@@ -44,14 +44,16 @@ The architectural rule: **the indexer is the source of truth for structure that 
 
 ### Positive
 
-- v1.0 ships with a bug-rate floor independent of how exotic the user's stack is. New frameworks no longer require a release.
-- The multi-day per-language allowlist work (#494, #535, #494, future waves) becomes optional optimization rather than ship-gate-blocking.
+- v1.0 ships with a bug-rate floor independent of how exotic the user's stack is. Novel/obscure frameworks no longer block a release on a per-language wave.
+- Per-language allowlist work for popular stable frameworks continues to land and continues to pay — it always reduces the work the agent has to do for the typical case, keeping the deterministic path fast/free/offline. Repair is additive, not substitutive.
 - Cross-repo dynamic edges (#510, #533, #534) and runtime edges (#515) get a viable resolution path that was previously stuck on "we cannot see this from source."
 - Source-attribution turns the graph from "trust the binary" to "audit the binary"; every controversial edge has a `reasoning` string the user can read.
 - Generalizes ADR-0007: docs were the bridge for dynamic content, the agent loop is the bridge for ambiguous structural content. Same architecture, different surface.
 
 ### Negative
 
+- Increases schema surface area: `enrichment-candidates.json` gets a new `kind`, a new sibling file (`repair.json`) appears, and a new stats file (`repair_stats.json`) is emitted. Two new MCP tools (`list_residuals`, `submit_repair`) join the existing surface and must be kept compatible across releases.
+- Introduces an LLM-cost line item for the user during the repair pass. The deterministic indexer remains free/offline; the repair pass spends one round-trip per residual edge to the user's chosen agent.
 - Adds a new failure mode: a misbehaving agent (or hostile `repair.json`) can degrade the graph. Mitigation: strict allowlisted resolutions, verification step rejects invalid targets, `source: agent-repair` makes every edge auditable, `rm .archigraph/repair.json && archigraph index` reverts to pure-static.
 - Bug-rate is no longer a property of "what archigraph the binary knows"; it now depends on whether the user has run an agent loop. We must update README + verify2 docs so users do not see 12% on a fresh index and think the tool is broken.
 - Adds a second sibling-file pair to `.archigraph/` — `repair.json` and `repair_stats.json`. Inventory of `.archigraph/` is starting to grow; we should produce a `.archigraph/README.md` describing each file's purpose.
@@ -110,7 +112,7 @@ Source-attribution: every endpoint touched by `repair.Apply` gets a `properties[
 1. **Hostile or buggy agent corrupting the graph.** Mitigation: allowlisted resolutions, verification step rejects (a) `bind_to_entity` targets that do not exist in the current document, (b) repairs that introduce self-loops, (c) repairs that contradict an existing `CONTAINS` hierarchy, (d) repairs whose `module` is not a syntactically valid identifier (no path traversal). Every rejection is logged with a stable reason code.
 2. **Repair staleness when code outruns the agent.** Mitigation: `edge_id` is content-hash-bound; when source moves, `edge_id` changes; stale repairs fall off naturally and are listed in `repair_stats.json` so the agent knows to redo them.
 3. **Agent throughput on large repos.** A 5k-residual graph is several thousand LLM round-trips. Mitigation lives in Phase 3 (centrality ordering, batch submit). Phase 1 ships the synchronous loop and accepts the latency.
-4. **Two competing residual closures.** The per-language allowlist work in `internal/external/synth.go` keeps closing things over time. If both lanes run, the indexer wins (it runs first); the repair lane just sees a smaller residual. Not a correctness risk but an opportunity to retire allowlist waves whose bug-rate the agent already covers.
+4. **Two complementary residual closures.** The per-language allowlist work in `internal/external/synth.go` keeps closing things over time for popular stable stacks. If both lanes run, the indexer wins (it runs first, deterministically); the repair lane just sees a smaller residual. This is the intended both-and steady state, not a competition — the indexer keeps owning the typical case and the repair lane handles what static analysis structurally can't reach.
 5. **`repair.json` grows unboundedly.** On long-lived repos with churn, stale records accumulate. Mitigation: `repair_stats.json` reports stale count; a future `archigraph repair gc` command (out of scope for Phase 1) prunes by configurable retention. **OPEN QUESTION:** should stale repairs be auto-pruned on apply, or kept as audit history?
 6. **Conflicting repairs for the same `edge_id`.** Two agents writing concurrently. Mitigation: `submit_repair` writes atomically (write-temp-then-rename) and is last-writer-wins by `resolved_at` timestamp. **OPEN QUESTION:** is last-writer-wins acceptable, or do we want optimistic concurrency via a `previous_resolved_at` parameter?
 
@@ -125,22 +127,34 @@ Source-attribution: every endpoint touched by `repair.Apply` gets a `properties[
 
 ## Issue impact
 
-### Becomes OBSOLETE if this lands
+This ADR is **both-and**, not a replacement for per-language work. The split below mirrors the corrected #543 umbrella.
 
-- **#494** — receiver-variable-type-tracking primitive in `internal/external/synth.go`. Multi-day work; agent covers it via 50-line context-read.
-- **#535** — React npm allowlist (~50 packages). Agent recognizes any npm package by name string with no allowlist.
-- **All future per-language `synth.go` allowlist waves** for frameworks the user can name. (Existing waves can finish if already in flight.)
+### STAY indexer-side (continue normally)
 
-### Becomes UNBLOCKED if this lands
+- **#525** — EXTENDS kind-disambiguator: pure resolver fix, cheap, deterministic, halves Python residual.
+- **#526** — DRF ViewSet class-attribute extraction: structural, no semantic context needed.
+- **#527** — Django URLConf module binder: structural cross-language extractor enhancement.
+- **#535** — React npm allowlist (~50 packages): stable popular libs, 100-line PR saves thousands of LLM calls per index.
+- **#537** — barrel re-export resolution: pure AST work.
+- **#494 for statically-typed languages** (Go, Java, Kotlin, Swift): type info is in the AST, no LLM needed.
+- All Phase-1 work and any future per-language wave for **popular stable frameworks** continues on the indexer side.
 
-- **#510** — cross-repo HTTP route matching. Agent can match dynamic URLs the static resolver gives up on.
-- **#515** — runtime-edge discovery (Celery task strings, queue names). Agent can read context and decide.
-- **#533** — dynamic URL pattern matching. Generalized by repair loop.
-- **#534** — same family as #533.
+### BECOME REPAIR-FIRST (indexer emits candidates; agent matches/resolves)
 
-### Remain ORTHOGONAL (in flight, will land)
+- **#494 for dynamic languages** (Python, Ruby, JS): receiver-type inference needs semantic context; the agent does it better.
+- **#510 / #533 / #534** — HTTP route ↔ fetch matching, dynamic URL pattern matching: dynamic URLs are intractable statically, trivial for an LLM.
+- **#515** — runtime/distributed edges (Celery task strings, queue names, pub/sub topics): string-based cross-file matching is what LLMs do well.
 
-- **#525, #526, #527** — in-flight allowlist waves. They land; the repair loop sees a smaller residual.
+### UNBLOCKS
+
+- **Novel-framework-of-the-month** problem — agent recognizes any framework by reading code; v1.0 no longer requires a release for new stacks.
+- **Cross-repo for stacks without shared imports** (e.g. Django + React + RN over HTTP) — agent provides the cross-repo edges via route/contract reading.
+
+### Remain ORTHOGONAL
+
+- **#486** (determinism) and **#489** (PageRank float drift) — apply equally to both paths.
+- **DASH-2 #27** and **DASH-5 #30** — UI/dashboard work, separate channel.
+- Embedding/semantic-search v1.1 plan (**#460, #461, #462**) — separate channel from repair.
 
 ## Alternatives considered
 

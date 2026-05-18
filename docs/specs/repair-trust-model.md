@@ -1,6 +1,6 @@
 # Repair trust model
 
-Companion to ADR-0016. Defines what the indexer accepts, rejects, and flags as suspicious when applying `repair.json`. The model is allowlist-only: the set of acceptable resolutions is closed, and adding new ones requires an ADR amendment.
+Companion to ADR-0015. Defines what the indexer accepts, rejects, and flags as suspicious when applying `repair.json`. The model is allowlist-only: the set of acceptable resolutions is closed, and adding new ones requires an ADR amendment.
 
 ## Allowlisted resolutions
 
@@ -54,7 +54,7 @@ These cases are accepted but emitted into `repair_stats.json` under `suspicious`
 A repair becomes stale when its `edge_id` no longer matches any current `repair_edge` candidate. The indexer detects staleness by computing the set difference between repair `edge_id`s and current candidate `edge_id`s. Stale repairs:
 
 - are **not** applied
-- are **not** auto-deleted from `repair.json` (audit history; see open question 1 in ADR-0016)
+- are **not** auto-deleted from `repair.json` (audit history; see open question 1 in ADR-0015)
 - are listed in `repair_stats.json` under `stale_repairs[]` with their `edge_id`, `resolution`, and `resolved_at`
 
 A subsequent `list_residuals` call returns the new candidate for that edge so the agent can re-submit.
@@ -72,10 +72,10 @@ These properties survive into `graph.json` and are queryable through the existin
 
 - `repair_stats.json` MUST be emitted on every index run that read a `repair.json`, even if no repairs applied.
 - The stats file MUST list, at minimum: `applied_count`, `rejected[]` (with reason codes), `stale[]`, `suspicious[]`, `total_residuals_before`, `total_residuals_after`, `bug_rate_before`, `bug_rate_after`.
-- Sort order: `applied[]` and `stale[]` ordered by `edge_id` ascending; `rejected[]` and `suspicious[]` ordered by `edge_id` ascending. This preserves byte-identical-output determinism (ADR-0016, issue #486).
+- Sort order: `applied[]` and `stale[]` ordered by `edge_id` ascending; `rejected[]` and `suspicious[]` ordered by `edge_id` ascending. This preserves byte-identical-output determinism (ADR-0015, issue #486).
 
 ## Operator controls
 
 - **Disable repair layer entirely:** `rm <repo>/.archigraph/repair.json`. Next index returns to pure-static behaviour.
 - **Reject a specific repair manually:** delete its record from `repair.json` (or rewrite by hand) before reindex.
-- **CI-only no-repair mode:** OPEN QUESTION in ADR-0016 — likely just file-absence; an `ARCHIGRAPH_DISABLE_REPAIR` env var is on the table if the file-absence convention proves insufficient.
+- **CI-only no-repair mode:** OPEN QUESTION in ADR-0015 — likely just file-absence; an `ARCHIGRAPH_DISABLE_REPAIR` env var is on the table if the file-absence convention proves insufficient.
