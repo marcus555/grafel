@@ -6230,6 +6230,88 @@ var jsBareNames = map[string]struct{}{
 	"toFixed":               {},
 	"toPrecision":           {},
 	"toExponential":         {},
+
+	// Wave-7 (TS/JS React frontend, #538) — react-redux + state
+	// management bare-name hooks/helpers. The JS extractor strips
+	// receivers for `dispatch(action)`, `store.dispatch(...)`,
+	// `selector(state)` patterns, and the hooks are bare callee names.
+	// Names are distinctive enough that the js/ts gate prevents
+	// collision (Python `connect`/`create` etc. are gated by lang).
+	"useSelector":     {},
+	"useDispatch":     {},
+	"useStore":        {},
+	"useAppSelector":  {},
+	"useAppDispatch":  {},
+	"useAppStore":     {},
+	"createSlice":     {},
+	"createAsyncThunk": {},
+	"createApi":       {},
+	"combineReducers": {},
+	"configureStore":  {},
+	"createReducer":   {},
+	"createAction":    {},
+	"createEntityAdapter": {},
+	"createSelector":  {},
+	"createListenerMiddleware": {},
+	// Jotai
+	"useAtom":         {},
+	"useAtomValue":    {},
+	"useSetAtom":      {},
+	"useResetAtom":    {},
+	"useAtomCallback": {},
+	"atomWithStorage": {},
+	"atomFamily":      {},
+	"atomWithReducer": {},
+	"selectAtom":      {},
+	"loadable":        {},
+	// Zustand additional surface (already have getState; add createStore)
+	"createStore":     {},
+	// react-redux `Provider`/`connect` exist with too many collisions;
+	// `connect` is intentionally omitted (HOC name collides with WS
+	// connect/db connect). `Provider` is a JSX element, not a bare call.
+	// Valtio
+	"useSnapshot":     {},
+	"proxy":           {},
+	"snapshot":        {},
+	"subscribeKey":    {},
+	// XState
+	"useMachine":      {},
+	"useActor":        {},
+	"useInterpret":    {},
+	"useSelector_xstate": {}, // disambiguator no-op key, harmless
+	"createMachine":   {},
+	"interpret":       {},
+	// `assign` (xstate) already in jsBareNames; not duplicated.
+
+	// Wave-7 — dayjs bare-name plugins (`dayjs(x).unix()`, `.isAfter(y)`,
+	// `.isBefore(y)`, `.add(1, "day")`). dayjs is allowlisted as a pkg;
+	// these are receiver-stripped method names. Distinctive enough.
+	"unix":            {},
+	"isAfter":         {},
+	"isBefore":        {},
+	"isSame":          {},
+	"isSameOrAfter":   {},
+	"isSameOrBefore":  {},
+	"isBetween":       {},
+	"diff":            {},
+	"fromNow":         {},
+	"toNow":           {},
+	"calendar":        {},
+	"duration":        {},
+	"humanize":        {},
+	"weekday":         {},
+	"quarter":         {},
+	"isoWeek":         {},
+	"isoWeekday":      {},
+	"isoWeekYear":     {},
+	"week":            {},
+	"weekYear":        {},
+	// Array.prototype `includes` is a JS builtin (ES2016); js/ts gate.
+	"includes":        {},
+	// Map.prototype `has` / `get` / `set` / `delete` already exist in JS as
+	// builtins. `add` is Set.prototype.add (also a generic verb). The
+	// receiver-strip in the JS extractor surfaces it bare. js/ts gate.
+	"add":             {},
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
@@ -9752,6 +9834,157 @@ var knownExternalPackages = map[string]struct{}{
 	"realm":                      {},
 	"@realm":                     {},
 	"@op-engineering":            {}, // @op-engineering/op-sqlite
+	// Wave-7 (TS/JS React frontend, #535) — extended npm scoped families
+	// + flat packages observed in client-fixture-b (Vite+React) residuals.
+	// Every entry is a real npm package/scope shipped by a known vendor;
+	// scope-level keys cover all sub-packages via the scoped-fallback in
+	// isKnownExternalPackage. Curated from real bug-resolver disposition
+	// samples on the client-fixture-b corpus.
+	// Ant Design family
+	"@ant-design":                {}, // @ant-design/icons, /colors, /charts, /plots, /pro-components, /cssinjs, /x, /web3, /happy-work-theme
+	"antd":                       {},
+	// CKEditor 5 family
+	"@ckeditor":                  {}, // @ckeditor/ckeditor5-react, /ckeditor5-build-classic, /ckeditor5-build-balloon, /ckeditor5-build-inline, /ckeditor5-build-decoupled-document, /ckeditor5-engine, ...
+	// dnd-kit family
+	"@dnd-kit":                   {}, // @dnd-kit/core, /sortable, /modifiers, /utilities, /accessibility
+	// React Aria / React Stately (Adobe)
+	"@react-aria":                {}, // @react-aria/*
+	"@react-stately":             {}, // @react-stately/*
+	"@adobe":                     {}, // @adobe/react-spectrum etc.
+	// TinyMCE
+	"tinymce":                    {},
+	"@tinymce":                   {}, // @tinymce/tinymce-react
+	// Animation
+	"@motionone":                 {}, // @motionone/dom, /react, /vue
+	"lottie-react":               {},
+	"lottie-web":                 {},
+	"@lottiefiles":               {},
+	// XState
+	"@xstate":                    {}, // @xstate/react, /vue, /svelte
+	"xstate":                     {},
+	// Image / file
+	"@cropperjs":                 {}, // @cropperjs/react
+	"cropperjs":                  {},
+	"react-image-crop":           {},
+	"react-dropzone":             {},
+	"file-saver":                 {},
+	"papaparse":                  {},
+	"xlsx":                       {},
+	"exceljs":                    {},
+	// PDF
+	"react-pdf":                  {},
+	"pdf-lib":                    {},
+	"jspdf":                      {},
+	"html2canvas":                {},
+	// Charts (web)
+	"recharts":                   {},
+	"react-chartjs-2":            {},
+	"chart.js":                   {},
+	"victory":                    {},
+	"@nivo":                      {}, // @nivo/core, /line, /bar, ...
+	"nivo":                       {},
+	"d3":                         {},
+	"@visx":                      {}, // @visx/group, /scale, /shape, ...
+	"echarts":                    {},
+	"echarts-for-react":          {},
+	"@antv":                      {}, // @antv/g2, /g6, /l7 (AntV from Ant Design)
+	// Tables / virtual lists
+	"react-table":                {},
+	"material-table":             {},
+	"react-virtuoso":             {},
+	"react-window":               {},
+	"react-virtualized":          {},
+	// Forms
+	"formik":                     {},
+	"yup":                        {},
+	"joi":                        {},
+	// Date / time extras
+	"react-datepicker":           {},
+	// Toasts
+	"react-hot-toast":            {},
+	"notistack":                  {},
+	// Markdown / content
+	"react-markdown":             {},
+	"remark":                     {},
+	"rehype":                     {},
+	"unified":                    {},
+	"react-syntax-highlighter":   {},
+	// i18n
+	"react-i18next":              {},
+	"i18next":                    {},
+	"react-intl":                 {},
+	"@formatjs/intl":             {},
+	// DnD (legacy)
+	"react-dnd":                  {},
+	"react-dnd-html5-backend":    {},
+	"react-dnd-touch-backend":    {},
+	// React Hook Form add-ons (scope already covered by @hookform)
+	// State
+	"valtio":                     {},
+	"@xstate/react":              {}, // explicit doc-key
+	// Routing
+	"@tanstack/react-router":     {}, // covered by @tanstack scope but explicit doc
+	// Misc / utility
+	"lodash-es":                  {},
+	"lodash.debounce":            {},
+	"lodash.throttle":            {},
+	"lodash.merge":               {},
+	"lodash.clonedeep":           {},
+	"lodash.get":                 {},
+	"lodash.set":                 {},
+	"lodash.isequal":             {},
+	"query-string":               {},
+	"history":                    {}, // react-router history pkg
+	"use-immer":                  {},
+	"reselect":                   {},
+	"redux-thunk":                {},
+	"redux-saga":                 {},
+	"redux-persist":              {},
+	"redux-logger":               {},
+	"connected-react-router":     {},
+	"react-helmet":               {},
+	"react-helmet-async":         {},
+	"react-error-boundary":       {},
+	"react-use":                  {},
+	"usehooks-ts":                {},
+	"react-resizable":            {},
+	"react-grid-layout":          {},
+	"react-beautiful-dnd":        {}, // deprecated but still widely used
+	"copy-to-clipboard":          {},
+	"react-copy-to-clipboard":    {},
+	"react-color":                {},
+	"color":                      {},
+	"polished":                   {},
+	"@iconify":                   {}, // @iconify/react, /icons-*, /tools
+	"@fontsource":                {}, // @fontsource/inter, /roboto, ...
+	"@fontsource-variable":       {},
+	"@phosphor-icons":            {}, // @phosphor-icons/react
+	"@tabler":                    {}, // @tabler/icons-react
+	// Wave-7 pass-3 — additional flat npm packages seen in
+	// client-fixture-b post-Track-1 bug-resolver residuals.
+	"antd-style":                 {}, // Ant Design CSS-in-JS
+	"ckeditor5":                  {}, // ckeditor5 root pkg (also @ckeditor/ scope)
+	"dompurify":                  {}, // HTML sanitizer
+	"react-infinite-scroll-component": {},
+	"react-infinite-scroller":    {},
+	"react-window-infinite-loader": {},
+	"react-spinners":             {},
+	"react-loading-skeleton":     {},
+	"react-content-loader":       {},
+	"react-select":               {},
+	"react-select-async-paginate": {},
+	// `async` (npm utility lib) omitted — cross-lang invariant: collides with kotlin coroutine `async`.
+	"async-mutex":                {},
+	"p-limit":                    {},
+	"p-queue":                    {},
+	"p-retry":                    {},
+	"p-map":                      {},
+	"p-debounce":                 {},
+	"p-throttle":                 {},
+	"debounce":                   {},
+	"throttle-debounce":          {},
+	"fast-equals":                {},
+	"shallowequal":               {},
 	// Next.js sub-paths — register as bare-keys too, so the leading-`/`
 	// strip via slashCanonical above (in the import:external branch)
 	// folds them all to "next" when scopedNpmRoot doesn't apply.

@@ -507,6 +507,27 @@ var (
 		// `controller.call(...)`). Keep them out of the JS catalog; the
 		// extractors tag truly reflective uses (e.g. `Reflect.apply`) which
 		// the explicit `Reflect\.` pattern above already covers.
+
+		// Wave-7 (TS/JS React frontend, #519) — React useState setter
+		// destructure pattern. The JS extractor strips the receiver from
+		// destructured tuples (`const [v, setV] = useState(...)`), leaving
+		// bare `setV` callee names that the resolver cannot bind because
+		// the symbol is component-local and the extractor doesn't know its
+		// origin. The `set[A-Z]...` convention is universal in the React
+		// community (RFC + React docs) and the per-language gate
+		// (js/ts only) prevents collision with `setHeader` / `setCookie`
+		// style helpers in non-JS code. Names are bare leaf identifiers.
+		regexp.MustCompile(`^set[A-Z][A-Za-z0-9_]*$`),
+		// Promise chain methods — `then`, `catch`, `finally` — bare-name
+		// callees on the result of `await`-able / Promise-returning
+		// functions. The extractor emits the chained method as a bare
+		// identifier with the receiver stripped, and the receiver is a
+		// Promise value the resolver cannot model. `then` alone is the
+		// dominant residual in client-fixture-b. JS-only gate keeps these
+		// out of Ruby (`then` is a real method) / Go / Python collisions.
+		regexp.MustCompile(`^then$`),
+		regexp.MustCompile(`^catch$`),
+		regexp.MustCompile(`^finally$`),
 	}
 
 	rubyDynamicPatterns = []*regexp.Regexp{
