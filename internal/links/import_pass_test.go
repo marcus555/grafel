@@ -295,27 +295,27 @@ func TestImportPass_ScopedNpmPackage(t *testing.T) {
 // #566 admission rule. Exercises the full decision matrix.
 func TestIsBuiltinExt(t *testing.T) {
 	subtypes := map[string]string{
-		"ext:axios":                  "package",
-		"ext:@tanstack/react-query":  "package",
-		"ext:filter":                 "function",
-		"ext:react:useState":         "function",
-		"ext:django:models.Model":    "function",
-		"ext:nosub":                  "",
+		"ext:axios":                 "package",
+		"ext:@tanstack/react-query": "package",
+		"ext:filter":                "function",
+		"ext:react:useState":        "function",
+		"ext:django:models.Model":   "function",
+		"ext:nosub":                 "",
 	}
 	cases := []struct {
 		in   string
 		want bool
 	}{
-		{"ext:axios", false},                   // subtype=package → admit
-		{"ext:@tanstack/react-query", false},   // subtype=package, scoped npm → admit
-		{"ext:filter", true},                   // subtype=function, bare → skip
-		{"ext:react:useState", false},          // qualified → admit
-		{"ext:django:models.Model", false},     // qualified → admit
-		{"ext:", true},                         // pathological → skip
-		{"ext:nosub", true},                    // missing subtype + bare → skip (conservative)
-		{"a_local", false},                     // non-ext → not subject to gate
+		{"ext:axios", false},                 // subtype=package → admit
+		{"ext:@tanstack/react-query", false}, // subtype=package, scoped npm → admit
+		{"ext:filter", true},                 // subtype=function, bare → skip
+		{"ext:react:useState", false},        // qualified → admit
+		{"ext:django:models.Model", false},   // qualified → admit
+		{"ext:", true},                       // pathological → skip
+		{"ext:nosub", true},                  // missing subtype + bare → skip (conservative)
+		{"a_local", false},                   // non-ext → not subject to gate
 		{"", false},
-		{"react:useState", false},              // no ext: prefix
+		{"react:useState", false}, // no ext: prefix
 	}
 	for _, c := range cases {
 		if got := isBuiltinExt(c.in, subtypes); got != c.want {
