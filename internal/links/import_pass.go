@@ -4,20 +4,24 @@ import "strings"
 
 // isBareNameExt reports whether id is a bare-name external placeholder
 // of the form "ext:<name>" with no module qualifier (no second ":" after
-// the prefix). These placeholders are emitted when the extractor sees an
-// unresolved bare identifier (e.g. `[].filter()`, `array.split(...)`) and
-// the external synthesiser has no module path to attach. Two repos that
-// each independently call `[].filter()` therefore both end up pointing
-// edges at the same `ext:filter` placeholder, which is NOT a real
-// cross-repo reference — it is each repo's own use of a built-in.
+// the prefix). Retained for historical context (issue #509) and unit-
+// test coverage; the import pass now uses isBuiltinExt below, which
+// consults the entity's subtype rather than parsing the ID string.
 //
-// Qualified placeholders of the form "ext:<module>:<name>" carry real
-// module identity (e.g. `ext:react:useState`) and remain eligible for
-// cross-repo linking.
+// Background: #509 used this string-shape predicate as a precision
+// filter, assuming "no second colon" === "bare built-in placeholder".
+// Issue #566 disproved that assumption: real npm packages such as
+// `ext:axios`, `ext:react`, `ext:@tanstack/react-query` also have a
+// single colon, and were being silently dropped — emitting zero
+// cross-repo import-method links across the client-fixture group even
+// though all three repos genuinely share those packages.
 //
-// Issue #509: bare-name ext:* matches produced 100% false-positive
-// cross-repo links on the client-fixture group (1,114 of 1,114). Filtering
-// these out is the precision fix.
+// The correct discriminator is the entity's `subtype`:
+//   - subtype="package" — real npm / PyPI / Maven module → eligible
+//   - subtype="function" or other — bare-name built-in placeholder
+//     (e.g. `[].filter()`, `array.split(...)`) → skip (preserves #509)
+//
+// See isBuiltinExt for the predicate the linker actually uses.
 func isBareNameExt(id string) bool {
 	const prefix = "ext:"
 	if !strings.HasPrefix(id, prefix) {
@@ -28,6 +32,49 @@ func isBareNameExt(id string) bool {
 		return true // pathological "ext:" — also bare/empty.
 	}
 	return !strings.Contains(rest, ":")
+}
+
+// isBuiltinExt reports whether id is an "ext:" external placeholder that
+// should be skipped by the cross-repo import linker because it represents
+// a bare-name built-in (e.g. `ext:filter`) rather than a real shared
+// package (e.g. `ext:axios`, `ext:react:useState`).
+//
+// Decision matrix (id has "ext:" prefix):
+//
+//	subtype="package"            → admit (real npm/PyPI/Maven module)
+//	id has a second ":"          → admit (qualified `ext:<module>:<name>`)
+//	otherwise                    → skip (bare-name built-in placeholder)
+//
+// Background: #509 used the second-colon test alone as a precision
+// filter. Issue #566 disproved that assumption — the external synthesiser
+// emits real packages as `ext:<package>` (single colon, no second `:`)
+// with subtype="package", so the synthesised npm packages such as
+// `ext:axios`, `ext:react`, `ext:@tanstack/react-query` were being
+// silently dropped. The subtype check restores them while still rejecting
+// the dynamic-dispatch bare-name `ext:filter` / `ext:split` placeholders
+// that motivated #509.
+//
+// Hand-rolled test fixtures that mint `ext:<name>` IDs without populating
+// subtype continue to be filtered by the second-colon fallback — the
+// existing #509 fixtures (`ext:filter` / `ext:react:useState`) keep
+// behaviour. Real graphs always populate subtype via external-synth, so
+// the fallback only matters in tests.
+func isBuiltinExt(id string, subtypes map[string]string) bool {
+	const prefix = "ext:"
+	if !strings.HasPrefix(id, prefix) {
+		return false
+	}
+	if subtypes[id] == "package" {
+		return false // real shared package — admit.
+	}
+	rest := id[len(prefix):]
+	if rest == "" {
+		return true // pathological "ext:" — skip.
+	}
+	if strings.Contains(rest, ":") {
+		return false // qualified `ext:<module>:<name>` — admit.
+	}
+	return true // bare-name built-in placeholder — skip.
 }
 
 // runImportPass implements P1: structural cross-repo imports/calls edges.
@@ -47,12 +94,34 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	// total entities; replaces what would otherwise be an O(repos × edges)
 	// lookup if we re-scanned every repo per edge.
 	entRepo := map[string]string{}
+	// Per-repo entity-id → subtype map. Subtype MUST be looked up against
+	// the repo the edge originates from, not against a merged group-wide
+	// map. Issue #566 verification surfaced the failure mode:
+	// `ext:log` is subtype="package" in a Go repo (where `log` is the
+	// stdlib `log` package) but subtype="function" in a JavaScript repo
+	// (where `log` is the bare `console.log` method). A merged map with
+	// first-write-wins picked whichever repo loaded first and emitted
+	// false-positive cross-repo links into the JS repo's bare-name
+	// placeholders. Per-repo lookup keeps each side honest: the edge from
+	// the JS repo's `local → ext:log` consults the JS repo's subtype
+	// (function) and the bare-name filter rejects it correctly.
+	subtypeByRepo := map[string]map[string]string{}
 	for _, g := range graphs {
 		for _, e := range g.Entities {
-			// First write wins; structural ids are stable & unique per
+			// First write wins on repo: structural ids are stable per
 			// (repo, kind, name, file) so collision across repos is
 			// already disambiguated by the per-repo seed.
-			entRepo[e.ID] = g.Repo
+			if _, ok := entRepo[e.ID]; !ok {
+				entRepo[e.ID] = g.Repo
+			}
+			st, ok := subtypeByRepo[g.Repo]
+			if !ok {
+				st = map[string]string{}
+				subtypeByRepo[g.Repo] = st
+			}
+			if existing := st[e.ID]; existing == "" && e.Subtype != "" {
+				st[e.ID] = e.Subtype
+			}
 		}
 	}
 
@@ -60,6 +129,10 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	var fresh []Link
 	emitted := map[string]bool{} // dedupe by link id
 	for _, g := range graphs {
+		// Subtype lookup must be against the originating repo (g.Repo)
+		// for both endpoints: an ext:* id's classification (package vs
+		// bare-name built-in) is repo-local and language-dependent.
+		localSubtypes := subtypeByRepo[g.Repo]
 		for _, edge := range g.Edges {
 			rel := normalizedRelation(edge.Kind)
 			if rel != RelationImports && rel != RelationCalls {
@@ -74,13 +147,11 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 				// Self-pair: not a cross-repo edge.
 				continue
 			}
-			// Issue #509: bare-name ext:* placeholders (e.g. "ext:filter",
-			// "ext:split") are each repo's own unresolved use of a built-in
-			// or stdlib bare identifier. Two repos pointing at the same
-			// placeholder ID does NOT mean they share a real symbol — only
-			// qualified "ext:<module>:<name>" forms carry that guarantee.
-			// Skip either side being a bare-name ext: placeholder.
-			if isBareNameExt(edge.FromID) || isBareNameExt(edge.ToID) {
+			// Issue #509 / #566: skip "ext:" placeholders whose
+			// originating-repo subtype is NOT "package" (e.g. JS
+			// `ext:log` subtype=function — a bare console.log call).
+			// Real packages (`ext:axios` subtype=package) pass through.
+			if isBuiltinExt(edge.FromID, localSubtypes) || isBuiltinExt(edge.ToID, localSubtypes) {
 				continue
 			}
 			source := entityKey(fromRepo, edge.FromID)
