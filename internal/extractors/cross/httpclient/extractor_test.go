@@ -33,10 +33,16 @@ func apiEntities(records []types.EntityRecord) []types.EntityRecord {
 }
 
 func callRels(records []types.EntityRecord) []types.RelationshipRecord {
+	// #560: post-flatten, CALLS edges are embedded directly on the
+	// SCOPE.ExternalAPI entity rather than on a synthetic
+	// "relationship"-kind container. Scan every record's Relationships and
+	// filter by Kind to keep the helper precise.
 	var out []types.RelationshipRecord
 	for _, r := range records {
-		if r.Kind == "relationship" {
-			out = append(out, r.Relationships...)
+		for _, rel := range r.Relationships {
+			if rel.Kind == "CALLS" {
+				out = append(out, rel)
+			}
 		}
 	}
 	return out

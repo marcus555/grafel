@@ -372,13 +372,16 @@ var langExtractors = map[string]extractFn{
 func buildEntitiesAndRels(filePath string, imports []importRecord) []types.EntityRecord {
 	var out []types.EntityRecord
 	fRef := fileRef(filePath)
-	seenRefs := map[string]bool{}
+	// indexOf maps modRef -> position in `out` of the SCOPE.Component carrying
+	// that module, so the DEPENDS_ON edge can be embedded directly on the real
+	// entity instead of a synthetic "relationship"-kind container (#560).
+	indexOf := map[string]int{}
 
 	for _, imp := range imports {
 		modRef := moduleRef(imp.module, imp.isLocal)
 
-		if !seenRefs[modRef] {
-			seenRefs[modRef] = true
+		idx, seen := indexOf[modRef]
+		if !seen {
 			extDep := "true"
 			if imp.isLocal {
 				extDep = "false"
@@ -396,28 +399,24 @@ func buildEntitiesAndRels(filePath string, imports []importRecord) []types.Entit
 				},
 				QualityScore: 0.8,
 			})
+			idx = len(out) - 1
+			indexOf[modRef] = idx
 		}
 
-		// Relationship entity
-		out = append(out, types.EntityRecord{
-			Name:       "DEPENDS_ON:" + fRef + "->" + modRef,
-			Kind:       "relationship",
-			Subtype:    "depends_on",
-			SourceFile: filePath,
-			Relationships: []types.RelationshipRecord{
-				{
-					FromID: fRef,
-					ToID:   modRef,
-					Kind:   "DEPENDS_ON",
-					Properties: map[string]string{
-						"kind":       "import",
-						"module":     imp.module,
-						"is_local":   boolStr(imp.isLocal),
-						"raw_import": imp.raw,
-					},
-				},
+		// Embed the DEPENDS_ON relationship on the SCOPE.Component for this
+		// module rather than emitting a synthetic relationship-kind entity.
+		// The downstream pipeline (cmd/archigraph/index.go) walks every
+		// EntityRecord.Relationships, so the edge still reaches the document.
+		out[idx].Relationships = append(out[idx].Relationships, types.RelationshipRecord{
+			FromID: fRef,
+			ToID:   modRef,
+			Kind:   "DEPENDS_ON",
+			Properties: map[string]string{
+				"kind":       "import",
+				"module":     imp.module,
+				"is_local":   boolStr(imp.isLocal),
+				"raw_import": imp.raw,
 			},
-			QualityScore: 0.8,
 		})
 	}
 	return out

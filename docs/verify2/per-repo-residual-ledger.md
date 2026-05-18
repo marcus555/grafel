@@ -44,6 +44,43 @@ miss these lines should be sent back to the agent before merge.
 | `upstream` | > 8%, blocked on an extractor/resolver primitive being landed elsewhere |
 | `unmeasured` | in `scripts/verify2/run.sh` tier-1 manifest but not yet indexed (not on disk) |
 
+## Post-#560 honest baseline (2026-05-19)
+
+#560 flattened the synthetic `kind: "relationship"` container EntityRecords
+emitted by the 4 cross-extractors (imports, httpclient, hierarchy, manifest)
+into edges embedded on the existing SCOPE.Component / SCOPE.ExternalAPI
+entities. **Bug-rate is unchanged on every repo** because the resolver
+disposition logic walks `EntityRecord.Relationships` (which still contains
+the same edges) — phantom container entities never contributed to bug
+counts. **Entity counts drop** on every repo that uses these extractors,
+which is the structural correction (the data-model lie is removed):
+
+| Repo | Pre-#560 ent | Post-#560 ent | Delta | Rel delta |
+|---|---:|---:|---:|---:|
+| chi | 2,359 | 2,039 | -320 | 0 |
+| gin | 6,354 | 5,835 | -519 | 0 |
+| express | 2,017 | 1,633 | -384 | 0 |
+| spdlog | 1,772 | 1,770 | -2 | 0 |
+| nextjs-commerce | 879 | 713 | -166 | 0 |
+| nestjs-starter | 71 | 52 | -19 | 0 |
+| play-scala-starter | 256 | 251 | -5 | 0 |
+| kafka-streams-examples | 2,884 | 2,522 | -362 | 0 |
+| vapor-api-template | 60 | 60 | 0 | 0 |
+| http.zig | 889 | 889 | 0 | 0 |
+| terraform-aws-vpc | 2,403 | 2,403 | 0 | 0 |
+| django-realworld | 690 | 563 | -127 | 0 |
+| flask-realworld | 917 | 815 | -102 | 0 |
+| click | 5,019 | 4,597 | -422 | 0 |
+| requests | 22,218 | 21,902 | -316 | 0 |
+| client-fixture-a | 10,565 | 9,118 | -1,447 | 0 |
+| client-fixture-b | 15,884 | 12,647 | -3,237 | 0 |
+| client-fixture-c | 8,980 | 7,361 | -1,619 | 0 |
+
+Zero edges lost on any repo (rel delta = 0 everywhere). The
+`Latest bug-rate` columns in the ledger below are valid as-is post-#560
+and need no row-by-row rewrite; they are the post-#560 honest baseline
+going forward.
+
 ## Sources of truth
 
 - Latest aggregate measurement: `docs/verify2/quick-tier1-baseline-refresh-2026-05-19-v3.md` (40 repos, post-determinism #486, includes #474-#483 chain-fixes — **reliable single-shot**)

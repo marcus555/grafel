@@ -420,6 +420,10 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 			isDev = "true"
 		}
 
+		// #560: emit a single SCOPE.Component carrying the DEPENDS_ON edge
+		// embedded in its Relationships, rather than a real entity plus a
+		// synthetic "relationship"-kind container entity that the downstream
+		// pipeline would otherwise count as a phantom entity.
 		out = append(out, types.EntityRecord{
 			Name:       d.name,
 			Kind:       "SCOPE.Component",
@@ -434,14 +438,6 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 				"ref":                 pRef,
 				"provenance":          "INFERRED_FROM_PACKAGE_MANIFEST",
 			},
-			QualityScore: 0.8,
-		})
-
-		out = append(out, types.EntityRecord{
-			Name:       "DEPENDS_ON:" + projRef + "->" + pRef,
-			Kind:       "relationship",
-			Subtype:    "depends_on",
-			SourceFile: filePath,
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: projRef,

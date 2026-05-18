@@ -121,7 +121,27 @@ func (r *result) addEntity(e types.EntityRecord) {
 }
 
 func (r *result) addRel(from, to, kind string, props map[string]string) {
-	// Attach relationship to a sentinel entity so it flows through the pipeline.
+	// #560: embed the edge on the most recently emitted entity (the child
+	// class or the implementing interface) instead of a synthetic
+	// "relationship"-kind container entity. The downstream pipeline walks
+	// EntityRecord.Relationships across every record, so this still flows.
+	//
+	// All in-tree callers add the parent/iface entity immediately before
+	// calling addRel, so there will be at least one entity to attach to. As a
+	// defensive fallback (and to preserve the previous behaviour of "the edge
+	// is never silently dropped"), we keep the sentinel container if no
+	// entity exists yet — but assert via a panic-free no-op equivalent: a
+	// freshly-created class entity that owns the edge.
+	if n := len(r.entities); n > 0 {
+		r.entities[n-1].Relationships = append(r.entities[n-1].Relationships, types.RelationshipRecord{
+			FromID:     from,
+			ToID:       to,
+			Kind:       kind,
+			Properties: props,
+		})
+		return
+	}
+	// Fallback: should be unreachable given current callers.
 	r.entities = append(r.entities, types.EntityRecord{
 		Name:       kind + ":" + from + "->" + to,
 		Kind:       "relationship",
