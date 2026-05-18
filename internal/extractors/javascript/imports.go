@@ -366,8 +366,8 @@ func (x *extractor) parseNamedImports(named *sitter.Node, importPath, dotted, re
 		if ch == nil || ch.Type() != "import_specifier" {
 			continue
 		}
-		name := x.childFieldText(ch, "name")    // imported_name
-		alias := x.childFieldText(ch, "alias")  // local_name (may be empty)
+		name := x.childFieldText(ch, "name")   // imported_name
+		alias := x.childFieldText(ch, "alias") // local_name (may be empty)
 		if name == "" {
 			// Some grammar versions emit the imported identifier as the
 			// first identifier child without a "name" field.

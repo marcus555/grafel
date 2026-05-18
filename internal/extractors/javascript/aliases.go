@@ -31,10 +31,10 @@
 //     map is declared as a literal object. A full JS evaluator is out of
 //     scope; we extract the common shape with a regex pass:
 //
-//	'@/foo': '...'              → key='@/foo'
-//	'@/foo': path.resolve(...)  → key='@/foo'
-//	'@': path.resolve(__dirname, 'src')  → key='@'
-//	'@components': './src/components'    → key='@components'
+//     '@/foo': '...'              → key='@/foo'
+//     '@/foo': path.resolve(...)  → key='@/foo'
+//     '@': path.resolve(__dirname, 'src')  → key='@'
+//     '@components': './src/components'    → key='@components'
 //
 //     The value's right-hand side is normalised down to either a
 //     literal string (`./src/components`) or, when it's a
@@ -106,6 +106,7 @@ type AliasMap struct {
 //     equal the prefix OR start with `prefix + "/"`. We treat this as a
 //     glob with an empty tail so `@` alone resolves to `src` and
 //     `@/foo` resolves to `src/foo`.
+//
 // Resolve returns the most-specific repo-relative POSIX path the
 // import spec substitutes to, or "" when no alias matches. For
 // multi-target alias entries (tsconfig `paths` arrays) the LONGEST
@@ -754,7 +755,7 @@ func parseAliasObjectLiteral(obj string) []aliasEntry {
 
 // splitTopLevelCommas splits body on commas that are NOT inside a
 // string literal or bracketed expression. Brackets tracked:
-// `(` `)`, `{` `}`, `[` `]`. String literals: `'`, `"`, `` ` ``.
+// `(` `)`, `{` `}`, `[` `]`. String literals: `'`, `"`, “ ` “.
 func splitTopLevelCommas(body string) []string {
 	var out []string
 	depthParen, depthBrace, depthBracket := 0, 0, 0

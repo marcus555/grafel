@@ -285,7 +285,7 @@ func importModuleRef(node *sitter.Node, src []byte) string {
 	return ""
 }
 
-// unquoteStringValue strips the surrounding "" or '' quote tokens from a
+// unquoteStringValue strips the surrounding "" or ” quote tokens from a
 // tree-sitter string_value node and returns the inner text.
 func unquoteStringValue(node *sitter.Node, src []byte) string {
 	raw := nodeText(node, src)

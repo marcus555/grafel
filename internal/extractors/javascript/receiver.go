@@ -113,13 +113,13 @@ func (x *extractor) receiverIdent(obj *sitter.Node) string {
 //
 //   - `name: Type`                            — required typed param
 //   - `private/public/readonly name: Type`    — TS parameter property
-//                                               (NestJS @Inject style;
-//                                               this is the dominant
-//                                               shape issue #421 cares
-//                                               about — the extractor
-//                                               imports both the field
-//                                               and the param into the
-//                                               same lookup scope).
+//     (NestJS @Inject style;
+//     this is the dominant
+//     shape issue #421 cares
+//     about — the extractor
+//     imports both the field
+//     and the param into the
+//     same lookup scope).
 //   - `name?: Type`                           — optional param
 //
 // Untyped parameters (`function f(x)`) and parameter destructuring
@@ -162,9 +162,9 @@ func (x *extractor) functionParamFrame(params *sitter.Node, base *classBindings)
 //
 //   - public_field_definition  — typed class fields
 //   - method_definition with name="constructor" — constructor params
-//                                                  carrying access
-//                                                  modifiers become
-//                                                  parameter properties.
+//     carrying access
+//     modifiers become
+//     parameter properties.
 //
 // Anything else (untyped fields, methods, getters/setters) is skipped.
 func (x *extractor) collectClassFields(body *sitter.Node, out map[string]string) {

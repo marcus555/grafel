@@ -1606,7 +1606,9 @@ func TestLooksLikeSourceFilePath_BasenameOnly(t *testing.T) {
 // TestIsDataAccessSQLStub guards the helper used by classifyDispositionLang
 // (issue #507) to recognise SCOPE.DataAccess structural-refs emitted by
 // internal/extractors/cross/dbmap. The stub form is
-//   scope:dataaccess:<file>#<orm>:<op>:<table>
+//
+//	scope:dataaccess:<file>#<orm>:<op>:<table>
+//
 // and the <orm> segment must match one of dataAccessSQLOrms.
 func TestIsDataAccessSQLStub(t *testing.T) {
 	cases := []struct {

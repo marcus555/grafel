@@ -7,7 +7,7 @@
 //   - function <name>                 → Kind="SCOPE.Operation", Subtype="function"
 //   - complete --command <name> …     → Kind="SCOPE.Operation", Subtype="completion"
 //   - source / . <path>               → Kind="SCOPE.Component",  Subtype="import"
-//                                       (carries one IMPORTS edge)
+//     (carries one IMPORTS edge)
 //
 // Issue #371 (PORT-RELS-FISH) — emits the same three relationship kinds the
 // other ported extractors emit:
