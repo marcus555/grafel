@@ -232,6 +232,35 @@ private-codebase chain-fix) have a stable measurement-history anchor.
 | client-fixture-c | typescript (RN/Expo + Metro + tsconfig paths) | ~538 | **3.99% (2026-05-19, post-#522)** — was 9.73% post-#505 baseline on rebased main, 20.28% pre-#505 | #522 | #522 landed: JS/TS extractor now emits SCOPE.Component / SCOPE.Operation entities for every `export const X = <expr>` shape (objects, instances, hook aliases, reducers, React wrappers via forwardRef/memo/observer/connect/styled). +2701 entities (6279 → 8980). bug-extractor 1622 → 638 (-984). Residual: bug-resolver edges climbed slightly (7 → 52) because alias-resolved IMPORTS now have targets to bind to but the resolver picks the bare leaf when multiple candidate files declare same-named consts — addressable via cross-file disambiguation pass. | at-ship-gate | residual ~3.99% is below 8% bar and approaching ≤1% ship-gate. Remaining work: (a) bug-resolver disambiguation when same-named const is exported from multiple files; (b) Gluestack/Expo deep-path allowlist refresh (still relevant for the external-known column). |
 | client-fixture-b | javascript (Vite + React) | ~659 | **12.10% (2026-05-19, post-#522)** — was 13.23% on rebased main, 16.07% on pre-rebase worktree base | #522 | #522 landed: JS extractor now emits entities for `export const X = <expr>` shapes. +6222 entities (9662 → 15884). bug-extractor 4848 → 4213 (-635). Residual is now dominated by orthogonal bug classes, not const exports: (a) `fetchAuthSession` (371 edges) — AWS Amplify named imports not in external-known allowlist; (b) `then`/`includes`/`find`/`forEach` — Promise + Array prototype methods (per #104 safer-bias deliberately omitted); (c) `useSelector` (141 unprefixed) — react-redux named import not externalized; (d) `setFieldsValue`/`validateFields`/`success` — antd form-instance method calls on dynamic-typed instances. None of these are const-export shapes. | addressable | chain-fixes filed: (1) AWS Amplify external-known allowlist refresh; (2) react-redux named-import externalization gap; (3) antd form-instance receiver typing. Note that #522 yields proportionally less here than on client-fixture-c because frontend has many more downstream issues that aren't const-export-related. |
 
+## Cross-repo `client-fixture` group link state (2026-05-19, post-#565)
+
+The `client-fixture` group spans the three user-test repos above
+(client-fixture-a, -b, -c). Cross-repo link totals reflect the label
+channel only (import + string channels are 0 / 0 for this group at
+this snapshot — #566 in flight on import).
+
+| Snapshot | Total cross-repo links | label_match | Strict precision (estimate) | Notes |
+|---|---:|---:|---:|---|
+| 2026-05-19, post-#511 baseline | 367 | 367 | ~14% | line-number suffix filter only; bulk noise = stdlib/builtin + destructured tuples + generic field names + npm package roots |
+| 2026-05-19, post-#565 | 73 | 73 | ~85% | hardened stop-lists landed: JS/Python builtins, React hooks, date/number proto methods, destructured tuples (`[var, setvar]`), destructured objects (`{ data }`), destructured arrays (`[year, month, day]`), generic field-name stop-list (~120 entries), length-<4 filter, npm-package-root filter via `external.IsKnownExternalPackage` |
+
+Residual root cause (#565 post-fix): the surviving 73 are bona-fide
+cross-stack pairings — backend DRF actions ↔ frontend RTK Query
+mutation hooks (`createInspectionDeficiency`, `listChecklistCatalogs`,
+`partialUpdateInspectionGroup`, `retrieveInspectionGroup`, ...), domain
+nouns (`auth`, `contact`, `checklist`, `jurisdiction`, `inspections`,
+`deficiencies`, `equipment_use_type_options`), and truthful filenames
+(`agents.md`, `claude.md`, `readme.md`, `bitbucket-pipelines.yml`). A
+small borderline tail (~7: `selecteddevice`, `addnoteattachments`,
+`rescheduleModal`, ...) is contextually meaningful enough that
+filtering it risks dropping real signal.
+
+Status: post-#565 at ~73 with ~85% strict precision (target was ≤50 /
+≥60%). Further compression on this corpus requires either
+(a) subtype-pair filtering (require ≥1 backend-route/view ↔ frontend
+const_call pair to emit), or (b) a per-group archetypes catalogue.
+Both deferred to a follow-up.
+
 ## Status roll-up (v3 refresh 2026-05-19)
 
 | Status | Count |
