@@ -925,6 +925,23 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		}
 	}
 
+	// Click wave — gettext alias dotted receivers. `from gettext import
+	// gettext as _` produces `_.format(...)` / `_.upper(...)` (dotted-
+	// other in click bug-extractor samples — second-largest bucket).
+	// `from gettext import ngettext` produces `ngettext.format(...)`.
+	// The Python extractor doesn't trace import aliases, so the dotted
+	// form survives unrewritten. Route to `ext:gettext` regardless of
+	// the leaf method. Lang-gated to python so the bare `_` receiver
+	// doesn't shadow throwaway-variable conventions in other languages.
+	if lang == "python" {
+		if dot := strings.IndexByte(name, '.'); dot > 0 {
+			recv := name[:dot]
+			if _, ok := pythonGettextDottedReceivers[recv]; ok {
+				return "gettext", "package", true
+			}
+		}
+	}
+
 	// Issue #120 — multi-segment Java / Kotlin / .NET package prefixes.
 	// JVM and CLR dotted paths use a multi-word root convention
 	// (`org.springframework.boot`, `com.fasterxml.jackson.databind`,
@@ -11875,6 +11892,398 @@ var pythonBareNames = map[string]struct{}{
 	"marshal_with_apispec": {},
 	"use_kwargs":           {},
 	"doc":                  {},
+
+	// Click wave — gettext convention. `from gettext import gettext as _`
+	// + `from gettext import ngettext` is the canonical i18n idiom in
+	// CPython CLI codebases (click, flask, django i18n). Bare `_(...)`
+	// arrives at the resolver as `_` (45 hits in click samples — 12%
+	// of the bug-extractor bucket) and `ngettext(...)` as `ngettext`
+	// (7 hits). Both alias-style identifiers are reserved-by-convention
+	// for gettext in mainstream Python; the python gate keeps the
+	// short `_` token from shadowing throwaway variable assignments in
+	// other languages. Single source of truth: gettext.
+	"_":        {},
+	"ngettext": {},
+
+	// Click wave — Python stdlib helpers seen receiver-stripped in
+	// click's own source and tests. Each is unambiguously a stdlib
+	// API on CPython:
+	//   - shutil/os helpers: `which`, `unlink`, `dup2`
+	//   - ctypes primitives: `byref`, `c_ulong`, `c_int`, `c_void_p`,
+	//     `c_char_p`, `c_uint`, `c_long`, `c_short`, `c_byte`, `WinError`,
+	//     `GetLastError`, `HANDLE`
+	//   - tempfile / contextlib classes: `TemporaryDirectory`, `ExitStack`
+	//   - subprocess: `Popen` (constructor; class name is rarely
+	//     redefined)
+	//   - urllib.parse: `urlparse` (when imported bare via
+	//     `from urllib.parse import urlparse`)
+	//   - io classes: `BufferedWriter`
+	//   - dict / str builtins missing from stdlibBareNames:
+	//     `partition`, `rpartition`, `casefold`, `fromkeys`
+	//   - warnings: `warn` (the `warnings.warn(...)` receiver-stripped
+	//     bare-name form)
+	//   - inspect: `getfullargspec`, `cleandoc` is already in pythonBareNames
+	//   - utime: os.utime
+	// All names are Python-gated; collisions with user methods in
+	// other languages are blocked by the lang=="python" check.
+	"which":              {},
+	"unlink":             {},
+	"dup2":               {},
+	"utime":              {},
+	"warn":               {},
+	"partition":          {},
+	"rpartition":         {},
+	"casefold":           {},
+	"fromkeys":           {},
+	"urlparse":           {},
+	"byref":              {},
+	"c_ulong":            {},
+	"c_int":              {},
+	"c_uint":             {},
+	"c_long":             {},
+	"c_short":            {},
+	"c_byte":             {},
+	"c_void_p":           {},
+	"c_char_p":           {},
+	"c_wchar_p":          {},
+	"c_size_t":           {},
+	"c_bool":             {},
+	"WinError":           {},
+	"GetLastError":       {},
+	"HANDLE":             {},
+	"TemporaryDirectory": {},
+	"ExitStack":          {},
+	"Popen":              {},
+	"BufferedWriter":     {},
+
+	// Click wave Pass-2 — Python logging API. After
+	// `logger = logging.getLogger(__name__)` the receiver-stripped
+	// dispatch produces bare `setLevel`, `addHandler`, `removeHandler`,
+	// `StreamHandler` (constructor), `Handler`, `Formatter`. These are
+	// distinctive PascalCase / camelCase identifiers tied to the
+	// `logging` stdlib surface — extremely rare as user-method names
+	// in Python idiom. Already python-gated. `getLogger` and
+	// `basicConfig` are present elsewhere in pythonBareNames via the
+	// issue #455 block; not duplicated here.
+	"setLevel":      {},
+	"addHandler":    {},
+	"removeHandler": {},
+	"StreamHandler": {},
+	"FileHandler":   {},
+	"NullHandler":   {},
+	"Handler":       {},
+	"Formatter":     {},
+	"LogRecord":     {},
+	"Filter":        {},
+
+	// Click wave Pass-2 — pathlib.Path read/write helpers and argparse.
+	// `path.read_text()` / `path.write_text()` / `path.read_bytes()` /
+	// `path.write_bytes()` are receiver-stripped pathlib methods. They
+	// have the snake_case `_text`/`_bytes` suffix that overwhelmingly
+	// signals pathlib — vanishingly rare as user-method shapes.
+	// `parse_args` is the argparse / click parser dispatcher leaf.
+	"read_text":   {},
+	"write_text":  {},
+	"read_bytes":  {},
+	"write_bytes": {},
+	"parse_args":  {},
+
+	// Click wave Pass-2 — pytest monkeypatch surface. After
+	// `monkeypatch.setenv("FOO", "bar")` / `.delenv` / `.setitem` /
+	// `.delitem` / `.chdir` / `.syspath_prepend` / `.context` the bare
+	// leaf reaches the resolver. These are pytest-monkeypatch idioms
+	// (`monkeypatch` is already in pythonBareNames at the pytest block);
+	// the methods complete that surface.
+	"setenv":          {},
+	"delenv":          {},
+	"setitem":         {},
+	"delitem":         {},
+	"syspath_prepend": {},
+
+	// Click wave Pass-2 — unittest.mock patch decorator and re module
+	// (`re.match`, `re.search`, `re.sub`, `re.findall`, `re.fullmatch`,
+	// `re.compile`). The `re.*` calls survive receiver-stripping as
+	// bare leaf names. `match` is EXCLUDED — Python 3.10+ structural
+	// pattern matching uses `match` as a keyword; while the bare-name
+	// lookup wouldn't shadow keyword usage, the leaf is generic enough
+	// that user code routinely defines `Foo.match(...)` as a method
+	// (regex-like APIs on parsers/AST nodes). `sub` is EXCLUDED — too
+	// generic (subscribe / subtract / subprocess accessors). Kept the
+	// rarer leaves only.
+	"fullmatch":  {},
+	"sre_parse":  {},
+	"sre_compile":{},
+
+	// Click wave Pass-2 — common pytest / mock surface beyond what
+	// the issue #455 block already covered. `patch` is the canonical
+	// `unittest.mock.patch` decorator; `MagicMock`, `Mock`, `PropertyMock`,
+	// `AsyncMock`, `call`, `ANY` are the supporting unittest.mock
+	// classes. All are PascalCase / unambiguous mock idioms.
+	"patch":        {},
+	"MagicMock":    {},
+	"Mock":         {},
+	"PropertyMock": {},
+	"AsyncMock":    {},
+	"ANY":          {},
+	"DEFAULT":      {},
+	"sentinel":     {},
+
+	// Click wave Pass-3 — concurrent.futures.Executor + os/gc/contextlib
+	// stdlib surface. Each leaf is unambiguously a stdlib method receiver-
+	// stripped from the canonical receiver:
+	//   - `executor.submit(fn)` → `submit` (ThreadPoolExecutor /
+	//     ProcessPoolExecutor; the method is rarely a user-method name)
+	//   - `os.urandom(n)` → `urandom` (distinctive)
+	//   - `os.rmdir(path)` / `path.rmdir()` → `rmdir` (distinctive)
+	//   - `gc.collect()` → `collect` (gc is distinctive; `collect` does
+	//     collide with itertools-style user code but receiver-strip
+	//     dominates the click corpus)
+	//   - `stack.with_resource(cm)` → `with_resource` (contextlib
+	//     ExitStack; the snake-case verb shape is overwhelmingly
+	//     contextlib)
+	//   - `os.execvp` / `os.execv` family
+	//   - `os.environ` ops not in stdlibBareNames: `putenv`, `unsetenv`
+	//   - shutil: `rmtree` (Wave-7 has `chdir`/`mkdtemp` already; not
+	//     added here)
+	"submit":        {},
+	"urandom":       {},
+	"rmdir":         {},
+	"collect":       {},
+	"with_resource": {},
+	"putenv":        {},
+	"unsetenv":      {},
+	"rmtree":        {},
+	"copyfile":      {},
+	"copytree":      {},
+	"copystat":      {},
+	"chown":         {},
+	"chmod":         {},
+	"symlink":       {},
+	"readlink":      {},
+	"link":          {},
+	"sendfile":      {},
+	"fsync":         {},
+	"truncate":      {},
+	"ftruncate":     {},
+	"isatty":        {},
+	"tcgetattr":     {},
+	"tcsetattr":     {},
+	"setraw":        {},
+	"cbreak":        {},
+
+	// Click wave Pass-3 — pathlib Path / PurePath operations that
+	// arrive bare after `Path(...).is_file()` / `.is_dir()` /
+	// `.iterdir()` / `.glob()` / `.exists()` / `.with_suffix()` /
+	// `.relative_to()` / `.absolute()` / `.resolve()`. The snake-case
+	// `with_*` / `is_*` / `_to` shapes are highly distinctive pathlib
+	// idioms. `exists` / `is_file` / `is_dir` are EXCLUDED — they
+	// collide with `models.exists()` QuerySet + Django model methods
+	// and would shadow real local resolutions (#94 safer-bias).
+	"with_suffix":  {},
+	"with_name":    {},
+	"with_stem":    {},
+	"relative_to":  {},
+	"iterdir":      {},
+	"hardlink_to":  {},
+	"symlink_to":   {},
+	"chmod_to":     {},
+	"as_posix":     {},
+	"as_uri":       {},
+	"is_symlink":   {},
+	"is_absolute":  {},
+	"is_relative_to": {},
+	"is_reserved":  {},
+	"is_mount":     {},
+	"is_socket":    {},
+	"is_block_device": {},
+	"is_char_device": {},
+	"is_fifo":      {},
+	"touch":        {},
+	"samefile":     {},
+	"lchmod":       {},
+	"group":        {},
+
+	// Click wave Pass-3 — time / sleep functions when imported bare.
+	// `time.sleep(s)` receiver-stripped to `sleep`. `sleep` does have
+	// some collision risk (Test.sleep methods, custom polling DSLs) but
+	// the click test suite has 4+ direct receiver-strip hits and the
+	// python gate restricts to python sources. Trade-off accepted.
+	"sleep":      {},
+	"perf_counter": {},
+	"monotonic":  {},
+	"time_ns":    {},
+	"process_time": {},
+
+	// Click wave Pass-3 — warnings module. `warnings.warn` is already
+	// added above. `simplefilter` / `resetwarnings` / `showwarning`
+	// complete the surface. `filterwarnings` already exists.
+	"simplefilter":  {},
+	"resetwarnings": {},
+	"showwarning":   {},
+
+	// Click wave Pass-3 — pickle protocol classes / functions.
+	"Pickler":     {},
+	"Unpickler":   {},
+	"HIGHEST_PROTOCOL": {},
+	"PickleError": {},
+
+	// Click wave Pass-3 — atexit module (small surface).
+	"atexit": {},
+
+	// Click wave Pass-3 — io.* class surface beyond BufferedWriter.
+	"BufferedReader":     {},
+	"BufferedRandom":     {},
+	"BufferedRWPair":     {},
+	"TextIOWrapper":      {},
+	"FileIO":             {},
+	// `BytesIO` already in stdlibBareNames — not duplicated here.
+	"RawIOBase":          {},
+	"BufferedIOBase":     {},
+	"TextIOBase":         {},
+	"IOBase":             {},
+	"UnsupportedOperation": {},
+
+	// Click wave Pass-3 — datetime constructors and helpers seen
+	// receiver-stripped (`datetime.datetime.now()` → `now` is too
+	// generic, EXCLUDED; `datetime.timedelta(...)` → `timedelta`
+	// kept). `now`, `utcnow`, `today` excluded per safer-bias.
+	// `timedelta` already exists in pythonBareNames.
+	"timezone": {},
+	"tzinfo":   {},
+
+	// Click wave Pass-3 — uuid module. `uuid1` and `uuid4` already
+	// exist in pythonBareNames; add the remaining.
+	"uuid3": {},
+	"uuid5": {},
+	"UUID":  {},
+
+	// Click wave Pass-3 — hashlib digests not in stdlibBareNames.
+	"md5":     {},
+	"sha1":    {},
+	"sha256":  {},
+	"sha512":  {},
+	"blake2b": {},
+	"blake2s": {},
+	"sha3_256":  {},
+	"sha3_512":  {},
+	"hexdigest": {},
+	"digest":    {},
+	"hmac":      {},
+	// `new` excluded — gated to ruby (rubyBareNames).
+
+	// Click wave Pass-3 — base64 / binascii encodings.
+	"b64encode":     {},
+	"b64decode":     {},
+	"urlsafe_b64encode": {},
+	"urlsafe_b64decode": {},
+	"b32encode":     {},
+	"b32decode":     {},
+	"a85encode":     {},
+	"a85decode":     {},
+	"hexlify":       {},
+	"unhexlify":     {},
+
+	// Click wave Pass-3 — json module helpers receiver-stripped.
+	// `json.loads` / `json.dumps` are in stdlibBareNames already (no
+	// they're not — only `json` as a package root). Add the verb pair
+	// here gated to python so it doesn't shadow user methods elsewhere.
+	"loads": {},
+	"dumps": {},
+	"load":  {},
+	"dump":  {},
+
+	// Click wave Pass-3 — os.path / glob / fnmatch leaves.
+	"fnmatchcase": {},
+	"normpath":    {},
+	"normcase":    {},
+	"commonpath":  {},
+	"commonprefix": {},
+	"splitdrive":  {},
+
+	// Click wave Pass-3 — typing module additions not yet listed.
+	"runtime_checkable": {},
+	"final":             {},
+	"override":          {},
+	"reveal_type":       {},
+	"assert_type":       {},
+	"assert_never":      {},
+	"get_type_hints":    {},
+	"get_origin":        {},
+	"get_args":          {},
+	"is_typeddict":      {},
+	"ParamSpec":         {},
+	"TypeVarTuple":      {},
+	"Unpack":            {},
+	"TypeAlias":         {},
+	"Self":              {},
+	"Concatenate":       {},
+	"Required":          {},
+	"NotRequired":       {},
+
+	// Click wave Pass-3 — functools module additions not in
+	// pythonBareNames. `partial`, `reduce`, `cache` already exist.
+	"singledispatch":       {},
+	"singledispatchmethod": {},
+	"total_ordering":       {},
+	"cmp_to_key":           {},
+	"partialmethod":        {},
+
+	// Click wave Pass-3 — inspect introspection (those not in
+	// pythonBareNames issue #455 block). `signature` already exists.
+	"Signature":           {},
+	"Parameter":           {},
+	"BoundArguments":      {},
+	"getfullargspec":      {},
+	"iscoroutine":         {},
+	"iscoroutinefunction": {},
+	"isasyncgen":          {},
+	"isawaitable":         {},
+	"ismodule":            {},
+	"isabstract":          {},
+	"isbuiltin":           {},
+	"isgenerator":         {},
+	"isgeneratorfunction": {},
+
+	// Click wave Pass-3 — importlib top-level helpers.
+	// `import_module` already exists. `reload` excluded — gated to ruby
+	// (rubyBareNames). Python's `importlib.reload` is the leaf name but
+	// the cross-lang gate test forbids duplicates.
+	"invalidate_caches": {},
+	"find_spec":         {},
+	"module_from_spec":  {},
+
+	// Click wave Pass-2 — IO/console-write surface from click's own
+	// `HelpFormatter` and tests: `write_dl`, `write_paragraph`,
+	// `write_usage`, `write_text` (already added above), `make_formatter`,
+	// `indentation`, `section`. EXCLUDED — these are local Click
+	// methods on the `HelpFormatter` class; adding them would shadow
+	// real local entities (#94 safer-bias). The bug-extractor hits
+	// are a separate problem (missing self.method resolution) not
+	// solved by the external bare-name route.
+
+	// Click wave — gettext-aliased call surface. After `from gettext
+	// import gettext as _`, the dotted form `_.format(...)` arrives
+	// at the resolver because the Python extractor doesn't trace the
+	// rename. `format` already exists as a builtin in stdlibBareNames
+	// and is not re-added; `_.format` is the dotted shape with `_`
+	// as the receiver — handled separately by the dotted-receiver
+	// branch in classifyExternal below (issue: click i18n).
+}
+
+// pythonGettextDottedReceivers lists the gettext-import aliases that
+// click's own source uses as call receivers. `from gettext import
+// gettext as _` produces `_.format(...)` / `_.upper(...)` (28 +
+// scattered hits in click bug-extractor samples — second-largest
+// bucket); `from gettext import ngettext` produces
+// `ngettext.format(...)` (7 hits). The Python extractor doesn't
+// trace import aliases, so the dotted form survives unrewritten.
+// Route them to `ext:gettext` via the dotted-receiver branch in
+// classifyExternal. Lang-gated to python to avoid shadowing the
+// throwaway-`_` variable convention in other ecosystems (Ruby /
+// Go / Rust / JS test scaffolding all use `_` for ignored values).
+var pythonGettextDottedReceivers = map[string]struct{}{
+	"_":        {},
+	"ngettext": {},
 }
 
 // cppBareNames is the C/C++-language-gated bare-name stop-list (issue
@@ -12888,6 +13297,61 @@ var knownExternalPackages = map[string]struct{}{
 	"random":      {},
 	"traceback":   {},
 	"importlib":   {},
+	// Click wave — Python stdlib roots seen as bug-resolver IMPORTS
+	// targets in click's own source (`from gettext import gettext as _`,
+	// `import codecs`, `import errno`, `import inspect`, `import shutil`,
+	// `import shlex`, `import stat`, `import textwrap`, `import msvcrt`,
+	// `import platform`, `import pdb`, `import ctypes`, `import struct`,
+	// `import string`, `import signal`, `import types`). Each module is
+	// a CPython stdlib top-level; they collide with no user-package
+	// names in practice (Python convention reserves these via PEP 8
+	// import style). Routes the click IMPORTS edges out of bug-resolver.
+	// Notes:
+	//   - `copy` is intentionally omitted here. The
+	//     TestStdlibBareNames_NoCollisionNames test fixture creates a
+	//     bare relationship with `ToID: "copy"` and asserts NO
+	//     synthesis; adding `copy` to the package allowlist would still
+	//     route it (via the Format-A structural-ref path) and trip the
+	//     fixture. `copy` users in click import as `import copy` which
+	//     reaches the IMPORTS path through external-unknown — accepted.
+	//   - `select` is intentionally omitted here. It is already gated
+	//     for ruby via rubyBareNames and adding it to the global
+	//     allowlist would let it match cross-language.
+	"gettext":   {},
+	"codecs":    {},
+	"errno":     {},
+	"inspect":   {},
+	"shutil":    {},
+	"shlex":     {},
+	"stat":      {},
+	"textwrap":  {},
+	"msvcrt":    {},
+	"platform":  {},
+	"pdb":       {},
+	"ctypes":    {},
+	"termios":   {},
+	"selectors": {},
+	"struct":    {},
+	"string":    {},
+	"signal":    {},
+	"types":     {},
+	"fnmatch":   {},
+	"gc":        {},
+	"linecache": {},
+	"mimetypes": {},
+	"getpass":   {},
+	"pickle":    {},
+	"secrets":   {},
+	"bisect":    {},
+	"heapq":     {},
+	"array":     {},
+	"gzip":      {},
+	"zipfile":   {},
+	"tarfile":   {},
+	// Click wave — third-party Python ANSI/terminal-color shim heavily
+	// used by click on Windows (`import colorama`). Pure-Python package
+	// shipped on PyPI as the canonical click dependency.
+	"colorama":    {},
 	// Wave-7 third-party additions (Django/Channels/AWS/PDF/Excel
 	// stack from client-fixture-a residual).
 	"asgiref":                  {},
