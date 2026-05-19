@@ -21,7 +21,6 @@ import (
 	"sort"
 	"time"
 
-	gonumgraph "gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/community"
 	"gonum.org/v1/gonum/graph/network"
 	"gonum.org/v1/gonum/graph/path"
@@ -254,7 +253,97 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	reduced := community.Modularize(und, 1.0, src)
 
 	groups := reduced.Communities()
-	overallQ := roundForDeterminism(sanitizeFloat(community.Q(und, groups, 1.0)))
+
+	// Issue #633 phase-2 — pprof showed `community.Q` accounted for ~90% of
+	// indexing allocations (21.6 GB on client-fixture-b: 9,549 communities ×
+	// per-call O(|V|+|E|) iteration over the undirected graph). Each Q call
+	// re-builds the weighted-degree table `k[]` and scans every node. We
+	// replace ALL gonum Q calls with a single pre-computed pass:
+	//
+	//   1. Compute k[uid] (weighted degree) and m2 = Σ k[u] in one sweep.
+	//   2. For each community, accumulate internal edge weight and ΣK in
+	//      O(|E_C|) using a node→community map (built below).
+	//   3. Per-community contribution: q_c = (2*internal_w - K_C^2/m2) / m2
+	//      (BuildGraph drops self-loops, so the diagonal term collapses to 0
+	//      and gonum's "2*w_uv for u<v" off-diagonal sum becomes 2*internal_w).
+	//   4. Overall Q = Σ q_c — matches gonum's `community.Q(und, groups, 1)`
+	//      to the rounding tolerance enforced by roundForDeterminism().
+	const resolution = 1.0
+	type nodeStat struct {
+		k      float64
+		cidIdx int // index into groups
+		degree int
+	}
+	nodeStats := make(map[int64]*nodeStat, idx.next)
+	// First, mark community membership so the edge sweep can classify edges
+	// in O(1) without consulting `groups` repeatedly.
+	for cid, gg := range groups {
+		for _, n := range gg {
+			nid := n.ID()
+			if _, ok := nodeStats[nid]; !ok {
+				nodeStats[nid] = &nodeStat{cidIdx: cid}
+			} else {
+				nodeStats[nid].cidIdx = cid
+			}
+		}
+	}
+	// Walk every undirected edge once: contribute weight to each endpoint's
+	// `k` (weighted degree) and, when both endpoints share a community, to
+	// that community's internal-weight accumulator.
+	internalW := make([]float64, len(groups))
+	var m2 float64
+	wedges := und.WeightedEdges()
+	for wedges.Next() {
+		e := wedges.WeightedEdge()
+		w := e.Weight()
+		fid, tid := e.From().ID(), e.To().ID()
+		nf, ok := nodeStats[fid]
+		if !ok {
+			// Isolated-from-Modularize node: gonum's Communities() still
+			// covers every node from the original graph, but defensively
+			// guard so the loop is total.
+			nf = &nodeStat{cidIdx: -1}
+			nodeStats[fid] = nf
+		}
+		nt, ok := nodeStats[tid]
+		if !ok {
+			nt = &nodeStat{cidIdx: -1}
+			nodeStats[tid] = nt
+		}
+		nf.k += w
+		nt.k += w
+		nf.degree++
+		nt.degree++
+		m2 += 2 * w // undirected: each edge contributes 2 to Σ k.
+		if nf.cidIdx >= 0 && nf.cidIdx == nt.cidIdx {
+			internalW[nf.cidIdx] += w
+		}
+	}
+
+	// Per-community K_C = Σ k[u] for u in c.
+	K := make([]float64, len(groups))
+	for cid, gg := range groups {
+		var k float64
+		for _, n := range gg {
+			if ns, ok := nodeStats[n.ID()]; ok {
+				k += ns.k
+			}
+		}
+		K[cid] = k
+	}
+
+	// Compute per-community q_c and overall Q analytically.
+	var overallQRaw float64
+	communityQ := make([]float64, len(groups))
+	if m2 > 0 {
+		for cid := range groups {
+			// q_c = (2*internal_w_c - resolution * K_c^2 / m2) / m2
+			q := (2*internalW[cid] - resolution*K[cid]*K[cid]/m2) / m2
+			communityQ[cid] = q
+			overallQRaw += q
+		}
+	}
+	overallQ := roundForDeterminism(sanitizeFloat(overallQRaw))
 
 	communityOf := make(map[string]int, idx.next)
 	// Default every node into community -1; Modularize's Communities() lists
@@ -274,13 +363,13 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		}
 		members := make([]member, 0, len(g))
 		for _, n := range g {
-			communityOf[idx.fromInt[n.ID()]] = cid
+			nid := n.ID()
+			communityOf[idx.fromInt[nid]] = cid
 			deg := 0
-			it := und.From(n.ID())
-			for it.Next() {
-				deg++
+			if ns, ok := nodeStats[nid]; ok {
+				deg = ns.degree
 			}
-			members = append(members, member{n.ID(), deg})
+			members = append(members, member{nid, deg})
 		}
 		// Issue #481 — degree ties were resolved by map-iteration order
 		// (g.Nodes / und.From); tiebreak on the gonum int64 node id so
@@ -306,11 +395,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 			top = append(top, name)
 		}
 
-		// Per-community modularity contribution: Q of the singleton partition
-		// containing only this group is meaningless; instead we expose this
-		// community's own size-weighted contribution to overall Q.
-		cQ := community.Q(und, [][]gonumgraph.Node{g}, 1.0)
-		cQ = roundForDeterminism(sanitizeFloat(cQ))
+		cQ := roundForDeterminism(sanitizeFloat(communityQ[cid]))
 
 		results = append(results, CommunityResult{
 			ID:          cid,
@@ -368,7 +453,16 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 
 	// PageRank requires a directed graph — use g directly. damping=0.85,
 	// tolerance=1e-6 per spec.
-	prRaw := network.PageRank(g, 0.85, 1e-6)
+	//
+	// Issue #633 phase-2 — pprof showed `network.PageRank` allocates a dense
+	// N×N transition matrix via `mat.NewDense` (~1.74 GB live for 15k nodes
+	// on client-fixture-b). `network.PageRankSparse` solves the SAME fixed
+	// point with identical damping/tolerance using a sparse row-compressed
+	// matrix proportional to |E|. Both gonum variants use the same un-seeded
+	// init vector and converge to the same scores; roundForDeterminism()
+	// rounds to 1e-5 (well above the 1e-6 solver tolerance) so the on-disk
+	// bytes stay stable. Always use sparse — code graphs are sparse by nature.
+	prRaw := network.PageRankSparse(g, 0.85, 1e-6)
 	for nid, v := range prRaw {
 		pr[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
 	}
