@@ -12,6 +12,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/treesitter"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // newTestIndexer constructs an Indexer wired up to the embedded YAML rules
@@ -525,5 +526,92 @@ func TestExternalSynthesis_VerboseCounter(t *testing.T) {
 
 	if !strings.Contains(got, "ext-synthesis: synthesized=") {
 		t.Fatalf("verbose ext-synthesis line missing from stderr; got: %s", got)
+	}
+}
+
+// assertBuildPatternContainsRelsCovers is a unit-level guard on the helper
+// that powers the SCOPE.Pattern → CONTAINS fixup. Drives buildPatternContainsRels
+// with a synthetic merged-record slice and checks one edge per pattern.
+func assertBuildPatternContainsRelsCovers(t *testing.T) {
+	t.Helper()
+	idx := &Indexer{repoTag: "unit_test_repo"}
+	records := []types.EntityRecord{
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "SCOPE.Pattern", Name: "p1", SourceFile: "src/a.py"},
+		{ID: "bbbbbbbbbbbbbbbb", Kind: "SCOPE.Pattern", Name: "p2", SourceFile: "src/b.py"},
+		// Non-pattern: must be skipped.
+		{ID: "cccccccccccccccc", Kind: "SCOPE.Operation", Name: "f", SourceFile: "src/a.py"},
+		// Pattern with empty SourceFile: must be skipped (no file to attach to).
+		{ID: "dddddddddddddddd", Kind: "SCOPE.Pattern", Name: "p3", SourceFile: ""},
+		// Pattern with empty ID: must be skipped.
+		{ID: "", Kind: "SCOPE.Pattern", Name: "p4", SourceFile: "src/c.py"},
+	}
+	rels := idx.buildPatternContainsRels(records)
+	if len(rels) != 2 {
+		t.Fatalf("expected 2 CONTAINS edges (one per fully-formed Pattern), got %d", len(rels))
+	}
+	wantFileA := graph.EntityID("unit_test_repo", "SCOPE.Component", "src/a.py", "src/a.py")
+	wantFileB := graph.EntityID("unit_test_repo", "SCOPE.Component", "src/b.py", "src/b.py")
+	seen := map[string]string{}
+	for _, r := range rels {
+		if r.Kind != "CONTAINS" {
+			t.Fatalf("unexpected edge kind %q", r.Kind)
+		}
+		seen[r.ToID] = r.FromID
+	}
+	if seen["aaaaaaaaaaaaaaaa"] != wantFileA {
+		t.Errorf("p1: FromID=%q want=%q", seen["aaaaaaaaaaaaaaaa"], wantFileA)
+	}
+	if seen["bbbbbbbbbbbbbbbb"] != wantFileB {
+		t.Errorf("p2: FromID=%q want=%q", seen["bbbbbbbbbbbbbbbb"], wantFileB)
+	}
+}
+
+// TestScopePatternContains_AllPatternsHaveContainsEdge asserts that every
+// SCOPE.Pattern entity emitted on the django fixture is the target of at
+// least one CONTAINS edge whose FromID is the per-source-file
+// SCOPE.Component (subtype="file") entity created by extractor.FileEntity.
+//
+// Regression guard for the system-wide orphan-bloat fix: the framework
+// rule engine + many per-language pattern detectors emit Pattern entities
+// without a file→pattern CONTAINS edge, which orphans them in the graph
+// and inflates per-repo orphan rate. The fix lives in buildDocument's
+// buildPatternContainsRels Pass-3 fixup.
+func TestScopePatternContains_AllPatternsHaveContainsEdge(t *testing.T) {
+	doc := runIndexerOn(t, "testdata/django_app", "django_app", nil)
+
+	patternIDs := make(map[string]string) // id → source_file
+	for _, e := range doc.Entities {
+		if e.Kind == "SCOPE.Pattern" {
+			patternIDs[e.ID] = e.SourceFile
+		}
+	}
+	if len(patternIDs) == 0 {
+		// django fixture happens not to emit Pattern entities. Fall back to
+		// a unit-level check on the helper that drives the fixup so we still
+		// have a regression guard at this layer.
+		assertBuildPatternContainsRelsCovers(t)
+		return
+	}
+
+	contained := make(map[string]bool)
+	for _, r := range doc.Relationships {
+		if r.Kind == "CONTAINS" {
+			contained[r.ToID] = true
+		}
+	}
+
+	var missing []string
+	for id := range patternIDs {
+		if !contained[id] {
+			missing = append(missing, id+"("+patternIDs[id]+")")
+		}
+	}
+	if len(missing) > 0 {
+		// Cap output so a regression doesn't flood the test log.
+		if len(missing) > 10 {
+			missing = append(missing[:10], "…")
+		}
+		t.Fatalf("%d/%d SCOPE.Pattern entities have no CONTAINS edge targeting them; sample: %v",
+			len(missing), len(patternIDs), missing)
 	}
 }
