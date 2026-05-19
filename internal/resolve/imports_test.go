@@ -1384,3 +1384,114 @@ func TestResolveImports_ScalaPlayFrameworkProjectionNotAmbiguous(t *testing.T) {
 		t.Fatalf("expected SCOPE.Component (1111...) preferred over framework alias (5555...), got %q", got)
 	}
 }
+
+// TestPruneImportPlaceholders_RewritesIMPORTSToFileCarrier exercises
+// the PR #642 regression fix: before pruning a JS/TS import placeholder,
+// every IMPORTS edge whose ToID points at the placeholder (either by
+// its stamped hex ID, post-ResolveImports rewrite, or by the raw
+// relative-path module string emitted by the JS extractor) must be
+// rewritten to the file-level SCOPE.Component (subtype="file") carrier
+// for the resolved import target. Without this rewrite the IMPORTS edge
+// becomes a dangling reference the moment the placeholder is dropped
+// and the entire JS/TS IMPORTS relationship category disappears from
+// the graph (regression observed on typescript-react-mini: recall
+// 16/16 → 10/16).
+func TestPruneImportPlaceholders_RewritesIMPORTSToFileCarrier(t *testing.T) {
+	// Three entities in the fixture:
+	//   - App.tsx file-level carrier (importer side, hex "aaaa...")
+	//   - pages/Home.tsx file-level carrier (target side, hex "bbbb...")
+	//   - "./pages/Home" placeholder (subtype=import, hex "cccc...")
+	// The importer carries one IMPORTS edge with ToID = the placeholder's
+	// hex (resolver-rewritten case) and a second IMPORTS edge with ToID
+	// = the raw module string (unresolved case). After PruneImportPlaceholders
+	// both edges must point at the pages/Home.tsx carrier's hex.
+	records := []types.EntityRecord{
+		{
+			ID:         "aaaaaaaaaaaaaaaa",
+			Name:       "App.tsx",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "App.tsx",
+			Relationships: []types.RelationshipRecord{
+				{FromID: "aaaaaaaaaaaaaaaa", ToID: "cccccccccccccccc", Kind: "IMPORTS"},
+				{FromID: "aaaaaaaaaaaaaaaa", ToID: "./pages/Home", Kind: "IMPORTS"},
+			},
+		},
+		{
+			ID:         "bbbbbbbbbbbbbbbb",
+			Name:       "pages/Home.tsx",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "pages/Home.tsx",
+		},
+		{
+			ID:         "cccccccccccccccc",
+			Name:       "./pages/Home",
+			Kind:       "SCOPE.Component",
+			Subtype:    "import",
+			SourceFile: "App.tsx",
+			Properties: map[string]string{"module": "./pages/Home"},
+		},
+	}
+	out, _, stats := PruneImportPlaceholders(records)
+	if stats.Pruned != 1 {
+		t.Fatalf("expected 1 placeholder pruned, got %d", stats.Pruned)
+	}
+	if stats.EdgeToIDRewrites != 2 {
+		t.Fatalf("expected 2 edge ToID rewrites (hex + raw module), got %d", stats.EdgeToIDRewrites)
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 surviving entities, got %d", len(out))
+	}
+	app := out[0]
+	if len(app.Relationships) != 2 {
+		t.Fatalf("expected 2 IMPORTS rels on App.tsx, got %d", len(app.Relationships))
+	}
+	for i, rel := range app.Relationships {
+		if rel.ToID != "bbbbbbbbbbbbbbbb" {
+			t.Fatalf("rel[%d] ToID = %q, want pages/Home.tsx carrier hex %q",
+				i, rel.ToID, "bbbbbbbbbbbbbbbb")
+		}
+	}
+}
+
+// TestResolveRelativeImportTarget_TriesAllJSExtensions guards the
+// extension-search ordering inside resolveRelativeImportTarget so a
+// future change to jsExtensions doesn't silently stop resolving
+// `.tsx` / `.jsx` / `.mjs` / `.cjs` imports.
+func TestResolveRelativeImportTarget_TriesAllJSExtensions(t *testing.T) {
+	carriers := map[string]string{
+		"pages/Home.tsx":          "tsx-id",
+		"hooks/useUsers.ts":       "ts-id",
+		"components/Foo.jsx":      "jsx-id",
+		"components/Bar.js":       "js-id",
+		"esm/x.mjs":               "mjs-id",
+		"common/legacy.cjs":       "cjs-id",
+		"barrel/widgets/index.ts": "barrel-id",
+	}
+	cases := []struct {
+		importer string
+		module   string
+		want     string
+	}{
+		{"App.tsx", "./pages/Home", "tsx-id"},
+		{"components/UserList.tsx", "../hooks/useUsers", "ts-id"},
+		{"App.tsx", "./components/Foo", "jsx-id"},
+		{"App.tsx", "./components/Bar", "js-id"},
+		{"App.tsx", "./esm/x", "mjs-id"},
+		{"App.tsx", "./common/legacy", "cjs-id"},
+		{"App.tsx", "./barrel/widgets", "barrel-id"},
+	}
+	for _, tc := range cases {
+		id, ok := resolveRelativeImportTarget(tc.importer, tc.module, carriers)
+		if !ok || id != tc.want {
+			t.Errorf("resolveRelativeImportTarget(%q, %q) = (%q, %v), want (%q, true)",
+				tc.importer, tc.module, id, ok, tc.want)
+		}
+	}
+	// Non-relative specifiers must miss — those are bare-name imports
+	// the dotted resolver already handled in ResolveImports.
+	if _, ok := resolveRelativeImportTarget("App.tsx", "react", carriers); ok {
+		t.Error("resolveRelativeImportTarget should refuse non-relative specifiers")
+	}
+}

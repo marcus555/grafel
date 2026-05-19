@@ -32,6 +32,7 @@
 package resolve
 
 import (
+	"path"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -1546,4 +1547,324 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 		}
 	}
 	return stats
+}
+
+// PruneImportPlaceholderStats summarises the prune pass for the
+// indexer's stderr log.
+type PruneImportPlaceholderStats struct {
+	// Considered is the number of kind=SCOPE.Component, subtype="import"
+	// entities the prune pass saw.
+	Considered int
+	// Pruned is the number actually removed from the returned slice.
+	Pruned int
+	// RelsHoisted is the number of embedded relationship records that
+	// were transplanted from a pruned placeholder onto the file-level
+	// SCOPE.Component entity for the same SourceFile.
+	RelsHoisted int
+	// RelsOrphaned is the number of embedded relationship records that
+	// were attached to a pruned placeholder but had no matching
+	// file-level SCOPE.Component entity to receive them. These are
+	// returned alongside the entity slice as standalone records via
+	// the second return value of PruneImportPlaceholders so the
+	// downstream assembly loop still emits them on the document.
+	RelsOrphaned int
+	// PlaceholderKept is the number of kind=SCOPE.Component
+	// subtype="import" entities the pass intentionally KEPT in the
+	// graph because nothing else points at them yet AND the rels they
+	// carried could not be safely hoisted (empty FromID on at least
+	// one rel, which would lose provenance). Surfaced so a future
+	// regression that silently inflates this number is visible.
+	PlaceholderKept int
+	// EdgeToIDRewrites is the number of IMPORTS edges whose ToID was
+	// rewritten from a placeholder reference (by hex ID, or by raw
+	// module string matched within the importer's file) to the
+	// file-level SCOPE.Component (subtype="file") entity for the
+	// resolved import target. Surfaced so a regression that silently
+	// stops rewriting (and therefore drops every JS/TS relative
+	// IMPORTS edge from the graph) is visible.
+	EdgeToIDRewrites int
+}
+
+// PruneImportPlaceholders removes import-placeholder entities (kind =
+// SCOPE.Component, subtype = "import") from the merged EntityRecord
+// slice. These entities were emitted by the JS/TS extractor (issue
+// #421/#570/#578) and the cross-language imports extractor
+// (internal/extractors/cross/imports) as a structural carrier for
+// IMPORTS / DEPENDS_ON relationships. After the import-resolver and
+// references-resolver passes have rewritten ToID / FromID values, the
+// placeholders themselves have no incoming edges — they are pure
+// structural overhead and account for the largest single bucket of
+// orphan entities on the verify2 corpus (2,583 of 9,390 fixture-b
+// orphans, root-cause analysis 2026-05-19).
+//
+// The function preserves the placeholders' embedded relationships by
+// hoisting them onto the file-level SCOPE.Component entity that
+// reflects the same SourceFile (subtype = "file", Name = source
+// path). When no such carrier exists for a placeholder's SourceFile,
+// the embedded rels with non-empty FromID are returned as standalone
+// RelationshipRecords through the second return value so the
+// indexer's assembly loop can still emit them on the document.
+//
+// Cross-repo linker (#566/#570/#578) note: the linker matches on
+// file-level SCOPE.Component (subtype="file") entities and qualified
+// `ext:<module>:<name>` ToIDs. Neither of those entity classes is
+// pruned by this function — only the placeholder shape with
+// subtype="import" is removed. The linker continues to find both its
+// match-target classes after pruning.
+//
+// Returns the filtered slice, any rels that couldn't be hoisted, and
+// a stats record. The input slice's element ordering among survivors
+// is preserved.
+func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord, []types.RelationshipRecord, PruneImportPlaceholderStats) {
+	var stats PruneImportPlaceholderStats
+	if len(records) == 0 {
+		return records, nil, stats
+	}
+
+	// Pre-pass: collect placeholder indices and build the file-level
+	// carrier path -> original-index map. We do not yet know the
+	// post-prune index of each carrier — we compute that below by
+	// counting prunable predecessors in a single pass.
+	carrierByPath := make(map[string]int, len(records))
+	// carrierIDByPath maps normalized file path -> file-level carrier
+	// entity's stamped hex ID, used by the IMPORTS-edge ToID rewrite
+	// pass below. Identical keyspace to carrierByPath; populated in the
+	// same scan to avoid a second walk.
+	carrierIDByPath := make(map[string]string, len(records))
+	for i := range records {
+		r := &records[i]
+		if r.Kind == "SCOPE.Component" && r.Subtype == "file" && r.SourceFile != "" {
+			key := normalizePath(r.SourceFile)
+			if _, seen := carrierByPath[key]; !seen {
+				carrierByPath[key] = i
+				carrierIDByPath[key] = r.ID
+			}
+		}
+	}
+
+	// Pre-prune ToID rewrite (issue #642 regression fix). The JS/TS
+	// extractor emits IMPORTS edges with ToID == the relative-path
+	// module string (`./pages/Home`); the dotted-import resolver may
+	// have already rewritten that to the placeholder's stamped hex ID
+	// during ResolveImports. Either shape becomes a dangling reference
+	// the moment the placeholder is pruned, which silently drops every
+	// JS/TS relative IMPORTS edge from the graph (typescript-react-mini
+	// recall 16/16 → 10/16 in the first cut of PR #642).
+	//
+	// The fix: BEFORE pruning, walk every placeholder we're about to
+	// drop, resolve its module string against the importer's directory
+	// trying each canonical JS/TS extension, look the resulting path up
+	// in carrierIDByPath, and rewrite every IMPORTS edge whose ToID
+	// points at the placeholder to the file-level carrier's hex ID.
+	// The IMPORTS edge then survives prune pointing at a real, durable
+	// entity.
+	//
+	// We collect both rewrite keys per placeholder:
+	//   - by hex ID: matches edges the dotted resolver has already
+	//     rewritten (ResolveImports / ResolveDottedImportTargetForJS).
+	//   - by raw module string scoped to the placeholder's SourceFile:
+	//     matches edges the resolver could not rewrite (no JS dotted
+	//     form, e.g. `../types/user`) but that still live on a record
+	//     emitted by the same importer file.
+	rewriteByID := make(map[string]string, len(records))
+	rewriteByNameInFile := make(map[string]map[string]string)
+	for i := range records {
+		r := &records[i]
+		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
+			continue
+		}
+		module := r.Name
+		if r.Properties != nil {
+			if m := r.Properties["module"]; m != "" {
+				module = m
+			}
+		}
+		if module == "" {
+			continue
+		}
+		importer := normalizePath(r.SourceFile)
+		targetID, ok := resolveRelativeImportTarget(importer, module, carrierIDByPath)
+		if !ok {
+			continue
+		}
+		if r.ID != "" {
+			rewriteByID[r.ID] = targetID
+		}
+		if importer != "" {
+			m, exists := rewriteByNameInFile[importer]
+			if !exists {
+				m = make(map[string]string, 4)
+				rewriteByNameInFile[importer] = m
+			}
+			// Index by both the raw Name and the Properties.module
+			// form — extractors that emit IMPORTS ToID as the entity
+			// Name and those that emit it as the canonical module
+			// string both resolve.
+			m[r.Name] = targetID
+			m[module] = targetID
+		}
+	}
+	if len(rewriteByID) > 0 || len(rewriteByNameInFile) > 0 {
+		for i := range records {
+			r := &records[i]
+			importer := normalizePath(r.SourceFile)
+			fileMap := rewriteByNameInFile[importer]
+			for j := range r.Relationships {
+				rel := &r.Relationships[j]
+				if rel.Kind != importRelKind {
+					continue
+				}
+				if id, ok := rewriteByID[rel.ToID]; ok {
+					rel.ToID = id
+					stats.EdgeToIDRewrites++
+					continue
+				}
+				if fileMap != nil {
+					if id, ok := fileMap[rel.ToID]; ok {
+						rel.ToID = id
+						stats.EdgeToIDRewrites++
+					}
+				}
+			}
+		}
+	}
+
+	// First pass: decide for each record whether it survives. We need
+	// this decided before we can compute post-prune carrier indices.
+	prunable := make([]bool, len(records))
+	hoistTo := make([]int, len(records)) // original-index of carrier or -1
+	for i := range records {
+		hoistTo[i] = -1
+	}
+	for i := range records {
+		r := &records[i]
+		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
+			continue
+		}
+		stats.Considered++
+		key := normalizePath(r.SourceFile)
+		if key == "" {
+			// No SourceFile; can't hoist. Try to migrate rels
+			// directly to the orphan-rel slice if every rel has a
+			// non-empty FromID.
+			if canMigrate(r.Relationships) {
+				prunable[i] = true
+			}
+			continue
+		}
+		if origIdx, ok := carrierByPath[key]; ok {
+			prunable[i] = true
+			hoistTo[i] = origIdx
+			continue
+		}
+		if canMigrate(r.Relationships) {
+			prunable[i] = true
+		}
+	}
+
+	// Second pass: compute the post-prune index for each original
+	// index. Original indices that aren't pruned land at
+	// (originalIdx - prunedBefore). Original indices that are pruned
+	// have no post-prune mapping (we'll never need them on the LHS).
+	postIdx := make([]int, len(records))
+	{
+		pruned := 0
+		for i := range records {
+			if prunable[i] {
+				pruned++
+				postIdx[i] = -1
+				continue
+			}
+			postIdx[i] = i - pruned
+		}
+	}
+
+	// Third pass: materialise the survivor slice and hoist rels onto
+	// the file-level carrier entities at their post-prune indices.
+	out := make([]types.EntityRecord, 0, len(records)-stats.Considered)
+	var orphanRels []types.RelationshipRecord
+	for i := range records {
+		r := &records[i]
+		if !prunable[i] {
+			out = append(out, *r)
+			continue
+		}
+		stats.Pruned++
+		if hoistTo[i] >= 0 {
+			carrierPostIdx := postIdx[hoistTo[i]]
+			if carrierPostIdx >= 0 && carrierPostIdx < len(out) {
+				out[carrierPostIdx].Relationships = append(out[carrierPostIdx].Relationships, r.Relationships...)
+				stats.RelsHoisted += len(r.Relationships)
+				continue
+			}
+		}
+		// No carrier — every rel here has a non-empty FromID (we
+		// gated on canMigrate above), so each can stand alone.
+		orphanRels = append(orphanRels, r.Relationships...)
+		stats.RelsOrphaned += len(r.Relationships)
+	}
+
+	// Account for placeholders we INTENTIONALLY kept (rels couldn't
+	// be safely migrated). Considered minus Pruned is exactly that.
+	stats.PlaceholderKept = stats.Considered - stats.Pruned
+
+	return out, orphanRels, stats
+}
+
+// resolveRelativeImportTarget resolves a JS/TS relative import string
+// (`./pages/Home`, `../hooks/useUsers`, `./UserCard`) against the
+// importer's directory and returns the stamped hex ID of the
+// file-level SCOPE.Component carrier for the resolved target file, if
+// one exists in carrierIDByPath.
+//
+// The resolver tries each canonical JS/TS extension (.ts, .tsx, .js,
+// .jsx, .mjs, .cjs) plus the directory-index forms (resolved/index.ts
+// and friends) in the same order as the JS extractor's
+// resolveRelativeImport so module derivation and import resolution
+// agree on which extension wins. Non-relative specifiers (anything
+// not starting with `./` or `../`) and empty importers return ok=false
+// — those are bare-name or alias-resolved imports and the dotted-import
+// resolver already handled them in ResolveImports.
+func resolveRelativeImportTarget(importer, module string, carrierIDByPath map[string]string) (string, bool) {
+	if importer == "" || module == "" {
+		return "", false
+	}
+	if !(strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../")) {
+		return "", false
+	}
+	dir := path.Dir(importer)
+	base := path.Clean(path.Join(dir, module))
+	// Direct hit — module already includes a recognised extension.
+	if id, ok := carrierIDByPath[base]; ok {
+		return id, true
+	}
+	for _, ext := range jsExtensions {
+		if id, ok := carrierIDByPath[base+ext]; ok {
+			return id, true
+		}
+	}
+	// Directory-index form: `./components/branding` → `components/branding/index.ts`.
+	for _, ext := range jsExtensions {
+		if id, ok := carrierIDByPath[path.Join(base, "index"+ext)]; ok {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+// canMigrate reports whether every rel in the slice has a non-empty
+// FromID. PruneImportPlaceholders uses this gate to decide whether a
+// placeholder whose SourceFile has no file-level carrier can still be
+// dropped: when every rel can stand alone (FromID already rewritten
+// to a file-path or hex ID), migrating them to the standalone-rel
+// list preserves graph semantics. When any rel has empty FromID the
+// assembly loop would substitute the parent placeholder's hex ID, so
+// dropping the placeholder would lose provenance.
+func canMigrate(rels []types.RelationshipRecord) bool {
+	for i := range rels {
+		if rels[i].FromID == "" {
+			return false
+		}
+	}
+	return true
 }
