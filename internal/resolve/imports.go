@@ -32,6 +32,7 @@
 package resolve
 
 import (
+	"path"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -1574,6 +1575,14 @@ type PruneImportPlaceholderStats struct {
 	// one rel, which would lose provenance). Surfaced so a future
 	// regression that silently inflates this number is visible.
 	PlaceholderKept int
+	// EdgeToIDRewrites is the number of IMPORTS edges whose ToID was
+	// rewritten from a placeholder reference (by hex ID, or by raw
+	// module string matched within the importer's file) to the
+	// file-level SCOPE.Component (subtype="file") entity for the
+	// resolved import target. Surfaced so a regression that silently
+	// stops rewriting (and therefore drops every JS/TS relative
+	// IMPORTS edge from the graph) is visible.
+	EdgeToIDRewrites int
 }
 
 // PruneImportPlaceholders removes import-placeholder entities (kind =
@@ -1617,12 +1626,105 @@ func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord
 	// post-prune index of each carrier — we compute that below by
 	// counting prunable predecessors in a single pass.
 	carrierByPath := make(map[string]int, len(records))
+	// carrierIDByPath maps normalized file path -> file-level carrier
+	// entity's stamped hex ID, used by the IMPORTS-edge ToID rewrite
+	// pass below. Identical keyspace to carrierByPath; populated in the
+	// same scan to avoid a second walk.
+	carrierIDByPath := make(map[string]string, len(records))
 	for i := range records {
 		r := &records[i]
 		if r.Kind == "SCOPE.Component" && r.Subtype == "file" && r.SourceFile != "" {
 			key := normalizePath(r.SourceFile)
 			if _, seen := carrierByPath[key]; !seen {
 				carrierByPath[key] = i
+				carrierIDByPath[key] = r.ID
+			}
+		}
+	}
+
+	// Pre-prune ToID rewrite (issue #642 regression fix). The JS/TS
+	// extractor emits IMPORTS edges with ToID == the relative-path
+	// module string (`./pages/Home`); the dotted-import resolver may
+	// have already rewritten that to the placeholder's stamped hex ID
+	// during ResolveImports. Either shape becomes a dangling reference
+	// the moment the placeholder is pruned, which silently drops every
+	// JS/TS relative IMPORTS edge from the graph (typescript-react-mini
+	// recall 16/16 → 10/16 in the first cut of PR #642).
+	//
+	// The fix: BEFORE pruning, walk every placeholder we're about to
+	// drop, resolve its module string against the importer's directory
+	// trying each canonical JS/TS extension, look the resulting path up
+	// in carrierIDByPath, and rewrite every IMPORTS edge whose ToID
+	// points at the placeholder to the file-level carrier's hex ID.
+	// The IMPORTS edge then survives prune pointing at a real, durable
+	// entity.
+	//
+	// We collect both rewrite keys per placeholder:
+	//   - by hex ID: matches edges the dotted resolver has already
+	//     rewritten (ResolveImports / ResolveDottedImportTargetForJS).
+	//   - by raw module string scoped to the placeholder's SourceFile:
+	//     matches edges the resolver could not rewrite (no JS dotted
+	//     form, e.g. `../types/user`) but that still live on a record
+	//     emitted by the same importer file.
+	rewriteByID := make(map[string]string, len(records))
+	rewriteByNameInFile := make(map[string]map[string]string)
+	for i := range records {
+		r := &records[i]
+		if !(r.Kind == "SCOPE.Component" && r.Subtype == "import") {
+			continue
+		}
+		module := r.Name
+		if r.Properties != nil {
+			if m := r.Properties["module"]; m != "" {
+				module = m
+			}
+		}
+		if module == "" {
+			continue
+		}
+		importer := normalizePath(r.SourceFile)
+		targetID, ok := resolveRelativeImportTarget(importer, module, carrierIDByPath)
+		if !ok {
+			continue
+		}
+		if r.ID != "" {
+			rewriteByID[r.ID] = targetID
+		}
+		if importer != "" {
+			m, exists := rewriteByNameInFile[importer]
+			if !exists {
+				m = make(map[string]string, 4)
+				rewriteByNameInFile[importer] = m
+			}
+			// Index by both the raw Name and the Properties.module
+			// form — extractors that emit IMPORTS ToID as the entity
+			// Name and those that emit it as the canonical module
+			// string both resolve.
+			m[r.Name] = targetID
+			m[module] = targetID
+		}
+	}
+	if len(rewriteByID) > 0 || len(rewriteByNameInFile) > 0 {
+		for i := range records {
+			r := &records[i]
+			importer := normalizePath(r.SourceFile)
+			fileMap := rewriteByNameInFile[importer]
+			for j := range r.Relationships {
+				rel := &r.Relationships[j]
+				if rel.Kind != importRelKind {
+					continue
+				}
+				if id, ok := rewriteByID[rel.ToID]; ok {
+					rel.ToID = id
+					stats.EdgeToIDRewrites++
+					continue
+				}
+				if fileMap != nil {
+					if id, ok := fileMap[rel.ToID]; ok {
+						rel.ToID = id
+						stats.EdgeToIDRewrites++
+					}
+				}
 			}
 		}
 	}
@@ -1707,6 +1809,47 @@ func PruneImportPlaceholders(records []types.EntityRecord) ([]types.EntityRecord
 	stats.PlaceholderKept = stats.Considered - stats.Pruned
 
 	return out, orphanRels, stats
+}
+
+// resolveRelativeImportTarget resolves a JS/TS relative import string
+// (`./pages/Home`, `../hooks/useUsers`, `./UserCard`) against the
+// importer's directory and returns the stamped hex ID of the
+// file-level SCOPE.Component carrier for the resolved target file, if
+// one exists in carrierIDByPath.
+//
+// The resolver tries each canonical JS/TS extension (.ts, .tsx, .js,
+// .jsx, .mjs, .cjs) plus the directory-index forms (resolved/index.ts
+// and friends) in the same order as the JS extractor's
+// resolveRelativeImport so module derivation and import resolution
+// agree on which extension wins. Non-relative specifiers (anything
+// not starting with `./` or `../`) and empty importers return ok=false
+// — those are bare-name or alias-resolved imports and the dotted-import
+// resolver already handled them in ResolveImports.
+func resolveRelativeImportTarget(importer, module string, carrierIDByPath map[string]string) (string, bool) {
+	if importer == "" || module == "" {
+		return "", false
+	}
+	if !(strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../")) {
+		return "", false
+	}
+	dir := path.Dir(importer)
+	base := path.Clean(path.Join(dir, module))
+	// Direct hit — module already includes a recognised extension.
+	if id, ok := carrierIDByPath[base]; ok {
+		return id, true
+	}
+	for _, ext := range jsExtensions {
+		if id, ok := carrierIDByPath[base+ext]; ok {
+			return id, true
+		}
+	}
+	// Directory-index form: `./components/branding` → `components/branding/index.ts`.
+	for _, ext := range jsExtensions {
+		if id, ok := carrierIDByPath[path.Join(base, "index"+ext)]; ok {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 // canMigrate reports whether every rel in the slice has a non-empty
