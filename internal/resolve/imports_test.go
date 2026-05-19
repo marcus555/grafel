@@ -1461,12 +1461,12 @@ func TestPruneImportPlaceholders_RewritesIMPORTSToFileCarrier(t *testing.T) {
 // `.tsx` / `.jsx` / `.mjs` / `.cjs` imports.
 func TestResolveRelativeImportTarget_TriesAllJSExtensions(t *testing.T) {
 	carriers := map[string]string{
-		"pages/Home.tsx":       "tsx-id",
-		"hooks/useUsers.ts":    "ts-id",
-		"components/Foo.jsx":   "jsx-id",
-		"components/Bar.js":    "js-id",
-		"esm/x.mjs":            "mjs-id",
-		"common/legacy.cjs":    "cjs-id",
+		"pages/Home.tsx":          "tsx-id",
+		"hooks/useUsers.ts":       "ts-id",
+		"components/Foo.jsx":      "jsx-id",
+		"components/Bar.js":       "js-id",
+		"esm/x.mjs":               "mjs-id",
+		"common/legacy.cjs":       "cjs-id",
 		"barrel/widgets/index.ts": "barrel-id",
 	}
 	cases := []struct {
