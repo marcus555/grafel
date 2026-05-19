@@ -1,114 +1,250 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
-	"runtime"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/cajasmota/archigraph/internal/install/watchers"
-	"github.com/cajasmota/archigraph/internal/registry"
+	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/daemon/client"
 )
 
-// start/stop/restart fan out across every repo in either a named group
-// or every registered group. The OS-native loader is the source of
-// truth for whether a watcher is actually running; we drive it via
-// launchctl/systemctl/schtasks so behavior matches `archigraph status`.
+// start/stop/restart now drive the per-machine daemon (ADR-0017). The
+// old per-repo watcher fanout under launchd/systemd is gone — the
+// daemon owns all watchers in Phase B and a single OS service unit
+// keeps the daemon alive (Phase C).
 
 func newStartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "start [group]",
-		Short: "Start watchers (omit group to fan out)",
-		RunE:  watcherCtlRunE("start"),
+		Use:   "start",
+		Short: "Start the archigraph daemon",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runDaemonStart(cmd.OutOrStdout())
+		},
 	}
 }
 
 func newStopCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop [group]",
-		Short: "Stop watchers",
-		RunE:  watcherCtlRunE("stop"),
+		Use:   "stop",
+		Short: "Stop the archigraph daemon",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runDaemonStop(cmd.OutOrStdout())
+		},
 	}
 }
 
 func newRestartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "restart [group]",
-		Short: "Restart watchers",
-		RunE:  watcherCtlRunE("restart"),
+		Use:   "restart",
+		Short: "Restart the archigraph daemon",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := runDaemonStop(cmd.OutOrStdout()); err != nil &&
+				!errors.Is(err, client.ErrDaemonNotRunning) {
+				return err
+			}
+			// Brief pause so the previous daemon releases the socket
+			// before we try to bind it again. 200ms is enough on
+			// darwin and linux; if the socket is still busy the
+			// daemon's own listen() returns a clear error.
+			time.Sleep(200 * time.Millisecond)
+			return runDaemonStart(cmd.OutOrStdout())
+		},
 	}
 }
 
-func watcherCtlRunE(action string) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		filter := ""
-		if len(args) == 1 {
-			filter = args[0]
-		}
-		groups, err := registry.Groups()
-		if err != nil {
-			return err
-		}
-		for _, g := range groups {
-			if filter != "" && g.Name != filter {
-				continue
-			}
-			cfg, err := registry.LoadGroupConfig(g.ConfigPath)
-			if err != nil {
-				continue
-			}
-			for _, r := range cfg.Repos {
-				u := watchers.Unit{Group: g.Name, Repo: r.Path}
-				if err := osWatcherCtl(action, u); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "watch %s %s: %v\n", action, u.Label(), err)
-					continue
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", action, u.Label())
-			}
-		}
+func newLogsCmd() *cobra.Command {
+	var follow bool
+	var tail int
+	cmd := &cobra.Command{
+		Use:   "logs",
+		Short: "Print the daemon log",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runDaemonLogs(cmd.OutOrStdout(), follow, tail)
+		},
+	}
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "follow the log as it grows")
+	cmd.Flags().IntVarP(&tail, "tail", "n", 0, "print only the last N lines (0 = all)")
+	return cmd
+}
+
+// runDaemonStart forks the current binary in daemon mode and detaches.
+// It does not wait for the daemon to become ready beyond a short ping
+// poll. If the daemon is already running, start is a no-op (the call
+// is idempotent — important for service-managed restarts).
+func runDaemonStart(out io.Writer) error {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return err
+	}
+	// Already running? net.Dial succeeds → done.
+	if c, err := client.DialPath(layout.SocketPath); err == nil {
+		_ = c.Close()
+		fmt.Fprintln(out, "daemon already running")
 		return nil
 	}
+	bin, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve own binary: %w", err)
+	}
+	if err := daemon.EnsureLayout(layout); err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(layout.LogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open log: %w", err)
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(bin, "daemon")
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	// Detach: a fresh process group so the daemon survives this CLI.
+	cmd.SysProcAttr = detachSysProcAttr()
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("spawn daemon: %w", err)
+	}
+	// Don't wait — we want the child to outlive us.
+	go func() { _ = cmd.Wait() }()
+
+	// Poll for readiness up to 5 seconds. The daemon binds its socket
+	// before logging "ready"; once dial succeeds we're done.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if c, err := client.DialPath(layout.SocketPath); err == nil {
+			_ = c.Close()
+			fmt.Fprintln(out, "daemon started")
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("daemon failed to become ready within 5s (check ~/.archigraph/logs/daemon.log)")
 }
 
-// osWatcherCtl invokes the OS-native loader. We deliberately swallow
-// nothing — the caller decides how to format errors.
-func osWatcherCtl(action string, u watchers.Unit) error {
-	switch runtime.GOOS {
-	case "darwin":
-		path, err := watchers.UnitPath(u)
+func runDaemonStop(out io.Writer) error {
+	c, err := client.Dial()
+	if err != nil {
+		if errors.Is(err, client.ErrDaemonNotRunning) {
+			fmt.Fprintln(out, "daemon not running")
+			return nil
+		}
+		return err
+	}
+	defer c.Close()
+	if err := c.Stop(); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "stop requested")
+	return nil
+}
+
+func runDaemonLogs(out io.Writer, follow bool, tail int) error {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(layout.LogPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return errors.New("no log file yet — has the daemon ever started?")
+		}
+		return err
+	}
+	defer f.Close()
+
+	if tail > 0 {
+		if err := tailFile(out, f, tail); err != nil {
+			return err
+		}
+	} else if !follow {
+		if _, err := io.Copy(out, f); err != nil {
+			return err
+		}
+	}
+	if !follow {
+		return nil
+	}
+	// Tail -f: seek to end and stream.
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		return err
+	}
+	buf := make([]byte, 4096)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			if _, werr := out.Write(buf[:n]); werr != nil {
+				return werr
+			}
+		}
+		if err == io.EOF {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
 		if err != nil {
 			return err
 		}
-		switch action {
-		case "start":
-			return exec.Command("launchctl", "load", "-w", path).Run()
-		case "stop":
-			return exec.Command("launchctl", "unload", path).Run()
-		case "restart":
-			_ = exec.Command("launchctl", "unload", path).Run()
-			return exec.Command("launchctl", "load", "-w", path).Run()
+	}
+}
+
+// tailFile reads the last n lines of f and writes them to out. Naive
+// implementation: scan from end backwards in 4KB chunks. Good enough
+// for the daemon log; a properly bounded reader can land later.
+func tailFile(out io.Writer, f *os.File, n int) error {
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	size := info.Size()
+	const chunk = 4096
+	var (
+		buf   = make([]byte, chunk)
+		lines = 0
+		off   = size
+		all   []byte
+	)
+	for off > 0 && lines <= n {
+		read := int64(chunk)
+		if off < read {
+			read = off
 		}
-	case "linux":
-		unit := u.Label() + ".service"
-		switch action {
-		case "start":
-			return exec.Command("systemctl", "--user", "start", unit).Run()
-		case "stop":
-			return exec.Command("systemctl", "--user", "stop", unit).Run()
-		case "restart":
-			return exec.Command("systemctl", "--user", "restart", unit).Run()
+		off -= read
+		if _, err := f.ReadAt(buf[:read], off); err != nil {
+			return err
 		}
-	case "windows":
-		switch action {
-		case "start":
-			return exec.Command("schtasks", "/run", "/tn", u.Label()).Run()
-		case "stop":
-			return exec.Command("schtasks", "/end", "/tn", u.Label()).Run()
-		case "restart":
-			_ = exec.Command("schtasks", "/end", "/tn", u.Label()).Run()
-			return exec.Command("schtasks", "/run", "/tn", u.Label()).Run()
+		all = append(buf[:read:read], all...)
+		lines = 0
+		for _, b := range all {
+			if b == '\n' {
+				lines++
+			}
 		}
 	}
-	return fmt.Errorf("unsupported action %q on %s", action, runtime.GOOS)
+	// Trim to the last n lines.
+	if lines > n {
+		seen := 0
+		for i := len(all) - 1; i >= 0; i-- {
+			if all[i] == '\n' {
+				seen++
+				if seen == n+1 {
+					all = all[i+1:]
+					break
+				}
+			}
+		}
+	}
+	_, err = out.Write(all)
+	return err
+}
+
+// daemonLogPath is a small convenience for callers (status.go) that
+// want to mention the log path without re-resolving the layout.
+func daemonLogPath() string {
+	layout, _ := daemon.DefaultLayout()
+	return filepath.Clean(layout.LogPath)
 }

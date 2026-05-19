@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,14 +10,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/cajasmota/archigraph/internal/install/watchers"
+	"github.com/cajasmota/archigraph/internal/daemon/client"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
+// newStatusCmd reports both daemon health and per-group index state.
+// Status is crash-safe: if the daemon is down we print "daemon not
+// running" and continue with the registry view, rather than erroring.
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status [group]",
-		Short: "Show watcher + index status",
+		Short: "Show daemon + index status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filterGroup := ""
 			if len(args) == 1 {
@@ -28,6 +32,29 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatus(w io.Writer, filter string) error {
+	// Daemon section first — gives the operator a fast-glance view.
+	c, err := client.Dial()
+	switch {
+	case err == nil:
+		defer c.Close()
+		st, statErr := c.Status()
+		if statErr != nil {
+			fmt.Fprintf(w, "Daemon: running (status rpc failed: %v)\n", statErr)
+		} else {
+			uptime := time.Duration(st.UptimeSec) * time.Second
+			fmt.Fprintf(w, "Daemon: running  pid=%d  uptime=%s  rss=%s  in_flight=%d\n",
+				st.PID, uptime, humanBytes(st.RSSBytes), st.InFlight)
+			fmt.Fprintf(w, "  version: %s\n", st.Version)
+			fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)
+		}
+	case errors.Is(err, client.ErrDaemonNotRunning):
+		fmt.Fprintln(w, "Daemon: not running")
+	default:
+		fmt.Fprintf(w, "Daemon: error: %v\n", err)
+	}
+
+	// Registry / per-repo view stays — useful even when the daemon is
+	// down so users can see what would be indexed once they `start`.
 	groups, err := registry.Groups()
 	if err != nil {
 		return err
@@ -36,7 +63,7 @@ func runStatus(w io.Writer, filter string) error {
 		if filter != "" && g.Name != filter {
 			continue
 		}
-		fmt.Fprintf(w, "Group: %s\n", g.Name)
+		fmt.Fprintf(w, "\nGroup: %s\n", g.Name)
 		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
 		if err != nil {
 			fmt.Fprintf(w, "  (config error: %v)\n", err)
@@ -51,16 +78,29 @@ func runStatus(w io.Writer, filter string) error {
 			} else {
 				line += "  graph.json: (none)"
 			}
-			u := watchers.Unit{Group: g.Name, Repo: r.Path}
-			if up, err := watchers.UnitPath(u); err == nil {
-				if _, err := os.Stat(up); err == nil {
-					line += "  watcher: installed"
-				} else {
-					line += "  watcher: (none)"
-				}
-			}
 			fmt.Fprintln(w, line)
 		}
 	}
 	return nil
+}
+
+// humanBytes formats a byte count as a short human-readable string. We
+// avoid pulling go-humanize for this; the daemon's RSS reporting is the
+// only consumer.
+func humanBytes(n uint64) string {
+	const (
+		KB = 1 << 10
+		MB = 1 << 20
+		GB = 1 << 30
+	)
+	switch {
+	case n >= GB:
+		return fmt.Sprintf("%.1fGB", float64(n)/float64(GB))
+	case n >= MB:
+		return fmt.Sprintf("%.1fMB", float64(n)/float64(MB))
+	case n >= KB:
+		return fmt.Sprintf("%.1fKB", float64(n)/float64(KB))
+	default:
+		return fmt.Sprintf("%dB", n)
+	}
 }

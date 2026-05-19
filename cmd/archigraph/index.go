@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -267,11 +268,35 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	}
 
 	if jsonStats {
-		if err := emitJSONStats(os.Stdout, idx, doc); err != nil {
+		w := io.Writer(os.Stdout)
+		if capturedStats != nil {
+			w = capturedStats
+		}
+		if err := emitJSONStats(w, idx, doc); err != nil {
 			return fmt.Errorf("emit json stats: %w", err)
 		}
 	}
 	return nil
+}
+
+// capturedStats is a goroutine-local-ish handoff for the daemon: when
+// the daemon calls Index(), it sets this to a buffer the IndexFunc can
+// return to the RPC caller. The CLI subcommand leaves it nil and stats
+// go to os.Stdout as before. We deliberately do NOT introduce a new
+// Index() variant — the existing call sites (and tests) keep working
+// unchanged, and the daemon path opts in via setCapturedStats around
+// its single call.
+//
+// Safety: Index() is invoked serially today (Phase A's daemon serializes
+// jobs). When the per-repo job queue lands in Phase B, the daemon will
+// either thread the buffer through explicitly or move stats capture
+// into Indexer state. For Phase A the single-writer assumption holds.
+var capturedStats io.Writer
+
+func setCapturedStats(w io.Writer) (restore func()) {
+	prev := capturedStats
+	capturedStats = w
+	return func() { capturedStats = prev }
 }
 
 // JSONStats is the machine-readable per-run summary emitted by the
@@ -295,9 +320,10 @@ type JSONStats struct {
 	ExternalRelsResolved int                 `json:"external_rels_resolved"`
 }
 
-// emitJSONStats writes a JSONStats record (one line, no trailing whitespace)
-// to w. Used by `archigraph index --json-stats`.
-func emitJSONStats(w *os.File, idx *Indexer, doc *graph.Document) error {
+// emitJSONStats writes a JSONStats record to w. Used by `archigraph index
+// --json-stats` (writing to os.Stdout) and by the daemon's IndexFunc
+// (writing to a bytes.Buffer it can return to the RPC caller).
+func emitJSONStats(w io.Writer, idx *Indexer, doc *graph.Document) error {
 	counts := make(map[string]int, len(resolve.AllDispositions))
 	var total, resolved int
 	for _, d := range resolve.AllDispositions {

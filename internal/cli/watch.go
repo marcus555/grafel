@@ -11,8 +11,26 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cajasmota/archigraph/internal/daemon/client"
+	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
+
+// indexViaDaemon calls the daemon's Index RPC for one repo. Returns
+// the canonical "daemon not running" error so the watcher loop's log
+// line is identical to what `archigraph index` would print.
+func indexViaDaemon(repo string) error {
+	c, err := client.Dial()
+	if err != nil {
+		if errors.Is(err, client.ErrDaemonNotRunning) {
+			return errDaemonNotRunning
+		}
+		return err
+	}
+	defer c.Close()
+	_, err = c.Index(proto.IndexArgs{RepoPath: repo})
+	return err
+}
 
 // newWatchCmd is the long-lived watcher daemon. The actual fsnotify-
 // driven loop is intentionally minimal here: it polls graph.json's
@@ -65,11 +83,12 @@ func runWatch(repo, group string, interval time.Duration) error {
 		case <-stop:
 			return nil
 		case <-tick.C:
-			// 1. Reindex the watched repo first.
-			if activeHooks.RunIndex != nil {
-				if err := activeHooks.RunIndex([]string{repo}); err != nil {
-					fmt.Fprintf(os.Stderr, "archigraph watch: index failed: %v\n", err)
-				}
+			// 1. Reindex the watched repo first. Per ADR-0017 the
+			// indexer runs inside the daemon — `watch` becomes a thin
+			// RPC client. Phase B will retire this subcommand entirely
+			// once the daemon's fsnotify loop is wired in.
+			if err := indexViaDaemon(repo); err != nil {
+				fmt.Fprintf(os.Stderr, "archigraph watch: index failed: %v\n", err)
 			}
 			// 2. Detect any cross-repo graph.json mtime changes and
 			// re-run link passes for the affected groups.

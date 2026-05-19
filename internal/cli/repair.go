@@ -3,24 +3,24 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
-	"github.com/cajasmota/archigraph/internal/registry"
+	"github.com/cajasmota/archigraph/internal/daemon/client"
+	"github.com/cajasmota/archigraph/internal/daemon/proto"
 )
 
-// rebuild and reset both invoke the indexer; reset additionally deletes
-// the on-disk .archigraph/ before doing so. remerge is a deprecated
-// alias that prints a warning and forwards to rebuild.
+// rebuild and reset both forward to the daemon's Rebuild RPC; reset
+// additionally requests the daemon wipe each repo's .archigraph/ before
+// indexing. The deprecated remerge alias was removed in ADR-0017 —
+// callers must use `archigraph rebuild [group]` now.
 
 func newRebuildCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rebuild [group] [slug]",
-		Short: "Force AST rebuild (no cache)",
+		Short: "Force rebuild via the daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRebuild(cmd, args, false)
+			return runRebuildClient(cmd, args, false)
 		},
 	}
 }
@@ -28,72 +28,39 @@ func newRebuildCmd() *cobra.Command {
 func newResetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "reset [group] [slug]",
-		Short: "Wipe .archigraph/ and rebuild",
+		Short: "Wipe .archigraph/ and rebuild via the daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRebuild(cmd, args, true)
+			return runRebuildClient(cmd, args, true)
 		},
 	}
 }
 
-func newRemergeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "remerge [group]",
-		Short:  "DEPRECATED: re-run cross-repo link passes",
-		Hidden: false,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.ErrOrStderr(),
-				"warning: `archigraph remerge` is deprecated; use `archigraph rebuild [group]`.")
-			return runRebuild(cmd, args, false)
-		},
-	}
-}
-
-func runRebuild(cmd *cobra.Command, args []string, wipe bool) error {
-	if activeHooks.RunIndex == nil {
-		return errors.New("index handler not wired")
-	}
+func runRebuildClient(cmd *cobra.Command, args []string, wipe bool) error {
 	if len(args) == 0 {
 		return errors.New("supply [group] (and optional [slug])")
 	}
-	groupName := args[0]
+	c, err := client.Dial()
+	if err != nil {
+		if errors.Is(err, client.ErrDaemonNotRunning) {
+			return errDaemonNotRunning
+		}
+		return err
+	}
+	defer c.Close()
+	group := args[0]
 	slug := ""
 	if len(args) > 1 {
 		slug = args[1]
 	}
-	groups, err := registry.Groups()
+	reply, err := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe})
 	if err != nil {
 		return err
 	}
-	var ref *registry.GroupRef
-	for i := range groups {
-		if groups[i].Name == groupName {
-			ref = &groups[i]
-			break
-		}
+	for _, r := range reply.Repos {
+		fmt.Fprintf(cmd.OutOrStdout(), "rebuilt %s\n", r)
 	}
-	if ref == nil {
-		return fmt.Errorf("unknown group: %s", groupName)
-	}
-	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
-	if err != nil {
-		return err
-	}
-	for _, r := range cfg.Repos {
-		if slug != "" && r.Slug != slug {
-			continue
-		}
-		if wipe {
-			_ = os.RemoveAll(filepath.Join(r.Path, ".archigraph"))
-		}
-		fmt.Fprintf(cmd.OutOrStdout(), "indexing %s (%s)\n", r.Slug, r.Path)
-		if err := activeHooks.RunIndex([]string{r.Path}); err != nil {
-			return err
-		}
-	}
-	// After re-indexing, refresh cross-repo link passes for the group.
-	// Best-effort: a failure here shouldn't abort the rebuild.
-	if err := runLinksForGroup(cmd, groupName); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: link passes failed: %v\n", err)
+	if reply.Warning != "" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", reply.Warning)
 	}
 	return nil
 }
