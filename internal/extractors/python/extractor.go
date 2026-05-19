@@ -84,6 +84,12 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		classCount    int
 	)
 
+	// Issue #577 — emit a file-level SCOPE.Component (subtype="file")
+	// entity per source file so the cross-repo import linker (#566)
+	// can map IMPORTS edges back to the originating repo via the
+	// resolver's byName index. Generalises the JS/TS fix from #570/#575.
+	entities = append(entities, extractor.FileEntity(file))
+
 	// Walk top-level children.
 	walkNode(root, file, "", &entities, &functionCount, &classCount)
 

@@ -46,11 +46,27 @@ func extractFromPath(src, path string) ([]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	records = stripFileEntity(records)
 	out := make([]interface{}, len(records))
 	for i, r := range records {
 		out[i] = r
 	}
 	return out, nil
+}
+
+// stripFileEntity drops the file-level SCOPE.Component (subtype="file")
+// entity that the extractor emits for every source file (#577) so legacy
+// tests that count semantic entities (functions, structs, …) remain
+// stable. Only the file-level entity is filtered.
+func stripFileEntity(records []types.EntityRecord) []types.EntityRecord {
+	out := records[:0:0]
+	for _, e := range records {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "file" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // ---- happy path tests -------------------------------------------------------
@@ -94,6 +110,7 @@ func Compute(x int) int {
 		Language: "go",
 		Tree:     parseGo([]byte(src)),
 	})
+	results = stripFileEntity(results)
 
 	r := results[0]
 	if r.Kind != "SCOPE.Operation" {
@@ -127,6 +144,7 @@ func (s *Store) Save(item string) error {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	results = stripFileEntity(results)
 	// Should have struct + method
 	if len(results) != 2 {
 		t.Fatalf("expected 2 entities (struct + method), got %d", len(results))
@@ -234,6 +252,7 @@ type User struct {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	results = stripFileEntity(results)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 entity, got %d", len(results))
 	}
@@ -266,6 +285,7 @@ type Reader interface {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	results = stripFileEntity(results)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 entity, got %d", len(results))
 	}
@@ -303,6 +323,7 @@ func NewConfig(host string, port int) *Config {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	results = stripFileEntity(results)
 	if len(results) != 2 {
 		t.Fatalf("expected 2 entities (struct + function), got %d", len(results))
 	}
@@ -347,6 +368,7 @@ func TestExtractPackageDeclarationOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	results = stripFileEntity(results)
 	if len(results) != 0 {
 		t.Errorf("expected 0 entities for package-only file, got %d", len(results))
 	}
@@ -857,7 +879,7 @@ func extractRecords(t *testing.T, src, path string) []types.EntityRecord {
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
-	return records
+	return stripFileEntity(records)
 }
 
 // findEntity returns the first EntityRecord matching name, or nil.

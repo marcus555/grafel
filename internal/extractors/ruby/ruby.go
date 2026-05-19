@@ -37,6 +37,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 
 	var entities []types.EntityRecord
+	// Issue #577 — emit file-level SCOPE.Component (subtype="file") so the
+	// cross-repo import linker (#566) can map IMPORTS edges back to the
+	// originating repo via the resolver's byName index. Generalises the
+	// JS/TS fix from #570/#575.
+	entities = append(entities, extractor.FileEntity(file))
 	walk(file.Tree.RootNode(), file, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
