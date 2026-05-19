@@ -39,6 +39,22 @@ func makeFile(src string, tree *sitter.Tree) extractor.FileInput {
 	}
 }
 
+// stripFileEntity drops the file-level SCOPE.Component (subtype="file")
+// entity that the extractor emits for every source file (#577) so legacy
+// tests that count semantic entities (functions, classes, …) remain
+// stable. Only the file-level entity is filtered — everything else is
+// returned as-is.
+func stripFileEntity(entities []types.EntityRecord) []types.EntityRecord {
+	out := entities[:0:0]
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "file" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 // TestExtract_TwoFunctions verifies that two top-level functions are extracted
 // with correct names, kinds, and line numbers.
 func TestExtract_TwoFunctions(t *testing.T) {
@@ -58,6 +74,7 @@ def bar(x, y):
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	if len(entities) != 2 {
 		t.Fatalf("expected 2 entities, got %d", len(entities))
 	}
@@ -103,6 +120,7 @@ def greet(name):
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	if len(entities) != 1 {
 		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
@@ -133,6 +151,7 @@ func TestExtract_ClassWithMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	// Expect: MyService (Component) + __init__ (Operation/method) + process (Operation/method)
 	if len(entities) != 3 {
 		t.Fatalf("expected 3 entities, got %d: %v", len(entities), entityNames(entities))
@@ -194,6 +213,7 @@ async def health_check():
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	if len(entities) != 1 {
 		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
@@ -284,6 +304,7 @@ func TestExtract_NilTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract with nil tree: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	if len(entities) != 1 {
 		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
@@ -347,6 +368,7 @@ func TestExtract_ClassNoMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	if len(entities) != 1 {
 		t.Fatalf("expected 1 entity, got %d", len(entities))
 	}
@@ -373,6 +395,7 @@ def standalone():
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	for _, e := range entities {
 		if e.QualifiedName != "" {
 			t.Errorf("entity %q: expected empty QualifiedName (null in JSON), got %q", e.Name, e.QualifiedName)
@@ -395,6 +418,7 @@ def add(a: int, b: int) -> int:
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	if len(entities) != 2 {
 		t.Fatalf("expected 2 entities, got %d", len(entities))
 	}
@@ -477,6 +501,7 @@ class OrderSerializer:
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 
 	// Expected method-entity Names — class-qualified (issue #45).
 	wantMethods := map[string]bool{
@@ -558,6 +583,7 @@ func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 
 	methodCount := 0
 	for _, e := range entities {
@@ -614,6 +640,7 @@ func TestExtract_ControlFlowMethodsInheritClassQualifier(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 
 	// Every method declared in the fixture lives inside an if/try/with block
 	// nested in a class body. None of them must appear as bare names.
@@ -700,6 +727,7 @@ func TestExtract_ClassSubtypeLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 
 	wantClasses := map[string]bool{
 		"UserSerializer": false, // (1) extends external base
@@ -770,6 +798,7 @@ func TestExtract_NestedClassesFromFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 
 	wantMethods := map[string]bool{
 		"Outer.Inner.foo":        false,
@@ -829,6 +858,7 @@ func TestExtract_ClassAttrFields_DRFViewSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	wantFields := map[string]bool{
 		"ArticleViewSet.serializer_class":   false,
 		"ArticleViewSet.queryset":           false,
@@ -883,6 +913,7 @@ class CommentForm(ModelForm):
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	want := map[string]bool{
 		"Article.title":      false,
 		"Article.body":       false,
@@ -933,6 +964,7 @@ class Foo:
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	var fieldNames []string
 	for _, e := range entities {
 		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
@@ -959,6 +991,7 @@ func TestExtract_ClassAttrFields_AnnotatedAndTuple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
+	entities = stripFileEntity(entities)
 	want := map[string]bool{
 		"Config.name":  false,
 		"Config.count": false,

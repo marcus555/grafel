@@ -97,6 +97,40 @@ func TagRelationshipsLanguage(records []types.EntityRecord, lang string) {
 	}
 }
 
+// FileEntity returns a per-source-file SCOPE.Component (subtype="file")
+// entity that all per-language extractors emit at the top of Extract so
+// the cross-repo import linker (#566) can map IMPORTS edges back to the
+// originating repo via the resolver's byName index.
+//
+// Issue #577 — generalises the JS/TS pattern from #570/#575 to every
+// per-language extractor. Without this entity, IMPORTS edges whose
+// FromID is the importing file path don't appear in the resolver's
+// entity-id → repo index, so the cross-repo linker silently skips
+// them. With it, ReferencesEmbeddedWithAllowlist rewrites the IMPORTS
+// FromID from the path string to the file entity's stamped hex ID
+// (graph.EntityID(repoTag, "SCOPE.Component", path, path)) via byName,
+// and the linker then matches the edge back to the source repo.
+//
+// The extractor deliberately keeps FromID = file path on the IMPORTS
+// edges themselves (not a pre-stamped hex): it doesn't know the
+// indexer's repoTag seed, so any hex it wrote would be short-circuited
+// by isHexID in the resolver and the rewrite would never happen.
+func FileEntity(file FileInput) types.EntityRecord {
+	return types.EntityRecord{
+		Name:       file.Path,
+		Kind:       "SCOPE.Component",
+		SourceFile: file.Path,
+		Language:   file.Language,
+		Subtype:    "file",
+		Properties: map[string]string{
+			"kind":    "SCOPE.Component",
+			"subtype": "file",
+		},
+		EnrichmentStatus: types.StatusPending,
+		QualityScore:     1.0,
+	}
+}
+
 // TagStandaloneRelationshipsLanguage is TagRelationshipsLanguage for a slice
 // of standalone (pass-2) relationships rather than entity-embedded ones.
 func TagStandaloneRelationshipsLanguage(rels []types.RelationshipRecord, lang string) {

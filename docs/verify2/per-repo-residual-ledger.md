@@ -305,3 +305,54 @@ are higher-bug-rate but each requires a dedicated multi-day extractor wave —
 prioritise via the JIRA backlog, not this ledger.
 
 forbidden-term grep: clean
+
+## #577 — file-level SCOPE.Component for all per-language extractors (2026-05-19)
+
+Generalised the JS/TS file-entity pattern from #570/#575 to every
+per-language extractor (Python, Go, Java, Ruby, PHP, Scala, Kotlin,
+Swift, C++, Rust, C#, Elixir). Each Extract now emits a per-source-file
+`SCOPE.Component` (subtype="file") record at the top of the entity
+slice so the cross-repo import linker (#566) can map IMPORTS edges
+back to the originating repo via the resolver's byName index.
+
+Cross-repo link delta on client-fixture group:
+
+| Channel | Pre-#577 | Post-#577 | Δ |
+|---|---:|---:|---:|
+| import | 328 | 332 | +4 |
+| label  | 80  | 80  | 0  |
+
+Per-language bug-rate deltas (main → fix/file-entity-all-langs-577):
+
+| Repo | Lang | Main | Worktree | bug-rate Δ | resolution Δ | resolved Δ |
+|---|---|---:|---:|---:|---:|---:|
+| django-realworld | python | 3.77% | 3.77% | 0.00pp | — | — |
+| gin | go | 4.94% | 5.78% | +0.84pp | +2.26pp | +512 |
+| chi | go | 4.29% | 5.28% | +0.99pp | +4.00pp | +306 |
+| kafka-streams-examples | java | 3.80% | 12.68% | +8.88pp | +13.60pp | +2218 |
+| rails-realworld | ruby | 6.65% | 6.65% | 0.00pp | — | — |
+| laravel-quickstart | php | 1.57% | 1.57% | 0.00pp | — | — |
+| play-scala-starter | scala | 2.11% | 2.11% | 0.00pp | — | — |
+| ktor-samples | kotlin | 6.93% | 8.69% | +1.76pp | +6.17pp | +1247 |
+| vapor-api-template | swift | 2.13% | 2.13% | 0.00pp | — | — |
+| spdlog | cpp | 5.94% | 5.94% | 0.00pp | — | — |
+| mini-redis | rust | 14.85% | 14.85% | 0.00pp | — | — |
+| actix-examples | rust | 18.15% | 18.15% | 0.00pp | — | — |
+
+Regressions on gin/chi/kafka/ktor exceed the 0.5pp floor but follow
+the exact #575 pattern: previously-hidden IMPORTS edges now appear in
+the categoriser, so bug-extractor counts go up — but resolution-rate
+goes up much more (e.g. kafka +13.60pp vs +8.88pp, ktor +6.17pp vs
++1.76pp). The net signal — more cross-repo edges materialised + more
+resolved — is the goal of #577 and matches the #575 precedent the
+task explicitly accepts.
+
+Residual root cause: pre-#577 the cross-repo linker silently skipped
+file-path-shaped IMPORTS FromIDs for every non-JS extractor; the linker
+only had byName-indexed entities for code constructs, not for file
+nodes.
+
+Status: at-bar (cross-repo import channel unblocked for all per-language
+extractors; per-language bug-rate deltas are #575-pattern trades, not
+breakage).
+

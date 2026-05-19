@@ -112,6 +112,12 @@ func (e *CppExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 
 	var records []types.EntityRecord
 
+	// Issue #577 — emit file-level SCOPE.Component (subtype="file") so the
+	// cross-repo import linker (#566) can map IMPORTS edges back to the
+	// originating repo via the resolver's byName index. Generalises the
+	// JS/TS fix from #570/#575.
+	records = append(records, extractor.FileEntity(file))
+
 	// Structural walk: container nodes (class/struct/union/namespace) are
 	// handled specially so we can emit CONTAINS edges for their direct
 	// method/function children; everything else is collected via flat
