@@ -750,3 +750,128 @@ func TestConstExportArrowFunctionRegression(t *testing.T) {
 
 	assertKind(t, entities, "useAuth", "SCOPE.Operation")
 }
+
+// --------------------------------------------------------------------------
+// #584 — destructure-rename lift
+// --------------------------------------------------------------------------
+
+// Shorthand object pattern → entity per leaf, SCOPE.Component default.
+func TestDestructureShorthandObject(t *testing.T) {
+	src := []byte(`const { foo, bar } = somethingArbitrary();`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "foo", "SCOPE.Component")
+	assertKind(t, entities, "bar", "SCOPE.Component")
+}
+
+// Rename pair → entity for the LOCAL name (value side), not the property key.
+func TestDestructureRenamePropertyEmitsLocalName(t *testing.T) {
+	src := []byte(`const { foo: bar } = makeIt();`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	if got := findByName(entities, "bar"); got == nil {
+		t.Fatalf("expected local-name entity 'bar', got names: %v", entityNames(entities))
+	}
+	if got := findByName(entities, "foo"); got != nil {
+		t.Errorf("did NOT expect property-key entity 'foo', but found one")
+	}
+}
+
+// React Query mutation hook → destructured leaves lift as SCOPE.Operation.
+func TestDestructureMutationHookLiftsOperation(t *testing.T) {
+	src := []byte(`
+import { useCreateAlternateAddress } from "./hooks";
+function Cmp() {
+  const { mutate: createAddress, isSuccess } = useCreateAlternateAddress();
+  return createAddress();
+}
+`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "createAddress", "SCOPE.Operation")
+	assertKind(t, entities, "isSuccess", "SCOPE.Operation")
+}
+
+// useQuery → all leaves lift; data + isLoading both emitted.
+func TestDestructureUseQueryEmitsAllLeaves(t *testing.T) {
+	src := []byte(`
+function Cmp() {
+  const { data, isLoading, error } = useQuery({ queryKey: ["x"] });
+  return data;
+}
+`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	if findByName(entities, "data") == nil {
+		t.Errorf("expected 'data'; names: %v", entityNames(entities))
+	}
+	if findByName(entities, "isLoading") == nil {
+		t.Errorf("expected 'isLoading'; names: %v", entityNames(entities))
+	}
+	if findByName(entities, "error") == nil {
+		t.Errorf("expected 'error'; names: %v", entityNames(entities))
+	}
+}
+
+// Array destructure → entity per identifier (covers useState-like tuples).
+func TestDestructureArrayPatternEmitsAll(t *testing.T) {
+	src := []byte(`
+function Cmp() {
+  const [error, setError] = useState(null);
+  const [a, b] = arr;
+}
+`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	// useState → Operation lift (the hook is in the mutation-style allowlist).
+	assertKind(t, entities, "error", "SCOPE.Operation")
+	assertKind(t, entities, "setError", "SCOPE.Operation")
+	// `arr` is an identifier RHS, not a hook call → Component default.
+	assertKind(t, entities, "a", "SCOPE.Component")
+	assertKind(t, entities, "b", "SCOPE.Component")
+}
+
+// Nested object pattern → leaf binding (y), not the intermediate key (x).
+func TestDestructureNestedObjectPattern(t *testing.T) {
+	src := []byte(`const { x: { y } } = z;`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	if findByName(entities, "y") == nil {
+		t.Fatalf("expected leaf entity 'y'; names: %v", entityNames(entities))
+	}
+	if findByName(entities, "x") != nil {
+		t.Errorf("did NOT expect intermediate-key entity 'x'")
+	}
+}
+
+// Real-world cfb pattern — Modal/useModal style with multiple renames.
+func TestDestructureUseModalLiftsCallables(t *testing.T) {
+	src := []byte(`
+function Cmp() {
+  const { open: openModal, close: closeModal } = useModal();
+  return openModal();
+}
+`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "openModal", "SCOPE.Operation")
+	assertKind(t, entities, "closeModal", "SCOPE.Operation")
+}
+
+// Regression: non-destructured `const X = identifier` still routes through
+// the default branch (SCOPE.Component subtype="const_alias"). This guards
+// that the new top-of-function early-return doesn't swallow the normal path.
+func TestDestructureRegressionNonPattern(t *testing.T) {
+	src := []byte(`const useAppDispatch = useDispatch;`)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "useAppDispatch", "SCOPE.Component")
+}
