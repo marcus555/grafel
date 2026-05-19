@@ -3390,8 +3390,8 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	}
 	// Wave-9 (Python) — dotted-lower-head references to a
 	// module-level constant: `<pkg>.<module>.<SCREAMING_SNAKE>`
-	// (e.g. `upvate_core.settings.PERMISSION_PAGES`,
-	// `upvate_core.settings.DEFAULT_VIEWSET_ACTIONS`). The head
+	// (e.g. `app_config.settings.CONST_NAME`,
+	// `app_config.settings.OTHER_CONST`). The head
 	// segments are a module path (lower_snake) and the trailing
 	// segment is a constant. The Python framework-extractor doesn't
 	// emit SCOPE entities for module-scope constants (see Track A
@@ -3634,7 +3634,7 @@ func isPythonDRFActionStub(stub string) bool {
 // reference of the form `<lower_seg>.<lower_seg>...<SCREAMING_SNAKE>`
 // with at least one dot and the trailing segment being a
 // module-level CONSTANT (per isPythonModuleConstantName). Used to
-// route refs like `upvate_core.settings.PERMISSION_PAGES` to Dynamic
+// route refs like `app_config.settings.CONST_NAME` to Dynamic
 // when the Python framework-extractor doesn't emit SCOPE entities
 // for module-scope constants. Wave-9 client-fixture-a addition.
 // Gated upstream to lang=="python" (the trailing SCREAMING_SNAKE
