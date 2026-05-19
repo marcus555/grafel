@@ -507,12 +507,39 @@ func (x *extractor) handleVariableDeclaration(n *sitter.Node, parentClass string
 // handleVariableDeclarator processes a single variable_declarator node.
 func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
+	if nameNode == nil {
+		return
+	}
+	valueNode := n.ChildByFieldName("value")
+
+	// Issue #584 — destructure-rename lift. Patterns like
+	//   const { mutate: createAddress } = useCreateAlternateAddress();
+	//   const { data, isLoading } = useFooQuery();
+	//   const [error, setError] = useState();
+	// previously produced no entity (nameNode is object_pattern /
+	// array_pattern, not identifier). Downstream files using
+	// `createAddress(...)`, `setError(...)` therefore landed in
+	// bug-extractor on the resolver. Walk the LHS pattern and emit one
+	// entity per local binding so the resolver can bind same-file and
+	// cross-file CALLS to a real entity. Mutation-style hooks
+	// (useMutation / useCreateX / useDeleteX / ...) classify lifted
+	// callables as SCOPE.Operation; everything else as SCOPE.Component
+	// (mirrors the wrapper-call vs plain-value split in the default
+	// branch below).
+	if nameNode.Type() == "object_pattern" || nameNode.Type() == "array_pattern" {
+		opLift := isMutationStyleHookCall(x, valueNode)
+		x.emitDestructuredEntities(nameNode, valueNode, opLift, parentClass, cb)
+		if valueNode != nil {
+			x.walkChildren(valueNode, parentClass, cb)
+		}
+		return
+	}
+
 	name := x.nodeText(nameNode)
 	if name == "" {
 		return
 	}
 
-	valueNode := n.ChildByFieldName("value")
 	if valueNode == nil {
 		return
 	}
@@ -686,6 +713,238 @@ func (x *extractor) findInnerFunctionBody(n *sitter.Node) *sitter.Node {
 		}
 	}
 	return nil
+}
+
+// emitDestructuredEntities walks an object_pattern or array_pattern LHS
+// of a variable declarator and emits one entity per local binding name.
+// See #584 for the rationale; this is the destructure-rename twin of the
+// #522 const-export lift.
+//
+// Naming rules:
+//   - `{ foo }` shorthand_property_identifier_pattern → local name "foo"
+//   - `{ foo: bar }` pair_pattern → local name "bar" (the value-side,
+//     not the property key)
+//   - `{ foo: { y } }` nested pair_pattern → recurse into the value
+//     pattern (the local binding is "y", not "foo")
+//   - `[a, b, c]` array_pattern → one entity per identifier child
+//   - `[, b]` array_pattern with elisions → skipped (no identifier)
+//   - `{ ...rest }` rest_pattern → emit the rest binding name
+//
+// Classification:
+//   - opLift=true → SCOPE.Operation (mutation hooks return callables)
+//   - opLift=false → SCOPE.Component
+//
+// Each emit is anchored to valueNode for line numbers (the LHS doesn't
+// carry useful position info beyond what's already on the declarator).
+func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, opLift bool, parentClass string, cb *classBindings) {
+	if pattern == nil {
+		return
+	}
+	anchor := valueNode
+	if anchor == nil {
+		anchor = pattern
+	}
+	kind := "SCOPE.Component"
+	subtype := "const_destructure"
+	sigPrefix := "const"
+	if opLift {
+		kind = "SCOPE.Operation"
+		subtype = "const_destructure_call"
+		sigPrefix = "const"
+	}
+
+	var walk func(p *sitter.Node)
+	walk = func(p *sitter.Node) {
+		if p == nil {
+			return
+		}
+		switch p.Type() {
+		case "object_pattern":
+			for i := 0; i < int(p.ChildCount()); i++ {
+				walk(p.Child(i))
+			}
+		case "array_pattern":
+			for i := 0; i < int(p.ChildCount()); i++ {
+				ch := p.Child(i)
+				if ch == nil {
+					continue
+				}
+				switch ch.Type() {
+				case "identifier":
+					name := x.nodeText(ch)
+					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [%s, ...]", sigPrefix, name))
+				case "object_pattern", "array_pattern":
+					walk(ch)
+				case "rest_pattern":
+					if id := firstIdentifierChild(ch); id != nil {
+						name := x.nodeText(id)
+						x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [...%s]", sigPrefix, name))
+					}
+				case "assignment_pattern":
+					// e.g. [a = 1] — the binding name is the LHS identifier.
+					if left := ch.ChildByFieldName("left"); left != nil {
+						if left.Type() == "identifier" {
+							name := x.nodeText(left)
+							x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [%s = ...]", sigPrefix, name))
+						} else {
+							walk(left)
+						}
+					}
+				}
+			}
+		case "shorthand_property_identifier_pattern":
+			name := x.nodeText(p)
+			x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { %s }", sigPrefix, name))
+		case "pair_pattern":
+			// `{ key: value }` — value can be identifier, nested object_pattern,
+			// array_pattern, or assignment_pattern (default value).
+			value := p.ChildByFieldName("value")
+			if value == nil {
+				return
+			}
+			switch value.Type() {
+			case "identifier":
+				name := x.nodeText(value)
+				x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...: %s }", sigPrefix, name))
+			case "object_pattern", "array_pattern":
+				walk(value)
+			case "assignment_pattern":
+				if left := value.ChildByFieldName("left"); left != nil {
+					if left.Type() == "identifier" {
+						name := x.nodeText(left)
+						x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...: %s = ... }", sigPrefix, name))
+					} else {
+						walk(left)
+					}
+				}
+			}
+		case "rest_pattern":
+			if id := firstIdentifierChild(p); id != nil {
+				name := x.nodeText(id)
+				x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...%s }", sigPrefix, name))
+			}
+		case "assignment_pattern":
+			if left := p.ChildByFieldName("left"); left != nil {
+				if left.Type() == "identifier" {
+					name := x.nodeText(left)
+					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s %s = ...", sigPrefix, name))
+				} else {
+					walk(left)
+				}
+			}
+		case "identifier":
+			name := x.nodeText(p)
+			x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s %s", sigPrefix, name))
+		}
+	}
+	walk(pattern)
+}
+
+// firstIdentifierChild returns the first identifier-typed child of n, or nil.
+// Used to dig out the bound name from a rest_pattern wrapper.
+func firstIdentifierChild(n *sitter.Node) *sitter.Node {
+	if n == nil {
+		return nil
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		ch := n.Child(i)
+		if ch != nil && ch.Type() == "identifier" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// isMutationStyleHookCall returns true when the RHS of a destructuring
+// declaration is a call to a React/data-fetching hook whose canonical
+// destructured leaf is a callable (a mutation trigger, dispatcher,
+// setter, modal opener, etc.). Used by #584 to classify lifted
+// destructure-rename bindings as SCOPE.Operation rather than
+// SCOPE.Component.
+//
+// We match on the *callee identifier* (or member-expression trailing
+// property), gated to call_expression values. The set is the union of:
+//
+//   - React core: useState, useReducer
+//   - React Query / TanStack: useMutation + every `useXxxMutation`
+//     convention (matched via a "Mutation" suffix)
+//   - SWR mutate hooks: useSWRMutation
+//   - React Hook Form: useForm
+//   - antd v5 hooks that return callable triples (useModal, useMessage,
+//     useNotification, useApp)
+//   - Generic convention: any identifier matching
+//     `^use(Create|Update|Delete|Patch|Post|Put|Remove|Add|Toggle|Open|Close|Save|Submit)[A-Z]`
+//     which covers the dominant naming pattern for custom mutation
+//     hooks observed in real client codebases (e.g.
+//     useCreateAlternateAddress, useDeleteUser, useToggleFavorite).
+//
+// When this returns true, ALL leaves of the destructure pattern are
+// lifted as SCOPE.Operation — the broader bias is intentional. Real
+// data values like `{ data, isLoading }` from useQuery still get
+// classified as Operation under this scheme, but the cost is low: the
+// resolver only consults Operation entities for CALLS edges, so a
+// non-callable bound name produces no false positives, only a slightly
+// wider candidate set for legitimate callable leaves like `mutate`,
+// `refetch`, `setError`.
+func isMutationStyleHookCall(x *extractor, valueNode *sitter.Node) bool {
+	if valueNode == nil || valueNode.Type() != "call_expression" {
+		return false
+	}
+	fn := valueNode.ChildByFieldName("function")
+	if fn == nil {
+		return false
+	}
+	leaf := ""
+	switch fn.Type() {
+	case "identifier":
+		leaf = x.nodeText(fn)
+	case "member_expression":
+		if prop := fn.ChildByFieldName("property"); prop != nil {
+			leaf = x.nodeText(prop)
+		}
+	}
+	if leaf == "" {
+		return false
+	}
+	return isMutationStyleHookName(leaf)
+}
+
+// isMutationStyleHookName encodes the name-shape rule documented on
+// isMutationStyleHookCall. Pure function, exported via test seam.
+func isMutationStyleHookName(leaf string) bool {
+	switch leaf {
+	case
+		"useState", "useReducer",
+		"useMutation", "useSWRMutation",
+		"useForm",
+		"useModal", "useMessage", "useNotification", "useApp",
+		"useQuery", "useInfiniteQuery", "useSWR", "useSWRImmutable",
+		"useDispatch", "useNavigate", "useLocation", "useParams",
+		"useDisclosure":
+		return true
+	}
+	// `useXxxMutation` convention (React Query custom mutation hooks).
+	if strings.HasPrefix(leaf, "use") && strings.HasSuffix(leaf, "Mutation") && len(leaf) > len("use")+len("Mutation") {
+		return true
+	}
+	// `use{Create|Update|Delete|Patch|Post|Put|Remove|Add|Toggle|Open|Close|Save|Submit}{Xxx}`
+	// custom mutation-hook naming convention.
+	if strings.HasPrefix(leaf, "use") && len(leaf) > 3 {
+		rest := leaf[3:]
+		for _, verb := range []string{
+			"Create", "Update", "Delete", "Patch", "Post", "Put",
+			"Remove", "Add", "Toggle", "Open", "Close", "Save", "Submit",
+			"Fetch", "Send", "Upload", "Download",
+		} {
+			if strings.HasPrefix(rest, verb) && len(rest) > len(verb) {
+				next := rest[len(verb)]
+				if next >= 'A' && next <= 'Z' {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // constValueSubtype maps a tree-sitter value-node type to a stable

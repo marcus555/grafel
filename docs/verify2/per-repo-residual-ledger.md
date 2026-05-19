@@ -531,6 +531,88 @@ it).
 
 ---
 
+## Wave-12 (JS/TS extractor destructure-rename lift, #584 ship-gate)
+
+Extractor-level follow-up to wave-11 that addresses the chain-fix
+deferred from #585: the JS extractor previously emitted no entity for
+the LHS of `const { mutate: createAddress } = useCreateAlternateAddress()`
+or `const { data, isLoading } = useQuery()` because the variable-
+declarator name field is an `object_pattern`, not an identifier. Every
+downstream call site (`createAddress(...)`, `setError(...)`) therefore
+landed in bug-extractor on the resolver.
+
+- **Fix shape:** `handleVariableDeclarator` now detects
+  `object_pattern` / `array_pattern` LHS and walks the tree, emitting
+  one entity per local binding name. Pair patterns (`{ key: local }`)
+  emit the LOCAL name, not the property key. Nested patterns recurse
+  to leaf bindings. Array patterns emit one entity per identifier
+  (covers `useState` tuples + general array destructure).
+- **Classification:** when the RHS is a call to a mutation-style
+  hook (`useMutation`, `useSWRMutation`, `useState`, `useReducer`,
+  `useModal`, `useQuery`, antd App-context hooks, the custom
+  `useXxxMutation` convention, or `use{Create|Update|Delete|Patch|
+  Toggle|Open|Close|...}Xxx` naming pattern), lifted entities classify
+  as `SCOPE.Operation`. Otherwise `SCOPE.Component`. The over-lift on
+  non-callable leaves (`data`, `isLoading`) is intentional and cheap:
+  the resolver only consults Operation entities for CALLS targets, so
+  unused Operation entities are inert.
+
+Per-iteration delta on client-fixture-b (primary target):
+
+| Pass | bug-rate | bug-ext | bug-res | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| baseline (post-wave-11 #585) | 1.738% | 644 | 180 | — |
+| Pass-1 (#584 destructure-rename lift) | 1.154% | 422 | 125 | -0.584pp |
+
+client-fixture-c (secondary target):
+
+| Pass | bug-rate | Δ |
+|---|---:|---:|
+| baseline | 2.680% | — |
+| Pass-1 | 2.628% | -0.052pp |
+
+Regression check (main vs wave-12) — 11 listed repos + client-fixture-a:
+
+| Repo | Main | W12 | Δ |
+|---|---:|---:|---:|
+| chi | 4.233% | 4.233% | 0.000pp |
+| flask | 9.458% | 9.458% | 0.000pp |
+| spdlog | 5.758% | 5.758% | 0.000pp |
+| gin | 4.931% | 4.931% | 0.000pp |
+| play-scala-starter | 2.113% | 2.113% | 0.000pp |
+| express | 2.996% | 2.996% | 0.000pp |
+| nextjs-commerce | 2.317% | 2.093% | -0.224pp |
+| nestjs-starter | 1.754% | 1.754% | 0.000pp |
+| kafka-streams-examples | 3.396% | 3.396% | 0.000pp |
+| vapor-api-template | 2.128% | 2.128% | 0.000pp |
+| ktor-samples | 4.864% | 4.864% | 0.000pp |
+| client-fixture-a | 6.082% | 6.082% | 0.000pp |
+
+No regression. The only non-zero deltas are improvements: nextjs-commerce
+(-0.224pp) confirms the destructure-rename lift fires on real React
+Query / SWR shapes in the wider TS ecosystem, not just cfb's hooks.
+Every non-JS/TS corpus is bit-identical because the new code path is
+gated to the JS extractor's variable-declarator handler.
+
+Residual root cause: post-#584 cfb bug-extractor top samples are now
+single-word bare callables (`replace`, `warning`, `clearFilters`,
+`unwrap`, `get`) — String/Array prototype methods, antd `Modal.warning`
+static, lodash/fp `unwrap`, and accessor `get` on opaque receivers.
+These are receiver-typing residuals (the call site is `x.replace(...)`
+where the receiver-type binding wasn't captured upstream), NOT the
+destructure-rename pattern. They split between (a) bareNames additions
+to synth.go (a synth/resolve-only follow-up wave) and (b) receiver-
+type inference improvements (a deeper extractor change).
+
+Status: AT SHIP-GATE BOUND. cfb 1.738% → 1.154% — within 0.155pp of
+the 1.0% ship-gate floor. cfc 2.680% → 2.628%. Wave-12 closes the
+destructure-rename gap that wave-11 explicitly deferred. Remaining
+0.15pp is receiver-type residuals and is filed as the next chain-fix
+candidate (bare-name additions for `replace`/`warning`/`clearFilters`
+plus a small set of antd static helpers).
+
+---
+
 ## Wave-4 PHP (Symfony residual reduction, post-#498 chase to ≤3%)
 
 Targeted continuation of PHP wave-3 (#485) symfony-demo residual chase
