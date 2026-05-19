@@ -1362,6 +1362,36 @@ func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 	}
 }
 
+// buildPatternContainsRels emits one CONTAINS edge per SCOPE.Pattern entity,
+// targeting it from the per-source-file SCOPE.Component (subtype="file")
+// entity emitted by extractor.FileEntity. Both endpoint IDs are computed
+// directly with graph.EntityID so the resolver leaves them untouched
+// (isHexID short-circuit). When the source file has no file-level entity
+// the edge still points at the canonical file-entity ID — a future fix
+// that adds the missing file entity heals the dangling FromID.
+//
+// Called after stampEntityIDs in buildDocument. Returns nil when records
+// contains no SCOPE.Pattern entities (zero-cost on graphs with no patterns).
+func (i *Indexer) buildPatternContainsRels(records []types.EntityRecord) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	for k := range records {
+		r := &records[k]
+		if r.Kind != "SCOPE.Pattern" {
+			continue
+		}
+		if r.SourceFile == "" || r.ID == "" {
+			continue
+		}
+		fileID := graph.EntityID(i.repoTag, "SCOPE.Component", r.SourceFile, r.SourceFile)
+		out = append(out, types.RelationshipRecord{
+			FromID: fileID,
+			ToID:   r.ID,
+			Kind:   "CONTAINS",
+		})
+	}
+	return out
+}
+
 // buildDocument merges entity records from every pass, dedupes by stable
 // graph-entity ID, resolves cross-file CALLS edges, then assembles the
 // final on-disk document.
@@ -1397,6 +1427,36 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// Stamp deterministic entity IDs onto every record so the resolver can
 	// look them up by (kind, name).
 	i.stampEntityIDs(merged)
+
+	// Issue #SCOPE-PATTERN-CONTAINS — every SCOPE.Pattern entity must be
+	// connected to the file it came from via a CONTAINS edge. The framework
+	// rule engine and many per-language pattern detectors emit Pattern
+	// entities without one, which leaves them orphaned in the graph and
+	// inflates the per-repo orphan rate (the #1 universal orphan source
+	// across 23/38 corpora — ~45,000 entities corpus-wide).
+	//
+	// Fixup runs after stampEntityIDs so we can compute the deterministic
+	// IDs for both endpoints directly (no resolver round-trip needed).
+	// The file endpoint is the per-source-file SCOPE.Component (subtype="file")
+	// emitted by extractor.FileEntity (#577) — its ID is
+	//   graph.EntityID(repoTag, "SCOPE.Component", path, path).
+	// Pattern entities whose source file has no file entity (rare —
+	// non-extracted assets) leave a residual orphan; the FromID still
+	// points at the canonical SCOPE.Component(file) ID so a future fix
+	// that adds the missing file entity heals these automatically.
+	//
+	// IMPORTANT: the emitted edges are appended to the output `relationships`
+	// slice AFTER the resolver+disposition pass below (see appendPatternContainsRels
+	// below the standalone-rel loop). Routing them through the resolver would
+	// add N already-resolved hex endpoints to the disposition totals and
+	// shift bug-rate (bugs/total). Keeping them out of classification preserves
+	// byte-identical bug-rate vs main while still producing the CONTAINS edges.
+	patternContainsRels := i.buildPatternContainsRels(merged)
+	if len(patternContainsRels) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"scope-pattern-contains: emitted %d CONTAINS edges (file → SCOPE.Pattern)\n",
+			len(patternContainsRels))
+	}
 
 	// Resolver pass — rewrite stub-form FromID/ToID values across:
 	//   - embedded EntityRecord.Relationships (Pass 1 + Pass 2.5 + Pass 3)
@@ -1558,6 +1618,28 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			ID:         relID,
 			FromID:     fromID,
 			ToID:       toID,
+			Kind:       rel.Kind,
+			Properties: rel.Properties,
+		})
+	}
+
+	// SCOPE.Pattern → file CONTAINS fixup (see buildPatternContainsRels
+	// above). Injected here, AFTER disposition classification, so the
+	// bug-rate stays byte-identical to main while the orphan-rate drops
+	// by the count of Pattern entities in the repo. Both endpoints are
+	// already deterministic hex IDs computed via graph.EntityID, so they
+	// flow straight into the output without rewrite or classification.
+	for j := range patternContainsRels {
+		rel := &patternContainsRels[j]
+		relID := graph.RelationshipID(rel.FromID, rel.ToID, rel.Kind)
+		if seenRel[relID] {
+			continue
+		}
+		seenRel[relID] = true
+		relationships = append(relationships, graph.Relationship{
+			ID:         relID,
+			FromID:     rel.FromID,
+			ToID:       rel.ToID,
 			Kind:       rel.Kind,
 			Properties: rel.Properties,
 		})
