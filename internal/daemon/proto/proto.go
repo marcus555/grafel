@@ -35,6 +35,37 @@ type StatusReply struct {
 	Groups     []string `json:"groups,omitempty"`
 	StartedAt  string   `json:"started_at"`
 	SocketPath string   `json:"socket_path"`
+
+	// Phase B additions — watcher + scheduler observability. Fields
+	// are optional; older clients ignore them.
+	WatcherRepos   int                `json:"watcher_repos,omitempty"`
+	WatcherDirs    int                `json:"watcher_dirs,omitempty"`
+	WatcherEvents  uint64             `json:"watcher_events,omitempty"`
+	WatcherDropped uint64             `json:"watcher_dropped,omitempty"`
+	QueueLen       int                `json:"queue_len,omitempty"`
+	IndexInFlight  []string           `json:"index_in_flight,omitempty"`
+	PendingAlgo    []string           `json:"pending_algo,omitempty"`
+	PendingLinks   []string           `json:"pending_links,omitempty"`
+	IndexedRepos   []IndexedRepoState `json:"indexed_repos,omitempty"`
+	RecentLog      []SchedLogEntry    `json:"recent_log,omitempty"`
+}
+
+// IndexedRepoState mirrors sched.RepoSnapshot for the wire.
+type IndexedRepoState struct {
+	Path       string `json:"path"`
+	LastIndex  string `json:"last_index,omitempty"`
+	LastAlgo   string `json:"last_algo,omitempty"`
+	IndexCount int64  `json:"index_count"`
+	AlgoCount  int64  `json:"algo_count"`
+	LastErr    string `json:"last_err,omitempty"`
+}
+
+// SchedLogEntry is the wire form of a scheduler log entry.
+type SchedLogEntry struct {
+	Time string `json:"time"`
+	Kind string `json:"kind"`
+	Repo string `json:"repo,omitempty"`
+	Msg  string `json:"msg"`
 }
 
 // IndexArgs requests a one-shot index of a single repository. Mirrors the

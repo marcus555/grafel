@@ -46,6 +46,47 @@ func runStatus(w io.Writer, filter string) error {
 				st.PID, uptime, humanBytes(st.RSSBytes), st.InFlight)
 			fmt.Fprintf(w, "  version: %s\n", st.Version)
 			fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)
+			if st.WatcherRepos > 0 || st.WatcherEvents > 0 {
+				fmt.Fprintf(w, "  watcher: repos=%d dirs=%d events=%d dropped=%d\n",
+					st.WatcherRepos, st.WatcherDirs, st.WatcherEvents, st.WatcherDropped)
+			}
+			if st.QueueLen > 0 || len(st.IndexInFlight) > 0 ||
+				len(st.PendingAlgo) > 0 || len(st.PendingLinks) > 0 {
+				fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",
+					st.QueueLen, len(st.IndexInFlight), len(st.PendingAlgo), len(st.PendingLinks))
+			}
+			if len(st.IndexedRepos) > 0 {
+				fmt.Fprintln(w, "  indexed repos:")
+				for _, r := range st.IndexedRepos {
+					last := r.LastIndex
+					if last == "" {
+						last = "(never)"
+					}
+					fmt.Fprintf(w, "    %s  last_index=%s  indexes=%d  algos=%d",
+						r.Path, last, r.IndexCount, r.AlgoCount)
+					if r.LastErr != "" {
+						fmt.Fprintf(w, "  err=%s", r.LastErr)
+					}
+					fmt.Fprintln(w)
+				}
+			}
+			if n := len(st.RecentLog); n > 0 {
+				start := n - 5
+				if start < 0 {
+					start = 0
+				}
+				fmt.Fprintln(w, "  recent events:")
+				for _, e := range st.RecentLog[start:] {
+					line := fmt.Sprintf("    %s  %s", e.Time, e.Kind)
+					if e.Repo != "" {
+						line += "  " + e.Repo
+					}
+					if e.Msg != "" {
+						line += "  " + e.Msg
+					}
+					fmt.Fprintln(w, line)
+				}
+			}
 		}
 	case errors.Is(err, client.ErrDaemonNotRunning):
 		fmt.Fprintln(w, "Daemon: not running")

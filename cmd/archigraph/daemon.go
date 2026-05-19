@@ -49,10 +49,103 @@ func runDaemon(argv []string) error {
 		Logger:  logger,
 		Index:   daemonIndexFunc,
 		Rebuild: daemonRebuildFunc,
+
+		// Phase B — wire the watcher + scheduler. The fast reactive
+		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
+		// file becomes queryable as soon as the basic graph lands;
+		// the algorithm pass is run separately on a 30s debounce.
+		ReposToWatch:   daemonReposToWatch,
+		GroupsForRepo:  daemonGroupsForRepo,
+		SchedulerIndex: daemonSchedulerIndex,
+		SchedulerLinks: daemonSchedulerLinks,
+		SchedulerAlgo:  daemonSchedulerAlgo,
 	}
 
 	ctx := context.Background()
 	return daemon.Run(ctx, cfg)
+}
+
+// daemonReposToWatch returns every repo from every registered group
+// (deduped by absolute path). Called once at daemon startup.
+func daemonReposToWatch() []string {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			abs, err := filepath.Abs(r.Path)
+			if err != nil {
+				abs = r.Path
+			}
+			if seen[abs] {
+				continue
+			}
+			seen[abs] = true
+			out = append(out, abs)
+		}
+	}
+	return out
+}
+
+// daemonGroupsForRepo returns the names of the groups whose config
+// lists repoPath (compared by absolute path).
+func daemonGroupsForRepo(repoPath string) []string {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		abs = repoPath
+	}
+	var out []string
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			rp, err := filepath.Abs(r.Path)
+			if err != nil {
+				rp = r.Path
+			}
+			if rp == abs {
+				out = append(out, g.Name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// daemonSchedulerIndex is the fast reactive reindex used by the
+// scheduler's worker pool. It skips the graph-algorithm pass so the
+// basic graph is available to queries within seconds of a file save;
+// the algorithm pass runs separately via daemonSchedulerAlgo on a
+// longer debounce.
+func daemonSchedulerIndex(_ context.Context, repoPath string) error {
+	return Index(repoPath, "", "", []string{"graph-algo"}, false, false)
+}
+
+// daemonSchedulerLinks re-runs the cross-repo link passes for a group.
+// Delegates to the same hook the Rebuild RPC uses so behaviour is
+// identical to a force rebuild's link step.
+func daemonSchedulerLinks(_ context.Context, group string) error {
+	return runLinksHook(group)
+}
+
+// daemonSchedulerAlgo runs the full index (including Pass 4 algorithms)
+// against a repo. The scheduler arranges cancel+reschedule on new
+// writes, so this is allowed to be slow.
+func daemonSchedulerAlgo(_ context.Context, repoPath string) error {
+	return Index(repoPath, "", "", nil, false, false)
 }
 
 // daemonIndexFunc is the IndexFunc handed to daemon.Run. It bridges the
