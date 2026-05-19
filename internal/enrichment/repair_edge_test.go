@@ -282,6 +282,116 @@ func TestCollectRepairEdgeCandidates_SkipsResolvedAndExternal(t *testing.T) {
 	}
 }
 
+// TestCollectRepairEdgeCandidates_NonHexFromID asserts the emitter does NOT
+// drop edges whose FromID isn't a stamped hex ID — un-stamped qualified-name
+// FromIDs (e.g. "Model:View", "scope:component:file:src/foo.py") still
+// produce a repair_edge candidate. This is the #544 follow-up fix: the
+// pre-fix emitter silently skipped these because `byID[r.FromID]` was nil,
+// which meant 0 candidates emitted on inputs where the #545 reader saw
+// residual bug-disposition edges.
+func TestCollectRepairEdgeCandidates_NonHexFromID(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			// Note: NO entity for "Model:View" — it's an un-stamped from.
+			{ID: "aaaaaaaaaaaaaaaa", Name: "X", Kind: "Function", SourceFile: "a.py", StartLine: 1, Language: "python"},
+		},
+		Relationships: []graph.Relationship{
+			// hex FromID — covered by existing tests, here to assert
+			// the two paths produce stable, distinct edge_ids.
+			{FromID: "aaaaaaaaaaaaaaaa", ToID: "Foo:Bar", Kind: "CALLS", Properties: map[string]string{"language": "python"}},
+			// non-hex FromID — the regression case.
+			{FromID: "Model:View", ToID: "View:View", Kind: "DEPENDS_ON", Properties: map[string]string{"language": "python"}},
+			// scope-prefix from — common in early-pass scope edges.
+			{FromID: "scope:component:file:src/manage.py", ToID: "execute_from_command_line", Kind: "CALLS", Properties: map[string]string{"language": "python"}},
+		},
+	}
+	ridx := resolve.BuildIndex(nil)
+	got := CollectRepairEdgeCandidates(doc, RepairEdgeCandidateOptions{
+		RepoRoot: "",
+		Allow:    func(string) bool { return false },
+		Resolver: &ridx,
+	})
+	if len(got) != 3 {
+		t.Fatalf("got %d candidates, want 3 (1 hex-from + 2 non-hex-from)", len(got))
+	}
+	// Each candidate's subject_id matches the relationship's FromID — for
+	// non-hex froms, the raw stub flows through unchanged.
+	subjects := map[string]bool{}
+	for _, c := range got {
+		subjects[c.SubjectID] = true
+	}
+	for _, want := range []string{"aaaaaaaaaaaaaaaa", "Model:View", "scope:component:file:src/manage.py"} {
+		if !subjects[want] {
+			t.Fatalf("missing subject_id %q in %v", want, subjects)
+		}
+	}
+	// edge_id is stable across re-runs on the same input — the reader
+	// (#545) keys on this.
+	run := func() map[string]string {
+		out := map[string]string{}
+		for _, c := range CollectRepairEdgeCandidates(doc, RepairEdgeCandidateOptions{
+			RepoRoot: "",
+			Allow:    func(string) bool { return false },
+			Resolver: &ridx,
+		}) {
+			ctx := c.Context
+			out[c.SubjectID] = ctx["edge_id"].(string)
+		}
+		return out
+	}
+	a, b := run(), run()
+	for k, va := range a {
+		if vb := b[k]; va != vb {
+			t.Fatalf("edge_id for %q not stable: %q vs %q", k, va, vb)
+		}
+		if !strings.HasPrefix(va, "er:") || len(va) != len("er:")+16 {
+			t.Fatalf("edge_id shape wrong for %q: %q", k, va)
+		}
+	}
+	// Hex-from and non-hex-from must produce DISTINCT edge_ids — the
+	// FromID participates in the hash and changing it must flip the output.
+	seen := map[string]bool{}
+	for _, eid := range a {
+		if seen[eid] {
+			t.Fatalf("duplicate edge_id %q across distinct subjects", eid)
+		}
+		seen[eid] = true
+	}
+}
+
+// TestSyntheticFromEntity_KindHints exercises the raw-FromID → synthetic
+// graph.Entity parser. The Kind / SourceFile fields are best-effort hints
+// for the agent and shouldn't crash on unusual stub shapes.
+func TestSyntheticFromEntity_KindHints(t *testing.T) {
+	cases := []struct {
+		raw      string
+		wantKind string
+		wantName string
+		wantFile string
+	}{
+		{"scope:component:file:src/manage.py", "file", "src/manage.py", "src/manage.py"},
+		{"scope:component:class:python:src/users/views.py:UserView", "class", "UserView", "src/users/views.py"},
+		{"Model:View", "model", "View", ""},
+		{"Route:User", "route", "User", ""},
+		{"bare_name_no_colon", "", "bare_name_no_colon", ""},
+	}
+	for _, tc := range cases {
+		got := syntheticFromEntity(tc.raw)
+		if got.ID != tc.raw {
+			t.Errorf("%s: ID = %q, want %q", tc.raw, got.ID, tc.raw)
+		}
+		if got.Kind != tc.wantKind {
+			t.Errorf("%s: Kind = %q, want %q", tc.raw, got.Kind, tc.wantKind)
+		}
+		if got.Name != tc.wantName {
+			t.Errorf("%s: Name = %q, want %q", tc.raw, got.Name, tc.wantName)
+		}
+		if got.SourceFile != tc.wantFile {
+			t.Errorf("%s: SourceFile = %q, want %q", tc.raw, got.SourceFile, tc.wantFile)
+		}
+	}
+}
+
 // TestCollectRepairEdgeCandidates_DeterministicOrdering ensures repeated
 // calls on the same doc produce candidates in the same order — readers and
 // diff tools depend on byte-stable output.
