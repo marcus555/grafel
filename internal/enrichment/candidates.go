@@ -38,7 +38,12 @@ const (
 
 // CandidatesSchemaVersion is the integer version of the on-disk
 // enrichment-candidates.json schema. Bump on a breaking change.
-const CandidatesSchemaVersion = 1
+//
+// v2 (ADR-0015 phase-1, issue #544) introduces the "repair_edge" kind. v1
+// readers may safely skip-by-kind on unknown kinds, so a v2 file remains
+// readable by v1 consumers — only writers that emit repair_edge entries
+// need to set this to 2.
+const CandidatesSchemaVersion = 2
 
 // Candidate is one row in <repo>/.archigraph/enrichment-candidates.json.
 // Subject_id is always the local entity id (NOT prefixed with repo).

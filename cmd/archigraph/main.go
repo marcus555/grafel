@@ -30,6 +30,7 @@ func runIndex(argv []string) error {
 	skip := fs.String("skip-pass", "", "comma-separated list of passes to skip (extract,framework,cross-lang,graph-algo,build-document,enrichment)")
 	pretty := fs.Bool("pretty", false, "emit indented JSON for graph.json and graph-stats.json (default: minified)")
 	jsonStats := fs.Bool("json-stats", false, "emit per-run statistics (entities, relationships, dispositions, bug-rate) to stdout as JSON")
+	enableRepair := fs.Bool("enable-repair-candidates", false, "emit ADR-0015 phase-1 repair_edge entries into enrichment-candidates.json (issue #544; default false during phase-1 rollout)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -42,7 +43,8 @@ func runIndex(argv []string) error {
 	if *skip != "" {
 		skipPasses = []string{*skip}
 	}
-	return Index(repoPath, *out, *repoTag, skipPasses, *pretty, *jsonStats)
+	return Index(repoPath, *out, *repoTag, skipPasses, *pretty, *jsonStats,
+		WithRepairCandidates(*enableRepair))
 }
 
 // runLinksHook is wired into cli.Hooks so the watcher can re-run cross-
