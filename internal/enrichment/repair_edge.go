@@ -143,24 +143,34 @@ func CollectRepairEdgeCandidates(doc *graph.Document, opts RepairEdgeCandidateOp
 		}
 
 		from := byID[r.FromID]
-		if from == nil {
-			// Without a from-entity we can't build the context window;
-			// skip. This is rare — happens only for synthetic edges that
-			// reference an ID not in doc.Entities.
-			continue
+		// Non-hex / un-stamped FromID fall-through: if the resolver hasn't
+		// stamped the from-side yet (qualified-name stub like
+		// "scope:component:file:src/manage.py", "Model:View", "Route:User"),
+		// `byID` won't contain it. We still want a repair_edge candidate —
+		// the #545 reader keys off (from_id, relation, original_stub) and
+		// computes edge_ids from the live relationships regardless of
+		// hex-stamping, so the emitter must match. Synthesize a minimal
+		// from_entity from the raw FromID so the candidate still carries
+		// enough context for the agent + downstream apply path.
+		fromEntity := from
+		if fromEntity == nil {
+			if r.FromID == "" {
+				continue
+			}
+			fromEntity = syntheticFromEntity(r.FromID)
 		}
 
-		edgeID := repairEdgeID(from.ID, r.Kind, stub)
+		edgeID := repairEdgeID(fromEntity.ID, r.Kind, stub)
 		if seen[edgeID] {
 			continue
 		}
 		seen[edgeID] = true
 
-		ctx := buildRepairEdgeContext(from, r, stub, d, opts.Resolver, fileCache)
+		ctx := buildRepairEdgeContext(fromEntity, r, stub, d, opts.Resolver, fileCache)
 		out = append(out, Candidate{
 			ID:           repairCandidateID(edgeID),
 			Kind:         KindRepairEdge,
-			SubjectID:    from.ID,
+			SubjectID:    fromEntity.ID,
 			Context:      ctx,
 			DiscoveredAt: nowRFC3339(),
 		})
@@ -294,6 +304,46 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// syntheticFromEntity builds a minimal graph.Entity from a raw FromID when
+// the resolver hasn't stamped the from-side into doc.Entities yet. The
+// shape mirrors the cmd-side qualified-name stub families
+// ("scope:component:file:...", "Model:Name", "Route:Name", "View:Name", …)
+// so the agent can still reason about the call site without a stamped ID.
+// SourceFile / StartLine are left empty: the context-window block becomes
+// empty arrays, matching the schema's optional-emptiness contract.
+func syntheticFromEntity(rawFromID string) *graph.Entity {
+	kind := ""
+	name := rawFromID
+	file := ""
+	// Pull out a kind + name from the common stub shapes. This is a hint
+	// for the agent, not a binding — best-effort parsing only.
+	switch {
+	case strings.HasPrefix(rawFromID, "scope:component:file:"):
+		kind = "file"
+		file = strings.TrimPrefix(rawFromID, "scope:component:file:")
+		name = file
+	case strings.HasPrefix(rawFromID, "scope:component:class:"):
+		kind = "class"
+		// shape: scope:component:class:<lang>:<file>:<name>
+		parts := strings.SplitN(strings.TrimPrefix(rawFromID, "scope:component:class:"), ":", 3)
+		if len(parts) == 3 {
+			file = parts[1]
+			name = parts[2]
+		}
+	default:
+		if i := strings.Index(rawFromID, ":"); i > 0 {
+			kind = strings.ToLower(rawFromID[:i])
+			name = rawFromID[i+1:]
+		}
+	}
+	return &graph.Entity{
+		ID:         rawFromID,
+		Name:       name,
+		Kind:       kind,
+		SourceFile: file,
+	}
 }
 
 // isHexID is a local copy of the cmd-side helper. Inline to avoid a circular
