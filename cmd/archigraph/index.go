@@ -71,6 +71,11 @@ type Indexer struct {
 	skipPasses map[string]bool
 	workers    int
 
+	// enableRepairCandidates toggles ADR-0015 phase-1 repair_edge emission
+	// (issue #544). Default false during phase-1 rollout — the reader
+	// (#545) lands before the writer is flipped on by default in #546.
+	enableRepairCandidates bool
+
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
 
@@ -82,6 +87,19 @@ type Indexer struct {
 	resolveIdx        *resolve.Index
 	resolveStats      resolve.Stats
 	finalDispositions resolve.Stats
+}
+
+// IndexOption configures optional behaviour on the Indexer. Used as a
+// functional-option list on Index() so existing callers don't have to thread
+// new parameters through every site.
+type IndexOption func(*Indexer)
+
+// WithRepairCandidates toggles ADR-0015 phase-1 repair_edge emission
+// (issue #544). When true the indexer appends repair_edge entries to
+// <repo>/.archigraph/enrichment-candidates.json for every bug-extractor /
+// bug-resolver disposition. Default is false.
+func WithRepairCandidates(enabled bool) IndexOption {
+	return func(i *Indexer) { i.enableRepairCandidates = enabled }
 }
 
 type indexerStats struct {
@@ -111,7 +129,7 @@ type indexerStats struct {
 // (possibly empty) set of pass names to skip — see allPassNames. When
 // pretty is true, graph.json (and the graph-stats.json sidecar) are
 // indented for human readability; the default is minified JSON.
-func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, jsonStats bool) error {
+func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, jsonStats bool, opts ...IndexOption) error {
 	absRepo, err := filepath.Abs(repoPath)
 	if err != nil {
 		return fmt.Errorf("resolve repo path: %w", err)
@@ -159,6 +177,9 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			pass1RelsByLang: make(map[string]int),
 			pass3RelsByExt:  make(map[string]int),
 		},
+	}
+	for _, opt := range opts {
+		opt(idx)
 	}
 
 	doc, err := idx.Run(context.Background(), absRepo)
@@ -884,6 +905,26 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 	cands := enrichment.CollectCandidatesSkippingRejected(
 		doc, enrichment.DefaultEmitters(), archigraphDir,
 	)
+
+	// 3) ADR-0015 phase-1 (#544) — repair_edge emission. Purely additive;
+	//    gated behind --enable-repair-candidates so we can land the
+	//    foundation without bumping bug-rate measurement noise.
+	if i.enableRepairCandidates && i.resolveIdx != nil {
+		allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
+		repair := enrichment.CollectRepairEdgeCandidates(doc, enrichment.RepairEdgeCandidateOptions{
+			RepoRoot: absRepo,
+			Allow:    allow,
+			Resolver: i.resolveIdx,
+		})
+		if len(repair) > 0 {
+			cands = append(cands, repair...)
+		}
+		if verbose() {
+			fmt.Fprintf(os.Stderr,
+				"enrichment: collected %d repair_edge candidates (ADR-0015 phase-1)\n",
+				len(repair))
+		}
+	}
 
 	if err := enrichment.WriteCandidates(archigraphDir, cands); err != nil {
 		fmt.Fprintf(os.Stderr, "archigraph: enrichment candidate write failed: %v\n", err)
