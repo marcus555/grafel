@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/sched"
+	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/version"
 )
 
@@ -38,6 +40,12 @@ type Service struct {
 	stopReq    chan<- struct{}
 	stopped    int32 // atomic; 1 once stopReq has been closed
 	inFlight   int64
+
+	// Phase B — populated only when the daemon is run with a watcher
+	// + scheduler attached. Both may be nil in test wiring that
+	// exercises just the RPC surface.
+	watcher   *watch.Watcher
+	scheduler *sched.Scheduler
 }
 
 // newService wires the injected entrypoints onto a fresh Service. The
@@ -62,8 +70,8 @@ func (s *Service) Ping(_ *proto.PingArgs, reply *proto.PingReply) error {
 
 // Status reports a snapshot of daemon state. RSS is read via the Go
 // runtime memstats (Sys); this is approximate but does not require
-// platform-specific code. A more accurate /proc/self/status read can
-// land in Phase B.
+// platform-specific code. Phase B fields (watcher + scheduler) are
+// populated when the daemon was started with both attached.
 func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
@@ -74,13 +82,50 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	reply.InFlight = int(atomic.LoadInt64(&s.inFlight))
 	reply.StartedAt = s.startedAt.UTC().Format(time.RFC3339)
 	reply.SocketPath = s.socketPath
+
+	if s.watcher != nil {
+		repos, dirs, events, dropped := s.watcher.Stats()
+		reply.WatcherRepos = repos
+		reply.WatcherDirs = dirs
+		reply.WatcherEvents = events
+		reply.WatcherDropped = dropped
+	}
+	if s.scheduler != nil {
+		snap := s.scheduler.Snapshot()
+		reply.QueueLen = snap.QueueLen
+		reply.IndexInFlight = snap.InFlight
+		reply.PendingAlgo = snap.PendingAlgo
+		reply.PendingLinks = snap.PendingLinks
+		for _, r := range snap.IndexedRepos {
+			ir := proto.IndexedRepoState{
+				Path:       r.Path,
+				IndexCount: r.IndexCount,
+				AlgoCount:  r.AlgoCount,
+				LastErr:    r.LastErr,
+			}
+			if !r.LastIndex.IsZero() {
+				ir.LastIndex = r.LastIndex.UTC().Format(time.RFC3339)
+			}
+			if !r.LastAlgo.IsZero() {
+				ir.LastAlgo = r.LastAlgo.UTC().Format(time.RFC3339)
+			}
+			reply.IndexedRepos = append(reply.IndexedRepos, ir)
+		}
+		for _, e := range snap.RecentLog {
+			reply.RecentLog = append(reply.RecentLog, proto.SchedLogEntry{
+				Time: e.Time.UTC().Format(time.RFC3339),
+				Kind: e.Kind,
+				Repo: e.Repo,
+				Msg:  e.Msg,
+			})
+		}
+	}
 	return nil
 }
 
-// Index runs a single-repo index synchronously. The daemon serialises
-// indexes today (Phase A) — Phase B will add a per-repo job queue and
-// debouncing. Returning the stats JSON lets the client print the same
-// `--json-stats` output the old standalone subcommand printed.
+// Index runs a single-repo index synchronously. Phase B adds the
+// MarkIndexed bookkeeping so an explicit RPC index updates the same
+// in-memory state that the watcher-driven path uses.
 func (s *Service) Index(args *proto.IndexArgs, reply *proto.IndexReply) error {
 	if s.index == nil {
 		return errors.New("index entrypoint not configured")
@@ -91,6 +136,9 @@ func (s *Service) Index(args *proto.IndexArgs, reply *proto.IndexReply) error {
 	atomic.AddInt64(&s.inFlight, 1)
 	defer atomic.AddInt64(&s.inFlight, -1)
 	graphPath, stats, err := s.index(*args)
+	if s.scheduler != nil {
+		s.scheduler.MarkIndexed(args.RepoPath, err)
+	}
 	if err != nil {
 		return err
 	}

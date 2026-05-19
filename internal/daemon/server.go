@@ -13,8 +13,11 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/sched"
+	"github.com/cajasmota/archigraph/internal/daemon/watch"
 )
 
 // Config configures Run. Fields are required unless documented otherwise.
@@ -23,6 +26,17 @@ type Config struct {
 	Index   IndexFunc   // injected from cmd/archigraph
 	Rebuild RebuildFunc // injected from cmd/archigraph
 	Logger  *log.Logger // optional; defaults to stderr
+
+	// Phase B optional wiring. When all four are non-nil the daemon
+	// starts the fsnotify watcher + scheduler and registers every
+	// repo returned by ReposToWatch. The Index field above remains
+	// the synchronous RPC entrypoint; the scheduler uses
+	// SchedulerIndex for fast (algo-skipped) reactive reindexes.
+	ReposToWatch   func() []string                              // repos to subscribe at startup
+	GroupsForRepo  func(repoPath string) []string               // for cross-repo link debounce
+	SchedulerIndex func(ctx context.Context, repo string) error // fast reindex (skip algo pass)
+	SchedulerLinks func(ctx context.Context, group string) error
+	SchedulerAlgo  func(ctx context.Context, repo string) error
 }
 
 // Run starts the daemon. It blocks until either:
@@ -69,6 +83,39 @@ func Run(ctx context.Context, cfg Config) error {
 
 	stopReq := make(chan struct{})
 	svc := newService(cfg.Index, cfg.Rebuild, cfg.Layout.SocketPath, stopReq)
+
+	// Phase B — bring up the scheduler + watcher when the caller
+	// supplied the four hooks. They are optional so tests can exercise
+	// the bare RPC surface without dragging the extractor into scope.
+	if cfg.SchedulerIndex != nil {
+		scheduler := sched.New(sched.Config{
+			Index:         cfg.SchedulerIndex,
+			Links:         cfg.SchedulerLinks,
+			Algorithms:    cfg.SchedulerAlgo,
+			GroupsForRepo: cfg.GroupsForRepo,
+			Logger:        logger,
+		})
+		scheduler.Start()
+		svc.scheduler = scheduler
+		defer scheduler.Stop()
+
+		watcher, werr := watch.NewWatcher(2*time.Second, func(repo string) {
+			scheduler.Enqueue(repo)
+		}, logger)
+		if werr != nil {
+			logger.Printf("watcher: disabled (%v)", werr)
+		} else {
+			svc.watcher = watcher
+			defer watcher.Stop()
+			if cfg.ReposToWatch != nil {
+				for _, r := range cfg.ReposToWatch() {
+					if _, err := watcher.AddRepo(r); err != nil {
+						logger.Printf("watcher: add repo %s: %v", r, err)
+					}
+				}
+			}
+		}
+	}
 
 	server := rpc.NewServer()
 	if err := server.RegisterName(proto.ServiceName, svc); err != nil {
