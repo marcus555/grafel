@@ -1,58 +1,31 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
 	"github.com/cajasmota/archigraph/internal/cli"
 )
 
-// main wires the cmd-local index/mcp implementations into the cobra
-// dispatch tree owned by internal/cli, then delegates. Index/MCP live
-// in this package because they reach into a number of internal packages
-// (extractor, classifier, ...) that we don't want to surface from cli.
+// main wires the daemon entrypoint (which owns indexing + linking +
+// MCP) into the cobra dispatch tree owned by internal/cli, then
+// delegates. Index, MCP, and rebuild used to be wired here as direct
+// hooks; per ADR-0017 they are now thin RPC clients implemented inside
+// internal/cli, and the only hook this package contributes is the
+// long-running daemon mode (plus the per-group linker, which both the
+// daemon and `archigraph rebuild` need).
 func main() {
 	cli.Execute(cli.Hooks{
-		RunIndex:     runIndex,
-		RunMCP:       runMCP,
+		RunDaemon:    runDaemon,
 		RunLinks:     runLinksHook,
 		RunDashboard: runDashboard,
 		RunQuality:   runQuality,
 	})
 }
 
-// runIndex parses flags for the `index` subcommand and runs the indexer.
-func runIndex(argv []string) error {
-	fs := flag.NewFlagSet("index", flag.ContinueOnError)
-	out := fs.String("out", "", "output path for graph.json (default: <repo>/.archigraph/graph.json)")
-	repoTag := fs.String("repo-tag", "", "repository tag stored on entities (default: dirname of repo path)")
-	skip := fs.String("skip-pass", "", "comma-separated list of passes to skip (extract,framework,cross-lang,graph-algo,build-document,enrichment)")
-	pretty := fs.Bool("pretty", false, "emit indented JSON for graph.json and graph-stats.json (default: minified)")
-	jsonStats := fs.Bool("json-stats", false, "emit per-run statistics (entities, relationships, dispositions, bug-rate) to stdout as JSON")
-	enableRepair := fs.Bool("enable-repair-candidates", false, "emit ADR-0015 phase-1 repair_edge entries into enrichment-candidates.json (issue #544; default false during phase-1 rollout)")
-	enableRepairApply := fs.Bool("enable-repair-apply", false, "read <repo>/.archigraph/repair.json and apply allowlisted repairs before disposition classification (issue #545 / ADR-0015 phase-1; default false during phase-1 rollout)")
-	exportFB := fs.Bool("export-fb", false, "also write <repo>/.archigraph/graph.fb in the v2 FlatBuffers binary format alongside graph.json (issue #634 / ADR-0016 phase-1; default false during phase-1 rollout)")
-	if err := fs.Parse(argv); err != nil {
-		return err
-	}
-	if fs.NArg() < 1 {
-		fs.Usage()
-		return fmt.Errorf("missing <repo> argument")
-	}
-	repoPath := fs.Arg(0)
-	var skipPasses []string
-	if *skip != "" {
-		skipPasses = []string{*skip}
-	}
-	return Index(repoPath, *out, *repoTag, skipPasses, *pretty, *jsonStats,
-		WithRepairCandidates(*enableRepair),
-		WithRepairApply(*enableRepairApply),
-		WithExportFB(*exportFB))
-}
-
-// runLinksHook is wired into cli.Hooks so the watcher can re-run cross-
-// repo link passes whenever a registered repo's graph.json changes.
+// runLinksHook is wired into cli.Hooks so the daemon (Phase B) can re-
+// run cross-repo link passes whenever a registered repo's graph.json
+// changes. It is also used by the daemon's Rebuild RPC handler.
 func runLinksHook(group string) error {
 	return cli.RunLinksForGroup(group)
 }

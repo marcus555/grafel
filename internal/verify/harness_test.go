@@ -10,11 +10,17 @@ package verify
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/daemon/client"
+	"github.com/cajasmota/archigraph/internal/daemon/proto"
 )
 
 // jsonStats mirrors the cmd/archigraph JSONStats shape. Re-declared here
@@ -69,20 +75,63 @@ func TestHarness_FixturesCorpus(t *testing.T) {
 	}
 
 	corpus := filepath.Join(root, "fixtures", "sources")
-	cmd := exec.Command(bin, "index", "--json-stats", corpus)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("indexer failed: %v\nstderr: %s", err, stderr.String())
-	}
 
-	// stdout may contain non-JSON noise from passes that print to stdout
-	// instead of stderr; trim to the first JSON object boundary.
-	raw := stdout.Bytes()
+	// Per ADR-0017, indexing happens inside the daemon. Point the daemon
+	// at an isolated tempdir (so this test never touches ~/.archigraph)
+	// and start it in the background; the test calls Index via RPC and
+	// stops the daemon on cleanup.
+	//
+	// macOS limits AF_UNIX sun_path to ~103 bytes — t.TempDir() can
+	// easily exceed that, so we mint a short /tmp-rooted dir instead.
+	daemonRoot, err := os.MkdirTemp("/tmp", "archi-d-")
+	if err != nil {
+		t.Fatalf("mktemp daemon root: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(daemonRoot) })
+	dcmd := exec.Command(bin, "daemon")
+	dcmd.Env = append(os.Environ(), daemon.EnvRoot+"="+daemonRoot)
+	var daemonOut bytes.Buffer
+	dcmd.Stdout = &daemonOut
+	dcmd.Stderr = &daemonOut
+	if err := dcmd.Start(); err != nil {
+		t.Fatalf("start daemon: %v", err)
+	}
+	t.Cleanup(func() {
+		if c, err := client.DialPath(filepath.Join(daemonRoot, "sockets", "daemon.sock")); err == nil {
+			_ = c.Stop()
+			_ = c.Close()
+		}
+		_ = dcmd.Wait()
+		if t.Failed() {
+			t.Logf("daemon output:\n%s", daemonOut.String())
+		}
+	})
+
+	// Wait for the daemon's socket to appear.
+	socketPath := filepath.Join(daemonRoot, "sockets", "daemon.sock")
+	deadline := time.Now().Add(10 * time.Second)
+	var dc *client.Client
+	for time.Now().Before(deadline) {
+		c, err := client.DialPath(socketPath)
+		if err == nil {
+			dc = c
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if dc == nil {
+		t.Fatalf("daemon never came up; socket=%s; output=%s", socketPath, daemonOut.String())
+	}
+	defer dc.Close()
+
+	reply, err := dc.Index(proto.IndexArgs{RepoPath: corpus, JSONStats: true})
+	if err != nil {
+		t.Fatalf("daemon index rpc failed: %v\noutput: %s", err, daemonOut.String())
+	}
+	raw := []byte(reply.StatsJSON)
 	start := bytes.IndexByte(raw, '{')
 	if start < 0 {
-		t.Fatalf("no JSON in stdout. stdout=%q stderr=%q", raw, stderr.String())
+		t.Fatalf("no JSON in stats reply. raw=%q daemon=%s", raw, daemonOut.String())
 	}
 	var stats jsonStats
 	if err := json.Unmarshal(raw[start:], &stats); err != nil {

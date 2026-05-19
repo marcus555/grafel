@@ -43,11 +43,12 @@ func newRoot() *cobra.Command {
 		newListCmd(),
 		newRebuildCmd(),
 		newResetCmd(),
-		newRemergeCmd(),
 		newUninstallCmd(),
 		newStartCmd(),
 		newStopCmd(),
 		newRestartCmd(),
+		newLogsCmd(),
+		newDaemonCmd(),
 		newMonorepoCmd(),
 		newWatchCmd(),
 		newIndexCmd(),
@@ -102,14 +103,15 @@ Operate:
   list                            List registered groups (alias: ls)
 
 Repair:
-  rebuild [group] [slug]          Force AST rebuild (no cache)
-  reset [group] [slug]            Wipe .archigraph/ and rebuild
-  remerge [group]                 Re-run cross-repo link passes (deprecated)
+  rebuild [group] [slug]          Force AST rebuild (no cache, daemon RPC)
+  reset [group] [slug]            Wipe .archigraph/ and rebuild via daemon
   uninstall [group] [--purge]     Remove archigraph from a group
 
-Watchers:
-  start | stop | restart [group]  Watcher control
-  watch <repo>                    Long-lived watcher process (used by units)
+Daemon:
+  start | stop | restart          Daemon lifecycle (ADR-0017)
+  logs [-f] [-n N]                Print or follow the daemon log
+  status                          Show daemon health + per-repo state
+  watch <repo>                    Long-lived watcher (legacy; daemon owns watching)
 
 Monorepo:
   monorepo add [group] [path]     Pick which packages get indexed
@@ -117,10 +119,10 @@ Monorepo:
   monorepo list                   List indexed monorepo modules
 
 Indexing:
-  index <repo>                    Walk a repository and write graph.json
+  index <repo>                    Index a repository (daemon RPC)
 
 MCP:
-  mcp serve                       Start the MCP server on stdio
+  mcp                             (removed) daemon serves MCP; see ADR-0017
 
 Dashboard:
   dashboard serve                 Run the local dashboard HTTP server

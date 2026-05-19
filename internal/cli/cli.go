@@ -15,13 +15,15 @@ import (
 // must live in cmd/archigraph (because they pull in heavy internal
 // packages that should not be visible from the CLI surface).
 type Hooks struct {
-	RunIndex     func(argv []string) error
-	RunMCP       func(argv []string) error
+	// RunDaemon runs the long-running daemon (the `archigraph daemon`
+	// hidden subcommand). It blocks until the daemon exits. Wired from
+	// cmd/archigraph because the daemon imports the extractor stack.
+	RunDaemon    func(argv []string) error
 	RunDashboard func(argv []string) error
 	RunQuality   func(argv []string) error
 	// RunLinks runs the cross-repo link passes for a group. Wired up
-	// from cmd/archigraph so the watcher loop in watch.go can re-trigger
-	// link passes whenever a registered repo's graph.json changes.
+	// from cmd/archigraph so the daemon (Phase B) can re-trigger link
+	// passes whenever a registered repo's graph.json changes.
 	// May be nil; callers must check.
 	RunLinks func(group string) error
 }
