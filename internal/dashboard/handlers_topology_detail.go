@@ -63,7 +63,7 @@ type topicDetailResponse struct {
 	EnrichmentHealth *topicEnrichmentHealth  `json:"enrichment_health,omitempty"`
 }
 
-// enrichmentHealth reports which message_topic enrichment fields are present,
+// topicEnrichmentHealth reports which message_topic enrichment fields are present,
 // so the frontend can surface a completeness hint alongside the detail panel.
 type topicEnrichmentHealth struct {
 	HasSummary              bool `json:"has_summary"`
