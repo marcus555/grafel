@@ -390,6 +390,11 @@ func (s *Server) routes() http.Handler {
 	// #1322: hardcoded secret detector.
 	mux.HandleFunc("GET /api/quality/secrets/{group}", s.handleQualitySecrets)
 
+	// #1330: Security & Quality surface — auth coverage, secrets, cycles.
+	mux.HandleFunc("GET /api/security/auth-coverage/{group}", s.handleSecurityAuthCoverage)
+	mux.HandleFunc("GET /api/security/secrets/{group}", s.handleSecuritySecrets)
+	mux.HandleFunc("GET /api/security/cycles/{group}", s.handleSecurityCycles)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)
