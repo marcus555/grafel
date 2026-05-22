@@ -682,8 +682,8 @@ function DetailPane({ detail: rawDetail }: { detail: PathDetail }) {
                 </>
               ) : (
                 <p className="text-sm text-text-4 italic">
-                  No documentation yet. Run{" "}
-                  <span className="font-mono not-italic text-text-3">/generate-docs</span> to create it.
+                  No documentation yet — ask your coding agent to generate docs
+                  for this group with the archigraph docs skill.
                 </p>
               )}
             </div>
