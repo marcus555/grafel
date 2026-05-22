@@ -293,6 +293,15 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	if repoTag == "" {
 		repoTag = filepath.Base(absRepo)
 	}
+	// #1626: relocate any pre-existing in-repo `.archigraph/` graph
+	// artifacts into the external store before resolving output paths,
+	// so incremental loads + rename detection see the migrated state and
+	// the repo working tree is left clean.
+	if migrated, mErr := daemon.MigrateInRepoState(absRepo); mErr != nil {
+		fmt.Fprintf(os.Stderr, "archigraph: in-repo state migration: %v\n", mErr)
+	} else if migrated {
+		fmt.Fprintf(os.Stderr, "archigraph: migrated in-repo .archigraph → %s\n", daemon.StateDirForRepo(absRepo))
+	}
 	if outPath == "" {
 		outPath = daemon.GraphPathForRepo(absRepo)
 	}
@@ -401,6 +410,15 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", outPath)
+
+			// #1626: stamp graph.fb and graph.json with an IDENTICAL mtime.
+			// These are two encodings of the SAME index pass; letting their
+			// mtimes diverge made the daemon's fb-vs-json drift check fire a
+			// spurious "drift" every load and (combined with in-repo writes)
+			// drove an infinite reindex loop. Same mtime → no drift, ever.
+			now := time.Now()
+			_ = os.Chtimes(fbPath, now, now)
+			_ = os.Chtimes(outPath, now, now)
 		}
 
 		// Sidecar: corpus-level metrics for `archigraph doctor` and the future
