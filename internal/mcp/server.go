@@ -453,7 +453,6 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		if res != nil && !res.IsError {
 			res = injectElapsedMS(res, elapsed)
 		}
-		s.emitActivity(ctx, name, req, res)
 		s.emitActivity(ctx, name, req, res, collector)
 		return res, err
 	}
