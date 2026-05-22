@@ -31,7 +31,80 @@ and [milestones](https://github.com/cajasmota/archigraph/milestones).
   traversal surfaces exposed to agents. See
   [`internal/mcp/SCHEMA.md`](internal/mcp/SCHEMA.md).
 
+## Run it locally (testing build)
+
+> **There is no hosted release yet.** The `curl … | bash` installer and the
+> GitHub Releases binaries referenced under [Install](#install) are **not
+> published during the testing phase** — build and run from source as shown
+> here. This is the path to share with testers right now.
+
+### Prerequisites
+
+- **Go 1.25.5+** with **CGO enabled** — tree-sitter needs a C compiler
+  (Xcode Command Line Tools on macOS: `xcode-select --install`; `build-essential`
+  on Debian/Ubuntu).
+- **Node.js 20+** and npm — used to build the dashboards.
+- **git**.
+
+### 1. Clone and build
+
+```sh
+git clone https://github.com/cajasmota/archigraph.git
+cd archigraph
+make build                 # builds the embedded dashboard + the ./archigraph binary
+./archigraph --version
+```
+
+Optional — put it on your `PATH` so you can call `archigraph` from anywhere:
+
+```sh
+go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/archigraph
+# installs to ~/go/bin/archigraph — make sure ~/go/bin is on your PATH
+```
+
+### 2. Start the daemon
+
+```sh
+./archigraph install       # registers + starts the daemon as a background service
+# (or run it in the foreground:  ./archigraph start)
+./archigraph status        # confirm it's up — it serves http://127.0.0.1:47274
+```
+
+### 3. Index your code
+
+```sh
+./archigraph wizard        # interactive: point it at a repo or a monorepo folder
+```
+
+A monorepo is auto-split into its modules; point it at a folder containing
+several git repos and they become one multi-repo group. (You can also click
+**Add group** from the dashboard.)
+
+### 4. Open the dashboard
+
+The actively-developed UI lives in `webui-v2` and runs as a local dev server
+that proxies to the daemon:
+
+```sh
+cd webui-v2
+npm install
+npm run dev                # → http://localhost:47280
+```
+
+> The daemon also serves an older embedded dashboard at
+> http://127.0.0.1:47274. **For testing, use `webui-v2` on
+> http://localhost:47280** — that's the current UI.
+
+### Stop / clean up
+
+```sh
+./archigraph uninstall     # stops and removes the daemon service
+```
+
 ## Install
+
+> **Not yet published** — see [Run it locally](#run-it-locally-testing-build)
+> above until the first release ships.
 
 ### macOS / Linux
 
@@ -54,7 +127,9 @@ https://github.com/cajasmota/archigraph/releases — pick the matching
 
 ### Build from source
 
-Requires Go 1.22+. CGO is required (tree-sitter dependency).
+Requires Go 1.25.5+. CGO is required (tree-sitter dependency). See
+[Run it locally](#run-it-locally-testing-build) for the full testing
+walkthrough including the dashboard.
 
 ```sh
 git clone https://github.com/cajasmota/archigraph.git
