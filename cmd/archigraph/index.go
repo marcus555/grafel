@@ -150,6 +150,13 @@ type Indexer struct {
 	// used by buildDocument to derive Properties["module"] for every entity.
 	// Issue #1381 — module extraction via path rollup.
 	moduleMarkers module.MarkerSet
+
+	// singleModuleLabel, when non-empty, forces every entity in this repo into
+	// ONE module row instead of the per-directory path rollup. It is set for
+	// PLAIN (non-monorepo) repos so the per-module progress + Group-by-Module
+	// graph treat the repo as a single unit (issue #1628). For TRUE monorepos
+	// it stays empty and module.Derive's per-package rollup applies.
+	singleModuleLabel string
 }
 
 // IndexOption configures optional behaviour on the Indexer. Used as a
@@ -596,13 +603,33 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// the whole repo. Non-monorepos get no resolver (Module stays empty → the
 	// UI falls back to a single per-repo row). The resolver is pure + stateless,
 	// so it is safe to call from the concurrent extraction workers.
-	if mono, err := detect.DetectMonorepo(absRepo); err == nil && len(mono.Packages) > 1 {
+	//
+	// Issue #1628 — only TRUE monorepos (a workspace manifest or a real
+	// container/multi-package layout) get a per-module breakdown. A PLAIN repo
+	// (DetectMonorepo → KindNone) is indexed as a SINGLE unit: we install a
+	// resolver that maps every file to one per-repo label, and stamp that same
+	// label as Properties["module"] so the Group-by-Module graph does not
+	// fragment a plain repo by its top-level directories.
+	mono, derr := detect.DetectMonorepo(absRepo)
+	isMonorepo := derr == nil && mono.Kind != detect.KindNone && len(mono.Packages) > 1
+	if isMonorepo {
 		pkgRoots := make([]string, len(mono.Packages))
 		copy(pkgRoots, mono.Packages)
 		markers := i.moduleMarkers
 		trk.SetModuleResolver(func(currentFile string) string {
 			return moduleForFile(currentFile, pkgRoots, markers)
 		})
+	} else {
+		// Plain repo → one module row for the whole repo.
+		label := repoSlug
+		if label == "" {
+			label = i.repoTag
+		}
+		if label == "" {
+			label = "_repo"
+		}
+		i.singleModuleLabel = label
+		trk.SetModuleResolver(func(string) string { return label })
 	}
 
 	// Incremental mode (issue #1339): filter files down to those whose
@@ -2452,7 +2479,20 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			// assembly time using the deterministic path-rollup algorithm.
 			// EnsureModule is a no-op when the key is already set (extractor
 			// overrides are preserved).
-			r.Properties = module.EnsureModule(r.Properties, r.SourceFile, i.moduleMarkers)
+			//
+			// Issue #1628 — for a PLAIN repo (single-unit mode) force the
+			// per-repo label on every sourced entity so the Group-by-Module
+			// graph shows one node for the repo instead of fragmenting by
+			// top-level directory. Synthetic/sourceless entities are handled
+			// by the _external pass below and are left untouched here.
+			if i.singleModuleLabel != "" && r.SourceFile != "" {
+				if r.Properties == nil {
+					r.Properties = map[string]string{}
+				}
+				r.Properties["module"] = i.singleModuleLabel
+			} else {
+				r.Properties = module.EnsureModule(r.Properties, r.SourceFile, i.moduleMarkers)
+			}
 			entities = append(entities, graph.Entity{
 				ID:            id,
 				Name:          r.Name,
