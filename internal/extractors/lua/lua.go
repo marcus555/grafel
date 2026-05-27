@@ -39,6 +39,7 @@ package lua
 import (
 	"context"
 	"sort"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -635,6 +636,9 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 		rels = append(rels, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			},
 		})
 	}
 	return rels

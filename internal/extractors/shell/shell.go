@@ -31,6 +31,7 @@ package shell
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -337,6 +338,9 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 		rels = append(rels, types.RelationshipRecord{
 			ToID: head,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(int(cmd.StartPoint().Row) + 1),
+			},
 		})
 	}
 	return rels

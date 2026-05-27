@@ -27,6 +27,7 @@ package idris
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -509,17 +510,17 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 		return nil
 	}
 	scrubbed := stripStringsAndComments(body)
-	matches := callRE.FindAllStringSubmatch(scrubbed, -1)
+	matches := callRE.FindAllStringSubmatchIndex(scrubbed, -1)
 	if len(matches) == 0 {
 		return nil
 	}
 	seen := make(map[string]bool)
 	var out []types.RelationshipRecord
 	for _, m := range matches {
-		if len(m) < 2 {
+		if len(m) < 4 || m[2] < 0 || m[3] < 0 {
 			continue
 		}
-		target := m[1]
+		target := scrubbed[m[2]:m[3]]
 		if target == "" || target == callerName {
 			continue
 		}
@@ -533,9 +534,14 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			continue
 		}
 		seen[target] = true
+		// Compute line number by counting newlines up to match position
+		lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 	return out

@@ -33,6 +33,7 @@ package swift
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -345,9 +346,12 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 		rel := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			},
 		}
 		if recvType != "" {
-			rel.Properties = map[string]string{"receiver_type": recvType}
+			rel.Properties["receiver_type"] = recvType
 		}
 		rels = append(rels, rel)
 	}

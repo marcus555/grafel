@@ -22,6 +22,7 @@ import (
 	"context"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -368,7 +369,7 @@ func collectCallsFromText(bodies []string, callerName string) []types.Relationsh
 	seen := make(map[string]bool)
 	var rels []types.RelationshipRecord
 
-	addCall := func(target string) {
+	addCall := func(target string, lineNum int) {
 		if target == "" || target == callerName || seen[target] {
 			return
 		}
@@ -376,6 +377,9 @@ func collectCallsFromText(bodies []string, callerName string) []types.Relationsh
 		rels = append(rels, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 
@@ -383,22 +387,30 @@ func collectCallsFromText(bodies []string, callerName string) []types.Relationsh
 		scrubbed := stripCommentsAndStrings(body)
 
 		// Qualified calls Module:Function( — emit "module:function" form.
-		for _, m := range callQualifiedRE.FindAllStringSubmatch(scrubbed, -1) {
-			mod := m[1]
-			fn := m[2]
+		for _, m := range callQualifiedRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+			if len(m) < 6 {
+				continue
+			}
+			mod := scrubbed[m[2]:m[3]]
+			fn := scrubbed[m[4]:m[5]]
 			if erlangKeywords[fn] {
 				continue
 			}
-			addCall(mod + ":" + fn)
+			lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
+			addCall(mod+":"+fn, lineNum)
 		}
 
 		// Bare calls name( — only lowercase-starting names.
-		for _, m := range callBareRE.FindAllStringSubmatch(scrubbed, -1) {
-			fn := m[1]
+		for _, m := range callBareRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+			if len(m) < 4 || m[2] < 0 || m[3] < 0 {
+				continue
+			}
+			fn := scrubbed[m[2]:m[3]]
 			if erlangKeywords[fn] {
 				continue
 			}
-			addCall(fn)
+			lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
+			addCall(fn, lineNum)
 		}
 	}
 

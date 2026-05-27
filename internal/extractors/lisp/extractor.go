@@ -23,6 +23,7 @@ import (
 	"context"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -668,17 +669,17 @@ func collectLispCalls(body, callerName, dialect string) []types.RelationshipReco
 	if body == "" {
 		return nil
 	}
-	matches := callRE.FindAllStringSubmatch(body, -1)
+	matches := callRE.FindAllStringSubmatchIndex(body, -1)
 	if len(matches) == 0 {
 		return nil
 	}
-	seen := make(map[string]bool, len(matches))
+	seen := make(map[string]bool)
 	out := make([]types.RelationshipRecord, 0, len(matches))
 	for _, m := range matches {
-		if len(m) < 2 {
+		if len(m) < 4 || m[2] < 0 || m[3] < 0 {
 			continue
 		}
-		target := m[1]
+		target := body[m[2]:m[3]]
 		if target == "" || target == callerName {
 			continue
 		}
@@ -692,9 +693,14 @@ func collectLispCalls(body, callerName, dialect string) []types.RelationshipReco
 			continue
 		}
 		seen[target] = true
+		// Compute line number by counting newlines up to match position
+		lineNum := 1 + strings.Count(body[:m[0]], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 	return out

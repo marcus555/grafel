@@ -35,6 +35,7 @@ package clojure
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -565,14 +566,17 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	// Strip string literals and line comments so they don't pollute the
 	// scan. A naive pass is enough — false positives here are rare.
 	scrubbed := stripStringsAndComments(body)
-	matches := callHeadRE.FindAllStringSubmatch(scrubbed, -1)
+	matches := callHeadRE.FindAllStringSubmatchIndex(scrubbed, -1)
 	if len(matches) == 0 {
 		return nil
 	}
-	seen := make(map[string]bool, len(matches))
+	seen := make(map[string]bool)
 	out := make([]types.RelationshipRecord, 0, len(matches))
 	for _, m := range matches {
-		head := m[1]
+		if len(m) < 4 || m[2] < 0 || m[3] < 0 {
+			continue
+		}
+		head := scrubbed[m[2]:m[3]]
 		if clojureSpecialForms[head] {
 			continue
 		}
@@ -587,9 +591,14 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			continue
 		}
 		seen[head] = true
+		// Compute line number by counting newlines up to match position
+		lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: head,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 	return out

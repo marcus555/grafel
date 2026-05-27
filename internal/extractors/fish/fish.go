@@ -35,6 +35,7 @@ package fish
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -243,7 +244,8 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	}
 	seen := make(map[string]bool)
 	var out []types.RelationshipRecord
-	for _, line := range strings.Split(body, "\n") {
+	lines := strings.Split(body, "\n")
+	for lineIdx, line := range lines {
 		m := commandHeadRE.FindStringSubmatch(line)
 		if m == nil {
 			continue
@@ -264,9 +266,13 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			continue
 		}
 		seen[head] = true
+		lineNum := lineIdx + 1 // line numbers are 1-indexed
 		out = append(out, types.RelationshipRecord{
 			ToID: head,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 	return out

@@ -19,6 +19,7 @@ package elm
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -480,27 +481,31 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	out := make([]types.RelationshipRecord, 0)
 
 	// Qualified calls: Module.function (e.g. List.map, Html.div)
-	for _, m := range qualifiedCallRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) < 2 {
+	for _, m := range qualifiedCallRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) < 4 || m[2] < 0 || m[3] < 0 {
 			continue
 		}
-		target := m[1]
+		target := scrubbed[m[2]:m[3]]
 		if target == "" || target == callerName || seen[target] {
 			continue
 		}
 		seen[target] = true
+		lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 
 	// Unqualified calls: bare function names
-	for _, m := range callRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) < 2 {
+	for _, m := range callRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) < 4 || m[2] < 0 || m[3] < 0 {
 			continue
 		}
-		target := m[1]
+		target := scrubbed[m[2]:m[3]]
 		if target == "" || target == callerName {
 			continue
 		}
@@ -514,9 +519,13 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			continue
 		}
 		seen[target] = true
+		lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 

@@ -23,6 +23,7 @@ package crystal
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -448,12 +449,17 @@ func extractCallRelationships(body, callerName string) []types.RelationshipRecor
 			continue
 		}
 		seen[k] = true
+		// Compute line number by counting newlines up to match position
+		lineNum := 1 + strings.Count(body[:m[0]], "\n")
 		rel := types.RelationshipRecord{
 			ToID: callee,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		}
 		if recvRoot != "" {
-			rel.Properties = map[string]string{"receiver_root": recvRoot}
+			rel.Properties["receiver_root"] = recvRoot
 		}
 		rels = append(rels, rel)
 	}

@@ -31,6 +31,7 @@ package groovy
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -676,9 +677,12 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 		rel := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			},
 		}
 		if recv != "" {
-			rel.Properties = map[string]string{"receiver_type": recv}
+			rel.Properties["receiver_type"] = recv
 		}
 		rels = append(rels, rel)
 	}

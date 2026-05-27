@@ -21,6 +21,7 @@ package php
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -580,9 +581,12 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, parentC
 		r := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+			},
 		}
 		if recvType != "" {
-			r.Properties = map[string]string{"receiver_type": recvType}
+			r.Properties["receiver_type"] = recvType
 		}
 		rels = append(rels, r)
 	}

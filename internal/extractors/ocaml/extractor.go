@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -482,7 +483,7 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	seen := make(map[string]bool)
 	var out []types.RelationshipRecord
 
-	addCall := func(target string) {
+	addCall := func(target string, matchPos int) {
 		if target == "" || target == callerName {
 			return
 		}
@@ -496,23 +497,30 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			return
 		}
 		seen[target] = true
+		// Compute line number by counting newlines up to match position
+		lineNum := 1 + strings.Count(scrubbed[:matchPos], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(lineNum),
+			},
 		})
 	}
 
 	// Qualified calls: Module.function or Module.Sub.function
-	for _, m := range callDotRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) >= 2 {
-			addCall(m[1])
+	for _, m := range callDotRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 && m[3] >= 0 {
+			target := scrubbed[m[2]:m[3]]
+			addCall(target, m[0])
 		}
 	}
 
 	// Bare function calls: function_name <something>
-	for _, m := range callBareRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) >= 2 {
-			addCall(m[1])
+	for _, m := range callBareRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 && m[3] >= 0 {
+			target := scrubbed[m[2]:m[3]]
+			addCall(target, m[0])
 		}
 	}
 

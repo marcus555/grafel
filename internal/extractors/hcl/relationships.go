@@ -1,6 +1,7 @@
 package hcl
 
 import (
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -240,6 +241,9 @@ func extractCalls(body *sitter.Node, src []byte, path, lang, fromRef, selfRef st
 							FromID: extractor.BuildOperationStructuralRef(lang, path, fromRef),
 							ToID:   extractor.BuildOperationStructuralRef(lang, path, ref),
 							Kind:   "CALLS",
+							Properties: map[string]string{
+								"line": strconv.Itoa(int(n.StartPoint().Row) + 1),
+							},
 						})
 					}
 				}
