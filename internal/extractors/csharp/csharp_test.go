@@ -3,6 +3,7 @@ package csharp_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -311,4 +312,56 @@ func TestCSharpExtractor_LineNumbers(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestCSharpExtractor_CallEdge_HasLineProperty(t *testing.T) {
+	src := `public class Helper {
+    public void DoIt() { }
+}
+
+public class Caller {
+    public void Run() {
+        new Helper().DoIt();
+    }
+}`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("csharp")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "test.cs",
+		Content:  []byte(src),
+		Language: "csharp",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find Caller.Run and check for CALLS edge with line property
+	for _, e := range got {
+		if e.Name == "Caller.Run" && e.Kind == "SCOPE.Operation" {
+			for _, rel := range e.Relationships {
+				if rel.Kind == "CALLS" && rel.ToID == "Helper" {
+					lineStr, ok := rel.Properties["line"]
+					if !ok {
+						t.Fatal("CALLS edge missing Properties[\"line\"]")
+					}
+					if lineStr == "" {
+						t.Error("Properties[\"line\"] is empty")
+					}
+					// Parse as integer to verify it's valid
+					line, err := strconv.Atoi(lineStr)
+					if err != nil {
+						t.Errorf("Properties[\"line\"] = %q, not a valid integer: %v", lineStr, err)
+					}
+					if line <= 0 {
+						t.Errorf("Properties[\"line\"] = %d, expected positive", line)
+					}
+					return
+				}
+			}
+			t.Fatal("no CALLS edge found for Caller.Run")
+		}
+	}
+	t.Fatal("entity Caller.Run not found")
 }
