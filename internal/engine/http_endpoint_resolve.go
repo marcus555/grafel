@@ -57,6 +57,9 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
+// formatLine renders a 1-based line number for property serialisation.
+func formatLine(line int) string { return strconv.Itoa(line) }
+
 // resolverKindEquivalents maps a synthesizer-emitted handler Kind to
 // the list of fallback Kinds the resolver should try when the exact
 // match misses. The synthesizers were written against an older
