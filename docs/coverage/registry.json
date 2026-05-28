@@ -14288,12 +14288,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -14864,12 +14860,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -14958,12 +14950,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -15044,12 +15032,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -15248,12 +15232,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -15342,12 +15322,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -15560,12 +15536,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -15679,12 +15651,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -15905,12 +15873,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -16183,12 +16147,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -16821,12 +16781,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
@@ -16907,12 +16863,8 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "partial",
-            "cites": [
-              "internal/links/constant_propagation.go",
-              "internal/substrate/jsts.go",
-              "internal/substrate/substrate.go"
-            ],
+            "status": "full",
+            "cites": ["internal/extractors/javascript/testdata/substrate_import_resolution/app.ts","internal/extractors/javascript/testdata/substrate_import_resolution/config.ts","internal/extractors/javascript/testdata/substrate_import_resolution/nest_app.ts","internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
