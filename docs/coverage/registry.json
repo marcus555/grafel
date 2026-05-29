@@ -6126,12 +6126,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -6139,8 +6143,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -6283,12 +6289,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -6296,8 +6306,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -6440,12 +6452,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -6453,8 +6469,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -6938,12 +6956,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -6951,8 +6973,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -7287,12 +7311,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -7300,8 +7328,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -7537,8 +7567,9 @@
             "verified_at": "2026-05-28"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
             "status": "partial",
@@ -7551,8 +7582,9 @@
             "verified_at": "2026-05-28"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
             "status": "partial",
@@ -7565,8 +7597,10 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
             "status": "partial",
@@ -7608,8 +7642,9 @@
             "verified_at": "2026-05-28"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
             "status": "partial",
@@ -7622,8 +7657,9 @@
             "verified_at": "2026-05-28"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
             "status": "partial",
@@ -7636,8 +7672,10 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
             "status": "partial",
@@ -7679,8 +7717,9 @@
             "verified_at": "2026-05-28"
           },
           "constant_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "db_effect": {
             "status": "partial",
@@ -7693,8 +7732,9 @@
             "verified_at": "2026-05-28"
           },
           "env_fallback_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "verified_at": "2026-05-29"
           },
           "fs_effect": {
             "status": "partial",
@@ -7707,8 +7747,10 @@
             "verified_at": "2026-05-28"
           },
           "import_resolution_quality": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-29"
           },
           "mutation_effect": {
             "status": "partial",
@@ -7849,12 +7891,16 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -7862,8 +7908,10 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-05-29"
           },
           "taint_sink_detection": {
             "status": "partial",
