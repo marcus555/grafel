@@ -172,3 +172,73 @@ func TestPruneMigrationEntities_NilSafe(t *testing.T) {
 		t.Errorf("nil doc: pruned = (%d,%d), want (0,0)", e, r)
 	}
 }
+
+// TestPruneMigrationEntities_PrunesControllerKind exercises #3173:
+// Falcon/CherryPy YAML source_patterns match `class X(...):` in any Python file
+// and emit Kind="Controller" entities. On Django migration files this produces
+// "class Migration(migrations.Migration):" -> Controller noise. The fix adds
+// "Controller" to prunedMigrationKinds so these entities are pruned just like
+// SCOPE.Component and Class entities.
+func TestPruneMigrationEntities_PrunesControllerKind(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			// Falcon/CherryPy YAML pattern: `class Migration(...):` emits Controller.
+			{ID: "c1", Name: "Migration", Kind: "Controller", SourceFile: "core/migrations/0001_initial.py"},
+			// The canonical Migration file-tag must survive.
+			{ID: "mig", Name: "0001_initial", Kind: "Migration", SourceFile: "core/migrations/0001_initial.py"},
+			// Non-migration Controller entity must survive.
+			{ID: "ctrl", Name: "UserController", Kind: "Controller", SourceFile: "core/views.py"},
+		},
+		Relationships: []graph.Relationship{
+			// Edge referencing the pruned Controller entity — must be dropped.
+			{ID: "r1", FromID: "c1", ToID: "mig", Kind: "DEPENDS_ON"},
+			// Edge between surviving entities — must be kept.
+			{ID: "r2", FromID: "ctrl", ToID: "mig", Kind: "DEPENDS_ON"},
+		},
+	}
+
+	t.Setenv("ARCHIGRAPH_EMIT_MIGRATION_ENTITIES", "")
+
+	ePruned, rPruned := PruneMigrationEntities(doc)
+
+	if ePruned != 1 {
+		t.Errorf("entities pruned = %d, want 1 (the Controller on migration file)", ePruned)
+	}
+	if rPruned != 1 {
+		t.Errorf("relationships pruned = %d, want 1 (the edge referencing pruned entity)", rPruned)
+	}
+
+	// Verify no Controller entity on a migration file survived.
+	for _, e := range doc.Entities {
+		if IsDjangoMigrationFile(e.SourceFile) && prunedMigrationKinds[e.Kind] {
+			t.Errorf("entity on migration file survived prune: id=%s kind=%s", e.ID, e.Kind)
+		}
+	}
+
+	// Verify exactly the correct entities survived.
+	wantIDs := map[string]bool{"mig": true, "ctrl": true}
+	gotIDs := make(map[string]bool, len(doc.Entities))
+	for _, e := range doc.Entities {
+		gotIDs[e.ID] = true
+	}
+	for id := range wantIDs {
+		if !gotIDs[id] {
+			t.Errorf("expected entity %s to survive, but it was dropped", id)
+		}
+	}
+	if len(gotIDs) != len(wantIDs) {
+		t.Errorf("entity count = %d, want %d (unexpected: %v)", len(gotIDs), len(wantIDs), gotIDs)
+	}
+
+	// Verify exactly the correct relationships survived.
+	wantRels := map[string]bool{"r2": true}
+	for _, r := range doc.Relationships {
+		if !wantRels[r.ID] {
+			t.Errorf("unexpected relationship survived prune: %s", r.ID)
+		}
+		delete(wantRels, r.ID)
+	}
+	for id := range wantRels {
+		t.Errorf("expected relationship %s to survive, but it was dropped", id)
+	}
+}

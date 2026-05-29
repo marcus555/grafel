@@ -1524,3 +1524,81 @@ func TestAllFrameworks_NoPathPatternsInFilenameHints(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #3173 — TESTS edges wiring for pytest (Django TestCase) + JS (Jest)
+// ---------------------------------------------------------------------------
+
+// TestIssue3173_Pytest_DjangoTestCase_EmitsTESTSEdge exercises the upvate corpus
+// pattern: a Django TestCase test method that directly calls a production helper
+// (resolve_device) should emit a high-confidence TESTS edge targeting that helper.
+// The test also verifies that HTTP test client calls (self.client.post) are NOT
+// emitted as TESTS edge targets — they are stopwords after this fix.
+func TestIssue3173_Pytest_DjangoTestCase_EmitsTESTSEdge(t *testing.T) {
+	src := "import pytest\nfrom django.test import TestCase\nfrom core.helper.schedule_import_helper import resolve_device\n\nclass ResolveDeviceTest(TestCase):\n    def test_matches_by_name_exact(self):\n        device, errors = resolve_device(\"ELV-300\", self.group.id)\n        self.assertEqual(len(errors), 0)\n        resp = self.client.post('/api/v1/schedule/import', {})\n        self.assertEqual(resp.status_code, 200)\n"
+	recs := runExtract(t, "core/tests/test_schedule_import.py", "python", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected >=1 entity from Django TestCase test file, got 0")
+	}
+
+	// resolve_device must be targeted by a high-confidence TESTS edge.
+	foundResolveDevice := false
+	for _, r := range recs {
+		if r.Properties["test_function"] != "test_matches_by_name_exact" {
+			continue
+		}
+		for _, rel := range r.Relationships {
+			if rel.Kind != "TESTS" {
+				continue
+			}
+			if rel.Properties["tested"] == "resolve_device" {
+				foundResolveDevice = true
+			}
+			// HTTP test client calls must NOT be emitted as TESTS targets.
+			for _, banned := range []string{"post", "get", "assertEqual"} {
+				if rel.Properties["tested"] == banned {
+					t.Errorf("TESTS edge target %q is a test infrastructure call, not a production function", banned)
+				}
+			}
+		}
+	}
+	if !foundResolveDevice {
+		t.Errorf("expected TESTS edge targeting resolve_device; got recs=%d", len(recs))
+		for _, r := range recs {
+			t.Logf("  entity: test_function=%q tested=%q", r.Properties["test_function"], r.Properties["tested_function"])
+			for _, rel := range r.Relationships {
+				if rel.Kind == "TESTS" {
+					t.Logf("    TESTS->%q", rel.Properties["tested"])
+				}
+			}
+		}
+	}
+}
+
+// TestIssue3173_Jest_EmitsTESTSEdge exercises the JS test pattern: a Jest test
+// that directly calls production functions emits TESTS edges. The test file uses
+// the .test.ts filename convention which the Jest detector matches without
+// requiring a jest import marker.
+func TestIssue3173_Jest_EmitsTESTSEdge(t *testing.T) {
+	src := "import { getUser } from './user';\nimport { updateUser } from './user';\n\ndescribe('User API', () => {\n  it('fetches a user by id', () => {\n    const u = getUser(1);\n    expect(u).toBeDefined();\n  });\n\n  it('updates user profile', () => {\n    const result = updateUser({ id: 1, name: 'Alice' });\n    expect(result.ok).toBe(true);\n  });\n});\n"
+	recs := runExtract(t, "components/api.test.ts", "typescript", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected >=1 entity from Jest test file, got 0")
+	}
+
+	targets := map[string]bool{}
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "TESTS" {
+				targets[rel.Properties["tested"]] = true
+			}
+		}
+	}
+
+	// Both production functions must appear as TESTS edge targets.
+	for _, want := range []string{"getUser", "updateUser"} {
+		if !targets[want] {
+			t.Errorf("expected TESTS edge targeting %q; got targets=%v", want, targets)
+		}
+	}
+}

@@ -59,6 +59,12 @@ const migrationEmitEnv = "ARCHIGRAPH_EMIT_MIGRATION_ENTITIES"
 // to a Django migration file. "Migration" is intentionally absent: that
 // kind is the lightweight file-tag we *want* to keep when emitted by the
 // YAML file_convention rule or the opt-in extractMigrationEntity helper.
+//
+// "Controller" is included to prune the scaffolding noise introduced by
+// Falcon/CherryPy YAML source_patterns (e.g. `class\s+(\w+)...:` ->
+// Controller) that run on ALL Python files including migration files and
+// emit a Controller entity for every `class Migration(...)` declaration.
+// (#3173)
 var prunedMigrationKinds = map[string]bool{
 	"SCOPE.Component": true,
 	"SCOPE.Class":     true,
@@ -66,6 +72,9 @@ var prunedMigrationKinds = map[string]bool{
 	"Class":           true,
 	"Operation":       true,
 	"Component":       true,
+	// #3173: Falcon/CherryPy YAML `class X:` -> Controller patterns fire on
+	// every Python file including Django migrations.
+	"Controller": true,
 }
 
 // IsDjangoMigrationFile mirrors the predicate in
