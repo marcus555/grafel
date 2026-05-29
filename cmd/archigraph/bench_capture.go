@@ -3,7 +3,7 @@ package main
 // bench_capture.go — `archigraph bench-capture rpc` subcommand.
 //
 // Reads a daemon log slice between two byte offsets, parses every
-// [mcp-rpc] tool=<X> elapsed=<N>ms line, aggregates counts + handler
+// slog-format mcp_rpc phase=done line, aggregates counts + handler
 // durations, and emits JSON to stdout matching the BenchCaptureOutput
 // schema in:
 //
@@ -29,19 +29,34 @@ import (
 // defaultDaemonLog is the default daemon log path used when --log is not given.
 const defaultDaemonLog = "~/.archigraph/logs/daemon.log"
 
-// rpcLineRe matches lines produced by internal/daemon/mcp_rpc.go:
+// rpcLineRe matches the slog-format phase=done lines emitted by the daemon's
+// mcp_rpc handler.  Real format (Go slog, unquoted values):
 //
-//	archigraph-daemon: 2026/05/26 22:40:38 [mcp-rpc] tool=archigraph_search elapsed=8095ms repo=/path
+//	time=2026-05-27T05:33:46.256+05:45 level=INFO msg=mcp_rpc phase=done tool=archigraph_whoami elapsed_ms=1008 repo=/path ts=...
 //
-// Only lines with an elapsed= field are counted (received-only lines have no
-// elapsed= and must be ignored).
-var rpcLineRe = regexp.MustCompile(`\[mcp-rpc\] tool=(\S+) elapsed=(\d+)ms repo=`)
+// Only phase=done lines carry elapsed_ms; phase=received lines are ignored.
+// wire_bytes and payload_token_estimate are optional (added by #2828).
+var rpcLineRe = regexp.MustCompile(`msg=mcp_rpc phase=done tool=(\S+) elapsed_ms=(\d+)`)
 
-// ToolRPCStats aggregates daemon-side handler durations for one tool.
-// Matches the ToolRPCStats definition in with-mcp-artifact.schema.json.
+// rpcBytesRe captures the OPTIONAL per-call payload-size fields added by
+// issue #2828 to the phase=done line:
+//
+//	... elapsed_ms=N wire_bytes=B payload_token_estimate=T repo=...
+//
+// Applied as a separate pass on the same line; absent on pre-#2828 daemon
+// logs → byte/token sums stay 0 for those lines.
+var rpcBytesRe = regexp.MustCompile(`wire_bytes=(\d+) payload_token_estimate=(\d+)`)
+
+// ToolRPCStats aggregates daemon-side handler durations and payload sizes for
+// one tool. Matches the ToolRPCStats definition in with-mcp-artifact.schema.json.
 type ToolRPCStats struct {
 	Count int `json:"count"`
 	SumMs int `json:"sum_ms"`
+	// SumBytes / SumTokenEst aggregate the per-call wire payload size and its
+	// char/4 token estimate (issue #2828). Stay 0 for legacy logs that lack
+	// the wire_bytes / payload_token_estimate fields.
+	SumBytes    int `json:"sum_bytes"`
+	SumTokenEst int `json:"sum_token_est"`
 }
 
 // BenchCaptureOutput is the top-level JSON emitted to stdout.
@@ -56,6 +71,13 @@ type BenchCaptureOutput struct {
 	McpRPCHandlerMsP50 *float64                 `json:"mcp_rpc_handler_ms_p50"`
 	McpRPCHandlerMsP99 *float64                 `json:"mcp_rpc_handler_ms_p99"`
 	McpRPCPerTool      map[string]*ToolRPCStats `json:"mcp_rpc_per_tool"`
+	// McpRPCWireBytesSum / McpRPCTokenEstSum aggregate the on-wire tool-result
+	// payload size (bytes) and its char/4 token estimate across all counted
+	// calls (issue #2828). These quantify daemon-side payload cost so it can be
+	// compared against host-reported billed input tokens (model ingestion).
+	// 0 when every line in the slice is legacy (no wire_bytes field).
+	McpRPCWireBytesSum int `json:"mcp_rpc_wire_bytes_sum"`
+	McpRPCTokenEstSum  int `json:"mcp_rpc_payload_token_estimate_sum"`
 }
 
 // runBenchCaptureRPC is the entry-point for `archigraph bench-capture rpc`.
@@ -129,9 +151,12 @@ func readSlice(path string, start, end int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, limit))
 }
 
-// parseBenchCapture scans log bytes for [mcp-rpc] elapsed= lines and
-// aggregates counts, sums, and per-tool breakdowns. It then computes
+// parseBenchCapture scans log bytes for slog-format mcp_rpc phase=done lines
+// and aggregates counts, sums, and per-tool breakdowns.  It then computes
 // p50 and p99 over the collected durations.
+//
+// Consecutive duplicate lines are collapsed (the daemon double-logs each RPC
+// event) so counts and sums are not inflated by 2×.
 //
 // Percentile formulas (0-indexed, sorted ascending):
 //
@@ -148,8 +173,17 @@ func parseBenchCapture(data []byte) BenchCaptureOutput {
 	}
 
 	var allMs []int
+	var prevLine string // for consecutive-duplicate dedup
 
 	for _, line := range strings.Split(string(data), "\n") {
+		// Dedup: the daemon emits each mcp_rpc line twice consecutively.
+		// Skip the second occurrence to avoid double-counting.
+		if line == prevLine {
+			prevLine = "" // reset so a genuine triple would count as 1
+			continue
+		}
+		prevLine = line
+
 		m := rpcLineRe.FindStringSubmatch(line)
 		if m == nil {
 			continue
@@ -169,6 +203,19 @@ func parseBenchCapture(data []byte) BenchCaptureOutput {
 		}
 		out.McpRPCPerTool[tool].Count++
 		out.McpRPCPerTool[tool].SumMs += ms
+
+		// Optional second pass for the #2828 byte/token fields. Absent on
+		// legacy lines → no match → byte/token sums simply stay 0.
+		if bm := rpcBytesRe.FindStringSubmatch(line); bm != nil {
+			bytes, berr := strconv.Atoi(bm[1])
+			tok, terr := strconv.Atoi(bm[2])
+			if berr == nil && terr == nil {
+				out.McpRPCWireBytesSum += bytes
+				out.McpRPCTokenEstSum += tok
+				out.McpRPCPerTool[tool].SumBytes += bytes
+				out.McpRPCPerTool[tool].SumTokenEst += tok
+			}
+		}
 	}
 
 	if out.McpRPCCount == 0 {
