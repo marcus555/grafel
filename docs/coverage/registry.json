@@ -43604,8 +43604,11 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/actix_web.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Route path+method extraction from macros and builder calls",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -43617,12 +43620,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[derive(Deserialize)] and #[derive(Validate)] structs; actix web::Json/Query/Form/Path\u003cT\u003e extractors",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] field attrs, .validate() calls, actix extractor types",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -43813,8 +43822,11 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/axum.go","internal/custom/rust/extractors_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extracts .route(path, method(handler)) paths and methods",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -43826,12 +43838,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects serde Deserialize/Validate structs; axum Json/Query/Form/Path\u003cT\u003e extractors",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] field attrs and axum extractor types",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -44022,8 +44040,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -44035,12 +44056,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -44231,8 +44258,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -44244,12 +44274,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -44440,8 +44476,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -44453,12 +44492,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -44649,8 +44694,11 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/extractors_test.go","internal/custom/rust/rocket.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex extracts #[get/post/...] route macros with path and handler",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -44662,12 +44710,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Json/Form/MsgPack\u003cT\u003e extractors and Deserialize derives",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects impl FromRequest guards, Json/Form extractors, validator derives",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -44858,8 +44912,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -44871,12 +44928,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -45057,15 +45120,24 @@
       "capabilities": {
         "Process": {
           "ipc_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/tauri.go","internal/custom/rust/tauri_test.go","internal/custom/rust/testdata/tauri_app.rs"],
+            "notes": "Detects #[tauri::command] fn declarations and generate_handler![...] registrations",
+            "verified_at": "2026-05-30"
           },
           "main_renderer_split": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/tauri.go","internal/custom/rust/tauri_test.go"],
+            "notes": "Detects tauri::Builder::default() and fn main() in Tauri files as Rust backend entry points; WindowBuilder for renderer side",
+            "verified_at": "2026-05-30"
           }
         },
         "Native": {
           "native_module_imports": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/tauri.go","internal/custom/rust/tauri_test.go"],
+            "notes": "Detects tauri::api::* module usage and tauri_plugin_* crate imports",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -45139,8 +45211,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -45152,12 +45227,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -45338,7 +45419,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "ServiceBuilder::new/.layer/.service patterns detected; tower does not have URL routing natively",
+            "verified_at": "2026-05-30"
           },
           "handler_attribution": {
             "status": "partial",
@@ -45346,8 +45430,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -45359,12 +45446,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; serde_json body deserialization",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate] attrs and serde_json deserialization in tower handlers",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -45555,8 +45648,11 @@
             "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Regex route extraction proven by minor_fw_routing_test.go",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -45568,12 +45664,18 @@
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects Deserialize/Validate derives; framework-specific body extraction",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/fw_validation.go","internal/custom/rust/fw_validation_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[validate(...)] attrs, .validate() calls, framework body extraction",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
@@ -45773,12 +45875,16 @@
             "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/diesel_seaorm_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects *_id columns in table! macro bodies as FK signals; joinable!() also captures FK relationships",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Diesel is synchronous and does not support lazy loading; eager joins via joinable!/load() only",
+            "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
             "status": "partial",
@@ -45796,7 +45902,10 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/diesel_seaorm_test.go"],
+            "notes": "Detects embed_migrations!(), run_pending_migrations(), impl MigrationHarness patterns",
+            "verified_at": "2026-05-30"
           }
         }
       }
@@ -45810,11 +45919,17 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go","internal/custom/rust/testdata/rbatis_models.rs"],
+            "notes": "Detects #[crud_table(table_name=...)] struct declarations as ORM models",
+            "verified_at": "2026-05-30"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Extracts table_name from #[crud_table(table_name=...)] attribute as schema table mapping",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -45837,12 +45952,18 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
+            "notes": "Detects #[py_sql(...)], #[sql(...)], #[html_sql] macro annotations on async functions",
+            "verified_at": "2026-05-30"
           }
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
+            "notes": "Detects table_meta! and rbatis::table_sync! migration macros",
+            "verified_at": "2026-05-30"
           }
         }
       }
@@ -45923,12 +46044,18 @@
             "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel_seaorm_test.go","internal/custom/rust/seaorm.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[sea_orm(belongs_to=..., from=..., to=...)] with explicit FK column references",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/diesel_seaorm_test.go","internal/custom/rust/seaorm.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects .find_related(), .find_linked(), LoaderTrait::load_many/load_one patterns",
+            "verified_at": "2026-05-30"
           },
           "relationship_extraction": {
             "status": "partial",
@@ -45967,8 +46094,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go","internal/custom/rust/testdata/sqlx_models.rs"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Detects #[derive(FromRow)] structs and Pool::connect() as schema-mapped models",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
@@ -45998,7 +46128,10 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
+            "notes": "Detects sqlx::migrate!(path).run() macro invocations and migration file references",
+            "verified_at": "2026-05-30"
           }
         }
       }
