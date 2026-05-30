@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 187 records · **C/C++**: 17 · **C#**: 15 · **elixir**: 9 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 14 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 13 · **scala**: 9 · **swift**: 1
+**Total**: 189 records · **C/C++**: 17 · **C#**: 15 · **elixir**: 9 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 14 · **lua**: 2 · **php**: 12 · **python**: 21 · **ruby**: 8 · **rust**: 13 · **scala**: 11 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -148,6 +148,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 1/16 | |
 | [scala](../by-language/scala.md) | [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟢 3/3 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/20 | 🟡 6/16 | |
 | [scala](../by-language/scala.md) | [Cask](../detail/lang.scala.framework.cask.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [scala](../by-language/scala.md) | [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [scala](../by-language/scala.md) | [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 9/9 | |
@@ -155,6 +156,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [scala](../by-language/scala.md) | [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
 | [scala](../by-language/scala.md) | [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 9/9 | |
 | [scala](../by-language/scala.md) | [http4s](../detail/lang.scala.framework.http4s.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 6/6 | |
+| [scala](../by-language/scala.md) | [tapir (endpoint DSL)](../detail/lang.scala.framework.tapir.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🟢 1/1 | 🟡 2/20 | 🟡 5/16 | |
 
 
 ## UI Frontend
