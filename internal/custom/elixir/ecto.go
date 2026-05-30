@@ -314,6 +314,9 @@ func (e *ectoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		}
 	}
 
+	// 9. Deep cast (DTO) + changeset validation extraction (issue #3470).
+	ectoValDeepExtract(src, file.Path, file.Language, add)
+
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
 }
