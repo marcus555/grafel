@@ -29671,8 +29671,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -30590,8 +30592,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -30843,8 +30847,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -31096,8 +31102,10 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
@@ -31349,26 +31357,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Exposed is a query DSL without lazy-loading; all reads are explicit eager queries"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -31380,7 +31396,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "verified_at": "2026-05-30"
           }
         }
       }
@@ -31452,26 +31470,36 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Ktorm supports lazy sequence loading; regex detects .references() FK bindings which imply eager joins"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -31483,7 +31511,8 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Ktorm has no built-in migration layer; migrations are handled externally (Flyway, Liquibase, etc.)"
           }
         }
       }
@@ -31552,26 +31581,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Room does not support lazy loading; all queries are explicit (suspend/LiveData/Flow)"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -31583,7 +31620,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "verified_at": "2026-05-30"
           }
         }
       }
@@ -31655,26 +31694,34 @@
             "verified_at": "2026-05-28"
           },
           "schema_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "foreign_key_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           },
           "lazy_loading_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "SQLDelight generates type-safe queries from .sq files; no ORM-style lazy loading"
           },
           "relationship_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "verified_at": "2026-05-30"
           }
         },
         "Queries": {
@@ -31686,7 +31733,9 @@
         },
         "Migrations": {
           "migration_parsing": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
+            "verified_at": "2026-05-30"
           }
         }
       }
