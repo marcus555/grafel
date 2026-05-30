@@ -33570,8 +33570,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -33793,8 +33794,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -34016,8 +34018,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -34239,8 +34242,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -34463,7 +34467,8 @@
           },
           "dead_code_detection": {
             "status": "partial",
-            "cites": ["internal/links/reachability.go","internal/substrate/entry_points_php.go"],
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -34685,8 +34690,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -34908,8 +34914,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -35131,8 +35138,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -35354,8 +35362,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -35577,8 +35586,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -35800,8 +35810,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
@@ -36023,8 +36034,9 @@
             "verified_at": "2026-05-28"
           },
           "dead_code_detection": {
-            "status": "full",
+            "status": "partial",
             "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_php.go"],
+            "notes": "Framework-agnostic reachability pass via php open-tag and public-function entry points; lifecycle hooks matched by name heuristic only — unified status across all PHP frameworks",
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
