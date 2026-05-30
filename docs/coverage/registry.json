@@ -47437,108 +47437,147 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/akka_http_pekko_http.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders, MeterRegistry usage. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry Tracer.start, Jaeger GlobalTracer, Kamon span patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -47563,8 +47602,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -47587,8 +47629,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -47596,8 +47641,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -47638,8 +47686,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -47658,114 +47709,159 @@
       "capabilities": {
         "Routing": {
           "endpoint_synthesis": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: Cask @cask.get/@cask.post routes synthesized into SCOPE.Operation/http_route entities with method+path.",
+            "verified_at": "2026-05-30"
           },
           "handler_attribution": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: Cask route annotation detected in context of the enclosing object/class — handler method attributed to route.",
+            "verified_at": "2026-05-30"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: @cask.get/@cask.post annotation routes with path extraction. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry/Kamon trace patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -47790,8 +47886,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -47814,8 +47913,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -47823,8 +47925,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -47865,8 +47970,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -47922,26 +48030,41 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
@@ -47988,16 +48111,25 @@
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer Counter.builder/Timer.builder, Kamon meter patterns. Cats Effect apps commonly use Micrometer or Kamon. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry Tracer/Span, Kamon tracing patterns. Cats Effect + natchez or otel4s is the idiomatic tracing stack. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -48022,8 +48154,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -48046,8 +48181,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -48055,8 +48193,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -48097,8 +48238,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -48127,108 +48271,156 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/finatra.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: Guice bind[T].to[Impl], @Provides methods, TwitterModule/AbstractModule declarations. Finatra/Lagom use Guice for DI. File-local.",
+            "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: @Inject constructor annotation (class Foo @Inject()(dep: T)) and field injection. File-local.",
+            "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: @Singleton class annotation detected as Guice singleton scope. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry/Kamon trace patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -48253,8 +48445,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -48277,8 +48472,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -48286,8 +48484,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -48328,8 +48529,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -48358,108 +48562,147 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/http4s.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry/Kamon trace patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -48484,8 +48727,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -48508,8 +48754,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -48517,8 +48766,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -48559,8 +48811,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -48589,108 +48844,156 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/lagom.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: Guice bind[T].to[Impl], @Provides methods, TwitterModule/AbstractModule declarations. Finatra/Lagom use Guice for DI. File-local.",
+            "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: @Inject constructor annotation (class Foo @Inject()(dep: T)) and field injection. File-local.",
+            "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: @Singleton class annotation detected as Guice singleton scope. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry/Kamon trace patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -48715,8 +49018,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -48739,8 +49045,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -48748,8 +49057,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -48790,8 +49102,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -48810,57 +49125,82 @@
       "capabilities": {
         "Structure": {
           "component_extraction": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework is a server-side MVC framework. Frontend component model (React/Vue-style) does not exist in Play. Controllers and Twirl templates are server-rendered, not component trees."
           },
           "hook_recognition": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework is a server-side MVC framework. React/lifecycle hooks do not exist. Application lifecycle hooks (ApplicationLifecycle) are covered by DI — not frontend hook model."
           }
         },
         "Data Flow": {
           "data_loaders": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework is a server-side MVC framework. Data loaders (Next.js getServerSideProps/React Server Components) are frontend SSR patterns absent in Play."
           }
         },
         "Server": {
           "hydration_boundaries": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework does not use hydration boundaries. Server-side rendering is via Twirl templates with no client hydration concept."
           },
           "server_components": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework has no React Server Components or similar framework feature. All rendering is server-side via Twirl."
           }
         },
         "Routing": {
           "route_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/play_framework.yaml"],
+            "notes": "Play conf/routes file parsed by rePlayRoute regex (GET/POST/etc path controller.action); controller class patterns in play_framework.yaml. File-local.",
+            "verified_at": "2026-05-30"
           },
           "router_pattern": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/play_framework.yaml"],
+            "notes": "Play reverse routing (routes.reverse*, Routes.) detected by rePlayRouterPattern. play_framework.yaml contains route file_conventions.",
+            "verified_at": "2026-05-30"
           }
         },
         "Build": {
           "static_generation": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework is request-driven. There is no static site generation mode; output is dynamic per request."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           }
         },
         "Lifecycle": {
           "state_setter_emission": {
-            "status": "missing"
+            "status": "not_applicable",
+            "notes": "Play Framework is a server-side MVC framework with no client-side state (useState/setState). State is managed via session cookies or database."
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -48885,8 +49225,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -48909,8 +49252,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -48918,8 +49264,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "partial",
@@ -48927,12 +49276,18 @@
             "verified_at": "2026-05-28"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala payload shapes sniffer handles Play JSON reads (Json.reads[T], Json.format[T]) and case class request bodies.",
+            "verified_at": "2026-05-30"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala payload shapes sniffer handles Play Ok(Json.toJson(...)), play.api.libs.json.Json.writes[T] patterns.",
+            "verified_at": "2026-05-30"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -48940,8 +49295,11 @@
             "verified_at": "2026-05-28"
           },
           "schema_drift_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Payload drift pass compares inferred request/response shapes across commits. Scala payload shapes sniffer provides the shape data for Play.",
+            "verified_at": "2026-05-30"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -48954,8 +49312,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -48984,108 +49345,147 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/scalatra.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "This framework has no built-in DI container. Akka-HTTP uses manual constructor injection; Cask is a minimalist library with no DI support; http4s uses functional effect composition (cats-effect Resource) not a DI container; Scalatra is a Sinatra-style servlet with no DI model."
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry/Kamon trace patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -49110,8 +49510,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -49134,8 +49537,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -49143,8 +49549,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -49185,8 +49594,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
@@ -49215,108 +49627,156 @@
             "verified_at": "2026-05-28"
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go","internal/engine/rules/scala/frameworks/zio.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific auth patterns (Akka-HTTP authenticateBasic/OAuth2, http4s AuthMiddleware, Scalatra ScentrySupport, Cask Authorization header, ZIO bearerAuth, Finatra @Authenticated, Lagom authenticated). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: case class with parameters detected as DTO (SCOPE.Type/dto). Scala uses case classes as request/response bodies idiomatically.",
+            "verified_at": "2026-05-30"
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: framework-specific validation patterns (entity(as[T]), jsonOf[T], params(), decode[T], @NotEmpty, MessageSerializer). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "custom_scala_frameworks extractor: framework-specific middleware (Akka-HTTP mapRequest/cors, http4s Middleware/Logger, Scalatra before/after, Cask Decorator, ZIO HttpMiddleware, Finatra SimpleFilter, Lagom CircuitBreaker). File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: ScalaTest (AnyFlatSpec/WordSpec/FunSuite), Specs2 (Specification), MUnit (CatsEffectSuite), Akka TestKit, http4s test suite, ZIO Test, Finatra EmbeddedTwitterServer detection. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: sealed trait → ADT, sealed abstract class, Scala 3 enum → SCOPE.Type/sealed_trait|enum. Captures Scala 2+3 ADT discriminant patterns.",
+            "verified_at": "2026-05-30"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: trait → SCOPE.Interface/trait, abstract class → SCOPE.Interface/abstract_class. Scala traits are the primary interface mechanism.",
+            "verified_at": "2026-05-30"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: type Alias = T → SCOPE.Type/type_alias; opaque type (Scala 3) → SCOPE.Type/opaque_type. Scala type aliases are pervasive in functional libraries.",
+            "verified_at": "2026-05-30"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_type_system extractor: case class, class, object → SCOPE.Type. File-local; cross-file type hierarchies not resolved.",
+            "verified_at": "2026-05-30"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: ZLayer.make[Env]/ZLayer.succeed bindings extracted as SCOPE.DI/di_binding. ZIO ZLayer is the idiomatic DI mechanism for ZIO-HTTP apps. File-local.",
+            "verified_at": "2026-05-30"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: .provide()/.provideLayer() call sites detected as ZLayer injection points. File-local.",
+            "verified_at": "2026-05-30"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/di.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_di extractor: typed val layer: ZLayer[R,E,A] declarations extracted as scoped bindings. ZLayer scoping (scoped/succeed/fromZIO) controls resource lifecycle. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           }
         },
         "AOP": {
           "advice_attribution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "aspect_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           },
           "pointcut_resolution": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "not_applicable",
+            "notes": "Scala HTTP frameworks do not use Spring AOP / AspectJ proxy model. AOP is a Java/Spring-specific concept. These frameworks use functional composition (Kleisli, ZIO layers, Akka behaviors) instead of aspect weaving."
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: SLF4J LoggerFactory, Akka actor logging, Play Logger, Cats Effect/ZIO log, logger.info/warn/error call sites. File-local.",
+            "verified_at": "2026-05-30"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: Micrometer/Kamon metric builders. File-local.",
+            "verified_at": "2026-05-30"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "custom_scala_frameworks extractor: OpenTelemetry/Kamon trace patterns. File-local.",
+            "verified_at": "2026-05-30"
           }
         },
         "Substrate": {
@@ -49341,8 +49801,11 @@
             "verified_at": "2026-05-28"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala def-use sniffer (RegisterDefUseSniffer('scala')) is registered in def_use_scala.go; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator patterns.",
+            "verified_at": "2026-05-30"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -49365,8 +49828,11 @@
             "verified_at": "2026-05-27"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic module-cycle pass uses IMPORTS edges emitted by per-language extractors; Scala import edges are emitted by the Scala extractor pipeline.",
+            "verified_at": "2026-05-30"
           },
           "mutation_effect": {
             "status": "partial",
@@ -49374,8 +49840,11 @@
             "verified_at": "2026-05-28"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic pure-function pass tags functions with no effect properties; Scala is a functional language with many pure functions (cats-effect IO, ZIO effects, case class methods). Especially apt for cats-effect, http4s, zio-http.",
+            "verified_at": "2026-05-30"
           },
           "reachability_analysis": {
             "status": "full",
@@ -49416,8 +49885,11 @@
             "verified_at": "2026-05-28"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern_scala.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Scala template-pattern sniffer recognises i18n (Messages/messagesApi), log-format (logger.info/warn/error), and SQL literal patterns in Scala source files.",
+            "verified_at": "2026-05-30"
           },
           "vulnerability_finding": {
             "status": "partial",
