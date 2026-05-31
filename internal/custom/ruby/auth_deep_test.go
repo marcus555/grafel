@@ -20,9 +20,9 @@ import (
 // extractAuth returns full EntityRecord slice from the ruby_auth extractor.
 func extractAuth(t *testing.T, path, src string) []types.EntityRecord {
 	t.Helper()
-	e, ok := extreg.Get("ruby_auth")
+	e, ok := extreg.Get("custom_ruby_auth")
 	if !ok {
-		t.Fatal("ruby_auth extractor not registered")
+		t.Fatal("custom_ruby_auth extractor not registered")
 	}
 	ents, err := e.Extract(context.Background(), extreg.FileInput{
 		Path: path, Language: "ruby", Content: []byte(src),

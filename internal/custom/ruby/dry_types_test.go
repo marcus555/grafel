@@ -9,7 +9,7 @@ import (
 
 func dryExtract(t *testing.T, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_dry_types", fi("types.rb", "ruby", src))
+	return extract(t, "custom_ruby_dry_types", fi("types.rb", "ruby", src))
 }
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@
 // patterns but does NOT perform cross-file dataflow, so all cells are set to
 // `partial`.  This is consistent with the observability and auth extractors.
 //
-// A single extractor key "ruby_validation" is registered; it runs on any Ruby
+// A single extractor key "custom_ruby_validation" is registered; it runs on any Ruby
 // file regardless of framework.
 //
 // Part of issue #3282.
@@ -35,14 +35,14 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_validation", &rubyValidationExtractor{})
+	extractor.Register("custom_ruby_validation", &rubyValidationExtractor{})
 }
 
 // rubyValidationExtractor detects validation and DTO-like patterns across Ruby
 // source files.
 type rubyValidationExtractor struct{}
 
-func (e *rubyValidationExtractor) Language() string { return "ruby_validation" }
+func (e *rubyValidationExtractor) Language() string { return "custom_ruby_validation" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

@@ -25,7 +25,7 @@ class User
     private string $email;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("User.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("User.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "username") {
 		t.Error("expected username column schema")
 	}
@@ -46,7 +46,7 @@ class Order
     private Collection $items;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Order.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Order.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "relation:ManyToOne") {
 		t.Error("expected ManyToOne relation component")
 	}
@@ -65,7 +65,7 @@ class OrderItem
     private Order $order;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("OrderItem.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("OrderItem.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "join_column") {
 		t.Error("expected join_column FK entity")
 	}
@@ -80,7 +80,7 @@ class Product
     private Collection $reviews;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Product.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Product.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "fetch:LAZY") {
 		t.Error("expected fetch:LAZY pattern entity")
 	}
@@ -103,7 +103,7 @@ class Version20230101120000 extends AbstractMigration
     }
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Version20230101120000.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Version20230101120000.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Operation", "Version20230101120000") {
 		t.Error("expected migration class entity")
 	}
@@ -117,7 +117,7 @@ class Version20230101120000 extends AbstractMigration
 
 func TestDoctrineNoMatch(t *testing.T) {
 	src := `<?php echo "hello doctrine";`
-	ents := extract(t, "php_doctrine_orm_data", fi("plain.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
@@ -153,7 +153,7 @@ class User
     private bool $active;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("User.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("User.php", "php", src))
 
 	// Entity class name must be emitted as SCOPE.Schema/entity.
 	if !containsEntity(ents, "SCOPE.Schema", "User") {
@@ -189,7 +189,7 @@ class Post
     private $body;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Post.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Post.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Schema", "title") {
 		t.Error("expected title column from @ORM\\Column annotation")
@@ -219,7 +219,7 @@ class Post
     private ?Profile $profile;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Post.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Post.php", "php", src))
 
 	// All four relation types must produce SCOPE.Component/relation entities.
 	for _, relType := range []string{"OneToMany", "ManyToOne", "ManyToMany", "OneToOne"} {
@@ -245,7 +245,7 @@ class Order
     private ?Address $shippingAddress;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Order.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Order.php", "php", src))
 
 	// FK entities are named "fk:<column_name>" when name= is present.
 	if !containsEntity(ents, "SCOPE.Schema", "fk:customer_id") {
@@ -268,7 +268,7 @@ class Article
     private Collection $tags;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Article.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Article.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Schema", "join_table") {
 		t.Error("expected join_table foreign_key entity from #[ORM\\JoinTable]")
@@ -289,7 +289,7 @@ class Invoice
     private Collection $tags;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Invoice.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Invoice.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Pattern", "fetch:EAGER") {
 		t.Error("expected fetch:EAGER lazy_loading pattern entity")
@@ -320,7 +320,7 @@ class Version20240115000000 extends AbstractMigration
     }
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Version20240115000000.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Version20240115000000.php", "php", src))
 
 	// Migration class and methods.
 	if !containsEntity(ents, "SCOPE.Operation", "Version20240115000000") {
@@ -384,7 +384,7 @@ class Order
     private Collection $coupons;
 }
 `
-	ents := extract(t, "php_doctrine_orm_data", fi("Order.php", "php", src))
+	ents := extract(t, "custom_php_doctrine_orm_data", fi("Order.php", "php", src))
 
 	// Entity class.
 	if !containsEntity(ents, "SCOPE.Schema", "Order") {
@@ -441,7 +441,7 @@ class Post extends Model
     ];
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Post.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Post.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "title") {
 		t.Error("expected title column schema from fillable")
 	}
@@ -464,7 +464,7 @@ class Comment extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Comment.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Comment.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "post") {
 		t.Error("expected post belongsTo relation")
 	}
@@ -493,7 +493,7 @@ class CreatePostsTable extends Migration
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("2023_01_01_create_posts_table.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("2023_01_01_create_posts_table.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Operation", "create:posts") {
 		t.Error("expected create:posts migration entity")
 	}
@@ -512,7 +512,7 @@ class User extends Model
     protected $with = ['profile', 'roles'];
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("User.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("User.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "eager_with") {
 		t.Error("expected eager_with lazy/eager loading pattern")
 	}
@@ -540,7 +540,7 @@ class User extends Model
     ];
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("app/Models/User.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("app/Models/User.php", "php", src))
 
 	// model class entity
 	if !containsEntity(ents, "SCOPE.Schema", "User") {
@@ -590,7 +590,7 @@ class Post extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Post.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Post.php", "php", src))
 
 	// Each relationship method must produce a SCOPE.Component/relation entity.
 	for _, rel := range []string{"author", "comments", "thumbnail", "tags", "history"} {
@@ -619,7 +619,7 @@ class Post extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Polymorphic.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Polymorphic.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Component", "imageable") {
 		t.Error("expected imageable morphTo relation entity")
@@ -645,7 +645,7 @@ class Comment extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Comment.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Comment.php", "php", src))
 
 	// Conventional FKs: post → post_id; postAuthor → post_author_id
 	if !containsEntity(ents, "SCOPE.Schema", "fk:post_id") {
@@ -668,7 +668,7 @@ class Profile extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Profile.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Profile.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Schema", "fk:owner_id") {
 		t.Error("expected fk:owner_id from explicit 2nd arg in belongsTo")
@@ -701,7 +701,7 @@ return new class extends Migration
     }
 };
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("database/migrations/2024_create_posts.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("database/migrations/2024_create_posts.php", "php", src))
 
 	// Migration operation entities
 	if !containsEntity(ents, "SCOPE.Operation", "create:posts") {
@@ -740,7 +740,7 @@ class Article extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Article.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Article.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Pattern", "lazy:default") {
 		t.Error("expected lazy:default pattern — Eloquent is lazy by default when no $with is set")
@@ -780,7 +780,7 @@ class Post extends Model
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("Post.php", "php", src2))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("Post.php", "php", src2))
 
 	if !containsEntity(ents, "SCOPE.Pattern", "eager_load:with") {
 		t.Error("expected eager_load:with entity from ->with() call")
@@ -816,7 +816,7 @@ class AddStatusToOrdersTable extends Migration
     }
 }
 `
-	ents := extract(t, "php_eloquent_orm_data", fi("2024_add_status_to_orders.php", "php", src))
+	ents := extract(t, "custom_php_eloquent_orm_data", fi("2024_add_status_to_orders.php", "php", src))
 
 	if !containsEntity(ents, "SCOPE.Operation", "alter:orders") {
 		t.Error("expected alter:orders from Schema::table")
@@ -856,7 +856,7 @@ class User
     private string $name;
 }
 `
-	ents := extract(t, "php_cycleorm_data", fi("User.php", "php", src))
+	ents := extract(t, "custom_php_cycleorm_data", fi("User.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "User") {
 		t.Error("expected User entity model")
 	}
@@ -883,7 +883,7 @@ class Post
     private User $author;
 }
 `
-	ents := extract(t, "php_cycleorm_data", fi("Post.php", "php", src))
+	ents := extract(t, "custom_php_cycleorm_data", fi("Post.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "relation:HasMany") {
 		t.Error("expected HasMany relation")
 	}
@@ -902,7 +902,7 @@ class UserRepository
     }
 }
 `
-	ents := extract(t, "php_cycleorm_data", fi("UserRepository.php", "php", src))
+	ents := extract(t, "custom_php_cycleorm_data", fi("UserRepository.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Operation", "query:findOne") {
 		t.Error("expected query:findOne entity")
 	}
@@ -923,7 +923,7 @@ class UserTableMap extends TableMap
     const COL_EMAIL = 'user.email';
 }
 `
-	ents := extract(t, "php_propel_orm_data", fi("UserTableMap.php", "php", src))
+	ents := extract(t, "custom_php_propel_orm_data", fi("UserTableMap.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "UserTableMap") {
 		t.Error("expected UserTableMap schema entity")
 	}
@@ -943,7 +943,7 @@ class BookTableMap extends TableMap
     }
 }
 `
-	ents := extract(t, "php_propel_orm_data", fi("BookTableMap.php", "php", src))
+	ents := extract(t, "custom_php_propel_orm_data", fi("BookTableMap.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "relation:Author") {
 		t.Error("expected relation:Author component")
 	}
@@ -960,7 +960,7 @@ $users = UserQuery::create()
 
 $book = BookQuery::create()->findOne();
 `
-	ents := extract(t, "php_propel_orm_data", fi("list.php", "php", src))
+	ents := extract(t, "custom_php_propel_orm_data", fi("list.php", "php", src))
 	if len(ents) == 0 {
 		t.Error("expected Propel query entities from UserQuery::create()")
 	}
@@ -978,7 +978,7 @@ $product->name = 'Widget';
 $product->price = 9.99;
 R::store($product);
 `
-	ents := extract(t, "php_redbeanphp_data", fi("store.php", "php", src))
+	ents := extract(t, "custom_php_redbeanphp_data", fi("store.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "product") {
 		t.Error("expected product table schema from R::dispense")
 	}
@@ -989,7 +989,7 @@ func TestRedBeanRelation(t *testing.T) {
 R::associate($product, $category);
 $related = R::related($product, 'category');
 `
-	ents := extract(t, "php_redbeanphp_data", fi("relate.php", "php", src))
+	ents := extract(t, "custom_php_redbeanphp_data", fi("relate.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "relation:associate") {
 		t.Error("expected relation:associate component")
 	}
@@ -1003,7 +1003,7 @@ func TestRedBeanFind(t *testing.T) {
 $products = R::find('product', ' price > ? ', [10]);
 $user = R::findOne('user', ' email = ? ', [$email]);
 `
-	ents := extract(t, "php_redbeanphp_data", fi("query.php", "php", src))
+	ents := extract(t, "custom_php_redbeanphp_data", fi("query.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "product") {
 		t.Error("expected product schema from R::find")
 	}
@@ -1014,7 +1014,7 @@ $user = R::findOne('user', ' email = ? ', [$email]);
 
 func TestRedBeanNoMatch(t *testing.T) {
 	src := `<?php class Plain { public function run() {} }`
-	ents := extract(t, "php_redbeanphp_data", fi("Plain.php", "php", src))
+	ents := extract(t, "custom_php_redbeanphp_data", fi("Plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
@@ -1035,7 +1035,7 @@ $pdo->exec("
     )
 ");
 `
-	ents := extract(t, "php_sql_driver_schema", fi("setup.php", "php", src))
+	ents := extract(t, "custom_php_sql_driver_schema", fi("setup.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "users") {
 		t.Error("expected users table schema")
 	}
@@ -1053,7 +1053,7 @@ $db->exec('CREATE TABLE orders (
     status TEXT DEFAULT "pending"
 )');
 `
-	ents := extract(t, "php_sql_driver_schema", fi("init.php", "php", src))
+	ents := extract(t, "custom_php_sql_driver_schema", fi("init.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "orders") {
 		t.Error("expected orders table schema")
 	}
@@ -1061,7 +1061,7 @@ $db->exec('CREATE TABLE orders (
 
 func TestPHPSQLDriverNoMatch(t *testing.T) {
 	src := `<?php echo "no driver here";`
-	ents := extract(t, "php_sql_driver_schema", fi("plain.php", "php", src))
+	ents := extract(t, "custom_php_sql_driver_schema", fi("plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
@@ -1087,7 +1087,7 @@ func TestBehatFeature(t *testing.T) {
     When I fill in "email" with "bad@example.com"
     Then I should see "Invalid credentials"
 `
-	ents := extract(t, "php_behat_test", fi("login.feature", "gherkin", src))
+	ents := extract(t, "custom_php_behat_test", fi("login.feature", "gherkin", src))
 	if !containsEntity(ents, "SCOPE.Operation", "feature:User login") {
 		t.Error("expected feature entity")
 	}
@@ -1120,7 +1120,7 @@ class FeatureContext implements Context
     public function iFillIn($field, $value) {}
 }
 `
-	ents := extract(t, "php_behat_test", fi("FeatureContext.php", "php", src))
+	ents := extract(t, "custom_php_behat_test", fi("FeatureContext.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "FeatureContext") {
 		t.Error("expected FeatureContext context class entity")
 	}
@@ -1128,7 +1128,7 @@ class FeatureContext implements Context
 
 func TestBehatNoMatch(t *testing.T) {
 	src := `<?php class NoBehatHere {}`
-	ents := extract(t, "php_behat_test", fi("plain.php", "php", src))
+	ents := extract(t, "custom_php_behat_test", fi("plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
@@ -1158,7 +1158,7 @@ class UserLoginCest
     }
 }
 `
-	ents := extract(t, "php_codeception_test", fi("UserLoginCest.php", "php", src))
+	ents := extract(t, "custom_php_codeception_test", fi("UserLoginCest.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "UserLoginCest") {
 		t.Error("expected UserLoginCest test suite")
 	}
@@ -1184,7 +1184,7 @@ class ApiCest
     }
 }
 `
-	ents := extract(t, "php_codeception_test", fi("ApiCest.php", "php", src))
+	ents := extract(t, "custom_php_codeception_test", fi("ApiCest.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Component", "Codeception\\Module\\Laravel") {
 		t.Error("expected Laravel module dependency")
 	}
@@ -1192,7 +1192,7 @@ class ApiCest
 
 func TestCodeceptionNoMatch(t *testing.T) {
 	src := `<?php class NoCept {}`
-	ents := extract(t, "php_codeception_test", fi("plain.php", "php", src))
+	ents := extract(t, "custom_php_codeception_test", fi("plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
@@ -1221,7 +1221,7 @@ describe('Authentication', function () {
     });
 });
 `
-	ents := extract(t, "php_pest_test", fi("UserTest.php", "php", src))
+	ents := extract(t, "custom_php_pest_test", fi("UserTest.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Operation", "can create a user") {
 		t.Error("expected 'can create a user' test case")
 	}
@@ -1247,7 +1247,7 @@ it('validates emails', function (string $email) {
     expect($email)->toBeEmail();
 })->with('emails');
 `
-	ents := extract(t, "php_pest_test", fi("EmailTest.php", "php", src))
+	ents := extract(t, "custom_php_pest_test", fi("EmailTest.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Schema", "dataset:emails") {
 		t.Error("expected dataset:emails entity")
 	}
@@ -1265,7 +1265,7 @@ afterEach(function () {
     // cleanup
 });
 `
-	ents := extract(t, "php_pest_test", fi("HookTest.php", "php", src))
+	ents := extract(t, "custom_php_pest_test", fi("HookTest.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "hook:beforeEach") {
 		t.Error("expected hook:beforeEach pattern")
 	}
@@ -1276,7 +1276,7 @@ afterEach(function () {
 
 func TestPestNoMatch(t *testing.T) {
 	src := `<?php echo "no pest here";`
-	ents := extract(t, "php_pest_test", fi("plain.php", "php", src))
+	ents := extract(t, "custom_php_pest_test", fi("plain.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}

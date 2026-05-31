@@ -15,7 +15,7 @@ Rails.application.routes.draw do
   devise_for :admins, controllers: { sessions: 'admins/sessions' }
 end
 `
-	ents := extract(t, "ruby_auth", fi("config/routes.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("config/routes.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "devise_for:users") {
 		t.Error("expected devise_for:users entity")
 	}
@@ -30,7 +30,7 @@ class ApplicationController < ActionController::Base
   before_action :authenticate_user!
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/controllers/application_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/controllers/application_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "authenticate_user!") {
 		t.Error("expected authenticate_user! entity")
 	}
@@ -43,7 +43,7 @@ class User < ApplicationRecord
          :recoverable, :rememberable, :validatable
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/models/user.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/models/user.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "devise_modules") {
 		t.Error("expected devise_modules entity")
 	}
@@ -55,7 +55,7 @@ class PostsController < ApplicationController
   before_filter :require_login
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/controllers/posts_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/controllers/posts_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "require_login") {
 		t.Error("expected require_login entity")
 	}
@@ -77,7 +77,7 @@ def decode_token(token)
   JWT.decode(token, Rails.application.secret_key_base, true, algorithm: 'HS256')
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/lib/jwt_helper.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/lib/jwt_helper.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "JWT.encode") {
 		t.Error("expected JWT.encode entity")
 	}
@@ -88,7 +88,7 @@ end
 
 func TestRubyAuthJWTRequireOnly(t *testing.T) {
 	src := `require 'jwt'`
-	ents := extract(t, "ruby_auth", fi("lib/auth.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("lib/auth.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "jwt") {
 		t.Error("expected jwt require entity")
 	}
@@ -107,7 +107,7 @@ use Warden::Manager do |manager|
   }
 end
 `
-	ents := extract(t, "ruby_auth", fi("config.ru", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("config.ru", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Warden::Manager") {
 		t.Error("expected Warden::Manager entity")
 	}
@@ -119,7 +119,7 @@ def current_user
   @current_user ||= env['warden'].user
 end
 `
-	ents := extract(t, "ruby_auth", fi("lib/auth_helper.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("lib/auth_helper.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "env.warden") {
 		t.Error("expected env.warden entity")
 	}
@@ -138,7 +138,7 @@ class ArticlesController < ApplicationController
   end
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/controllers/articles_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/controllers/articles_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "authorize!") {
 		t.Error("expected authorize! entity")
 	}
@@ -150,7 +150,7 @@ class PostsController < ApplicationController
   load_and_authorize_resource
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/controllers/posts_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/controllers/posts_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "load_and_authorize_resource") {
 		t.Error("expected load_and_authorize_resource entity")
 	}
@@ -167,7 +167,7 @@ class Ability
   end
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/models/ability.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/models/ability.rb", "ruby", src))
 	if len(ents) == 0 {
 		t.Error("expected CanCanCan ability entities")
 	}
@@ -193,7 +193,7 @@ class ArticlesController < ApplicationController
   end
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/controllers/articles_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/controllers/articles_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "authorize") {
 		t.Error("expected Pundit authorize entity")
 	}
@@ -209,7 +209,7 @@ class ArticlePolicy < ApplicationPolicy
   end
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/policies/article_policy.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/policies/article_policy.rb", "ruby", src))
 	if len(ents) == 0 {
 		t.Error("expected at least one Pundit entity")
 	}
@@ -229,7 +229,7 @@ class ApiController < ApplicationController
   end
 end
 `
-	ents := extract(t, "ruby_auth", fi("app/controllers/api_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("app/controllers/api_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "doorkeeper_authorize!") {
 		t.Error("expected doorkeeper_authorize! entity")
 	}
@@ -248,7 +248,7 @@ use Rack::Auth::Basic, "Protected Area" do |username, password|
   )
 end
 `
-	ents := extract(t, "ruby_auth", fi("config.ru", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("config.ru", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Rack::Auth::Basic") {
 		t.Error("expected Rack::Auth::Basic entity")
 	}
@@ -261,7 +261,7 @@ Rails.application.config.middleware.use OmniAuth::Builder do
   provider :google_oauth2, ENV['GOOGLE_ID'], ENV['GOOGLE_SECRET']
 end
 `
-	ents := extract(t, "ruby_auth", fi("config/initializers/omniauth.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("config/initializers/omniauth.rb", "ruby", src))
 	if len(ents) == 0 {
 		t.Error("expected OmniAuth entities")
 	}
@@ -279,7 +279,7 @@ class Calculator
   end
 end
 `
-	ents := extract(t, "ruby_auth", fi("lib/calculator.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_auth", fi("lib/calculator.rb", "ruby", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}

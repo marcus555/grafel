@@ -9,7 +9,7 @@ import (
 
 func sinatraDeepExtract(t *testing.T, path, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_sinatra_deep", fi(path, "ruby", src))
+	return extract(t, "custom_ruby_sinatra_deep", fi(path, "ruby", src))
 }
 
 // ---------------------------------------------------------------------------

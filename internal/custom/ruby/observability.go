@@ -16,7 +16,7 @@
 // extractors (internal/custom/java/observability.go,
 // internal/custom/python/observability.go).
 //
-// A single extractor key "ruby_observability" is registered; the extractor
+// A single extractor key "custom_ruby_observability" is registered; the extractor
 // runs on any Ruby file regardless of framework.
 //
 // Part of issues #3282, #3343.
@@ -35,14 +35,14 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_observability", &rubyObservabilityExtractor{})
+	extractor.Register("custom_ruby_observability", &rubyObservabilityExtractor{})
 }
 
 // rubyObservabilityExtractor detects log, metric, and trace instrumentation
 // across Ruby source files.
 type rubyObservabilityExtractor struct{}
 
-func (e *rubyObservabilityExtractor) Language() string { return "ruby_observability" }
+func (e *rubyObservabilityExtractor) Language() string { return "custom_ruby_observability" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

@@ -24,9 +24,9 @@ import (
 )
 
 func init() {
-	extractor.Register("php_behat_test", &behatTestExtractor{})
-	extractor.Register("php_codeception_test", &codeceptionTestExtractor{})
-	extractor.Register("php_pest_test", &pestTestExtractor{})
+	extractor.Register("custom_php_behat_test", &behatTestExtractor{})
+	extractor.Register("custom_php_codeception_test", &codeceptionTestExtractor{})
+	extractor.Register("custom_php_pest_test", &pestTestExtractor{})
 }
 
 // ============================================================================
@@ -35,7 +35,7 @@ func init() {
 
 type behatTestExtractor struct{}
 
-func (e *behatTestExtractor) Language() string { return "php_behat_test" }
+func (e *behatTestExtractor) Language() string { return "custom_php_behat_test" }
 
 var (
 	// behatFeatureRe matches "Feature: <name>" lines in .feature files
@@ -153,7 +153,7 @@ func (e *behatTestExtractor) Extract(ctx context.Context, file extractor.FileInp
 
 type codeceptionTestExtractor struct{}
 
-func (e *codeceptionTestExtractor) Language() string { return "php_codeception_test" }
+func (e *codeceptionTestExtractor) Language() string { return "custom_php_codeception_test" }
 
 var (
 	// codeceptionCestRe detects Cest class declarations
@@ -270,7 +270,7 @@ func (e *codeceptionTestExtractor) Extract(ctx context.Context, file extractor.F
 
 type pestTestExtractor struct{}
 
-func (e *pestTestExtractor) Language() string { return "php_pest_test" }
+func (e *pestTestExtractor) Language() string { return "custom_php_pest_test" }
 
 var (
 	// pestTestRe matches it('...') / it("...") or test('...') / test("...") declarations.

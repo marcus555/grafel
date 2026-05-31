@@ -36,7 +36,7 @@ class PostsController < ApplicationController
   end
 end
 `
-	ents := extract(t, "ruby_observability", fi("app/controllers/posts_controller.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("app/controllers/posts_controller.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Rails.logger.info") {
 		t.Error("expected Rails.logger.info entity")
 	}
@@ -51,7 +51,7 @@ require 'logger'
 logger = Logger.new(STDOUT)
 logger.info "Application started"
 `
-	ents := extract(t, "ruby_observability", fi("config/initializer.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/initializer.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Logger.new") {
 		t.Error("expected Logger.new entity")
 	}
@@ -62,7 +62,7 @@ func TestRubyObsSemanticLogger(t *testing.T) {
 require 'semantic_logger'
 SemanticLogger.add_appender(file_name: 'development.log', formatter: :color)
 `
-	ents := extract(t, "ruby_observability", fi("config/initializer.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/initializer.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "SemanticLogger") {
 		t.Error("expected SemanticLogger entity")
 	}
@@ -70,7 +70,7 @@ SemanticLogger.add_appender(file_name: 'development.log', formatter: :color)
 
 func TestRubyObsLoggerRequireOnly(t *testing.T) {
 	src := `require 'logger'`
-	ents := extract(t, "ruby_observability", fi("lib/app.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("lib/app.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "logger") {
 		t.Error("expected logger require entity")
 	}
@@ -87,7 +87,7 @@ prometheus = Prometheus::Client.registry
 counter = Prometheus::Client::Counter.new(:http_requests, docstring: 'A counter')
 gauge = Prometheus::Client::Gauge.new(:cpu_usage, docstring: 'CPU gauge')
 `
-	ents := extract(t, "ruby_observability", fi("lib/metrics.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("lib/metrics.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Prometheus::Client::Counter") {
 		t.Error("expected Prometheus::Client::Counter entity")
 	}
@@ -103,7 +103,7 @@ statsd = Datadog::Statsd.new('localhost', 8125)
 statsd.increment('page.views', tags: ['page:home'])
 statsd.gauge('account.balance', 1000.0)
 `
-	ents := extract(t, "ruby_observability", fi("lib/metrics.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("lib/metrics.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Datadog::Statsd.new") {
 		t.Error("expected Datadog::Statsd.new entity")
 	}
@@ -115,7 +115,7 @@ require 'yabeda'
 Yabeda.counter(:http_requests_total, comment: "Total HTTP requests")
 Yabeda.histogram(:request_duration, comment: "Duration", buckets: [0.1, 0.5, 1.0])
 `
-	ents := extract(t, "ruby_observability", fi("config/metrics.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/metrics.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Yabeda.counter") {
 		t.Error("expected Yabeda.counter entity")
 	}
@@ -129,7 +129,7 @@ func TestRubyObsStatsDRuby(t *testing.T) {
 StatsD.measure('request.time') { do_work }
 StatsD.increment('request.count')
 `
-	ents := extract(t, "ruby_observability", fi("lib/tracking.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("lib/tracking.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "StatsD.measure") {
 		t.Error("expected StatsD.measure entity")
 	}
@@ -153,7 +153,7 @@ tracer.in_span("process_order") do |span|
   span.set_attribute('order.id', order_id)
 end
 `
-	ents := extract(t, "ruby_observability", fi("config/initializer.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/initializer.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "process_order") {
 		t.Error("expected process_order trace_span entity from in_span")
 	}
@@ -169,7 +169,7 @@ Datadog.configure do |c|
   c.service = 'my-service'
 end
 `
-	ents := extract(t, "ruby_observability", fi("config/ddtrace.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/ddtrace.rb", "ruby", src))
 	if len(ents) == 0 {
 		t.Error("expected at least one trace entity from ddtrace")
 	}
@@ -182,7 +182,7 @@ Skylight.instrument(title: "perform_query") do
   run_query
 end
 `
-	ents := extract(t, "ruby_observability", fi("lib/query.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("lib/query.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Skylight.instrument") {
 		t.Error("expected Skylight.instrument entity")
 	}
@@ -195,7 +195,7 @@ OpenTracing.start_active_span('operation_name') do |scope|
   scope.span.set_tag('user', user_id)
 end
 `
-	ents := extract(t, "ruby_observability", fi("lib/tracing.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("lib/tracing.rb", "ruby", src))
 	if len(ents) == 0 {
 		t.Error("expected at least one entity from opentracing")
 	}
@@ -215,7 +215,7 @@ class ApplicationController < ActionController::Base
   end
 end
 `
-	ents := extractFull(t, "ruby_observability", fi("app/controllers/application_controller.rb", "ruby", src))
+	ents := extractFull(t, "custom_ruby_observability", fi("app/controllers/application_controller.rb", "ruby", src))
 	found := false
 	for _, e := range ents {
 		if e.Properties["kind"] == "tagged_block" && e.Properties["library"] == "rails_tagged_logging" {
@@ -234,7 +234,7 @@ require 'active_support/tagged_logging'
 logger = ActiveSupport::TaggedLogging.new(Logger.new(STDOUT))
 logger.tagged("BCX") { logger.info "Stuff" }
 `
-	ents := extract(t, "ruby_observability", fi("config/application.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/application.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "ActiveSupport::TaggedLogging") {
 		t.Error("expected ActiveSupport::TaggedLogging entity")
 	}
@@ -248,7 +248,7 @@ Rails.application.configure do
   config.lograge.formatter = Lograge::Formatters::Json.new
 end
 `
-	ents := extractFull(t, "ruby_observability", fi("config/initializers/lograge.rb", "ruby", src))
+	ents := extractFull(t, "custom_ruby_observability", fi("config/initializers/lograge.rb", "ruby", src))
 	// Expect at least the require entity or config entity
 	found := false
 	for _, e := range ents {
@@ -278,7 +278,7 @@ Yabeda.configure do
   end
 end
 `
-	ents := extract(t, "ruby_observability", fi("config/initializers/yabeda.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("config/initializers/yabeda.rb", "ruby", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Yabeda.configure") {
 		t.Error("expected Yabeda.configure entity with kind=configure_block")
 	}
@@ -298,7 +298,7 @@ class OrderService
   end
 end
 `
-	ents := extractFull(t, "ruby_observability", fi("app/services/order_service.rb", "ruby", src))
+	ents := extractFull(t, "custom_ruby_observability", fi("app/services/order_service.rb", "ruby", src))
 	found := false
 	for _, e := range ents {
 		if e.Name == "process_order.order_service" {
@@ -325,7 +325,7 @@ ActiveSupport::Notifications.subscribe("sql.active_record") do |name, start, fin
   Rails.logger.debug "SQL: #{payload[:sql]}"
 end
 `
-	ents := extractFull(t, "ruby_observability", fi("config/initializers/notifications.rb", "ruby", src))
+	ents := extractFull(t, "custom_ruby_observability", fi("config/initializers/notifications.rb", "ruby", src))
 	found := false
 	for _, e := range ents {
 		if e.Name == "sql.active_record" {
@@ -350,7 +350,7 @@ class PaymentController < ApplicationController
   end
 end
 `
-	ents := extractFull(t, "ruby_observability", fi("app/controllers/payment_controller.rb", "ruby", src))
+	ents := extractFull(t, "custom_ruby_observability", fi("app/controllers/payment_controller.rb", "ruby", src))
 	found := false
 	for _, e := range ents {
 		if e.Name == "Rails.logger.error" {
@@ -380,7 +380,7 @@ class User
   end
 end
 `
-	ents := extract(t, "ruby_observability", fi("app/models/user.rb", "ruby", src))
+	ents := extract(t, "custom_ruby_observability", fi("app/models/user.rb", "ruby", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}

@@ -24,9 +24,9 @@ import (
 
 func grapeDeepExtract(t *testing.T, path, src string) []types.EntityRecord {
 	t.Helper()
-	e, ok := extreg.Get("ruby_grape_deep")
+	e, ok := extreg.Get("custom_ruby_grape_deep")
 	if !ok {
-		t.Fatal("ruby_grape_deep extractor not registered")
+		t.Fatal("custom_ruby_grape_deep extractor not registered")
 	}
 	ents, err := e.Extract(context.Background(), extreg.FileInput{
 		Path: path, Language: "ruby", Content: []byte(src),

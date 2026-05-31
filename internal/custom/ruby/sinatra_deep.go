@@ -44,12 +44,12 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_sinatra_deep", &sinatraDeepExtractor{})
+	extractor.Register("custom_ruby_sinatra_deep", &sinatraDeepExtractor{})
 }
 
 type sinatraDeepExtractor struct{}
 
-func (e *sinatraDeepExtractor) Language() string { return "ruby_sinatra_deep" }
+func (e *sinatraDeepExtractor) Language() string { return "custom_ruby_sinatra_deep" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes — Sinatra deep
