@@ -557,3 +557,68 @@ function f() {
 		t.Fatalf("stage order = %v, want %v (nested/string commas leaked)", got, want)
 	}
 }
+
+// CORRELATED $lookup (`from` + `let` + sub-`pipeline` + `as`, NO
+// localField/foreignField) in a variable-bound pipeline. The nested
+// `pipeline: [...]` array + `let: {...}` object inside each stage must not break
+// the stage split, and `from` must be extracted regardless of the other keys
+// present. Shares the splitter/parser fix with the Python pass (benefits
+// NestJS). Asserts the two specific from-collections + the `as` aliases + the
+// preserved stage order — NOT len>0.
+func TestMongoAgg_VariableBound_CorrelatedLookups(t *testing.T) {
+	src := `
+const mongoose = require('mongoose');
+async function joined() {
+  const pipeline = [
+    { $match: { active: true } },
+    { $lookup: {
+        from: 'inspection_groups',
+        let: { gid: '$group_id' },
+        pipeline: [ { $match: { $expr: { $eq: ['$_id', '$$gid'] } } } ],
+        as: 'inspections_group'
+    } },
+    { $unwind: { path: '$inspections_group', preserveNullAndEmptyArrays: true } },
+    { $lookup: {
+        from: 'm_devices',
+        let: { did: '$device_id' },
+        pipeline: [ { $match: { $expr: { $eq: ['$_id', '$$did'] } } } ],
+        as: 'device'
+    } },
+  ];
+  return Inspection.aggregate(pipeline);
+}
+`
+	ents, rels := runMongoAgg(t, src)
+
+	// Stage order preserved across the nested sub-pipelines.
+	got := stageSubtypesInOrder(ents)
+	want := []string{"$match", "$lookup", "$unwind", "$lookup"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("stage order = %v, want %v (correlated nesting broke split)", got, want)
+	}
+
+	// Two JOINS_COLLECTION edges to the SPECIFIC correlated from-collections.
+	for _, to := range []string{"Inspection_group", "M_device"} {
+		j := findJoinTo(rels, to)
+		if j == nil {
+			t.Fatalf("expected JOINS_COLLECTION edge to Class:%s; rels=%+v", to, rels)
+		}
+		if j.FromID != "Class:Inspection" {
+			t.Errorf("join to %s from = %q, want Class:Inspection", to, j.FromID)
+		}
+		if j.Properties["stage"] != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", to, j.Properties["stage"])
+		}
+	}
+	if len(rels) != 2 {
+		t.Fatalf("expected exactly 2 correlated join edges, got %d: %+v", len(rels), rels)
+	}
+	// `as` alias captured for the correlated form (no local/foreign fields).
+	jg := findJoinTo(rels, "Inspection_group")
+	if jg.Properties["as"] != "inspections_group" {
+		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties["as"])
+	}
+	if jg.Properties["local_field"] != "" || jg.Properties["foreign_field"] != "" {
+		t.Errorf("correlated join must not carry local/foreign fields: %+v", jg.Properties)
+	}
+}

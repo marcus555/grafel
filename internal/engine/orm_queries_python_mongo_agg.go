@@ -81,6 +81,32 @@ var mongoAggPyGetCollRe = regexp.MustCompile(
 	`get_collection\(\s*['"]([a-zA-Z_][\w$.]*)['"]`,
 )
 
+// mongoAggPyGetCollAnyArgRe recovers the FIRST argument of a `get_collection(...)`
+// call whether it is a quoted string OR a bare constant identifier
+// (`get_collection(INSPECTIONS)` — the legacy idiom binds a module-level
+// collection-name constant). Group 1 is the quoted name, group 2 the bare
+// identifier; exactly one is set. Used when following a receiver variable's
+// binding (`coll = ...get_collection(X)`), where the constant name is the best
+// available collection token.
+var mongoAggPyGetCollAnyArgRe = regexp.MustCompile(
+	`get_collection\(\s*(?:['"]([a-zA-Z_][\w$.]*)['"]|([A-Za-z_][\w]*))`,
+)
+
+// mongoAggPyCollVarBindRe matches a same-function binding of a collection
+// variable: `<ident> = <rhs>` at the start of a (possibly indented) line. The
+// RHS is recovered separately and inspected for a get_collection / subscript /
+// dotted collection shape.
+var mongoAggPyCollVarBindReCache = map[string]*regexp.Regexp{}
+
+func mongoAggPyCollVarBindRe(ident string) *regexp.Regexp {
+	if re, ok := mongoAggPyCollVarBindReCache[ident]; ok {
+		return re
+	}
+	re := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(ident) + `\s*=\s*(.+)$`)
+	mongoAggPyCollVarBindReCache[ident] = re
+	return re
+}
+
 // scanPythonMongoAggregation walks `src`, finds pymongo `.aggregate(...)` call
 // sites, resolves the pipeline (inline list literal OR a single same-function
 // variable binding), parses each stage, and emits stage entities + join edges.
@@ -98,7 +124,7 @@ func scanPythonMongoAggregation(
 
 	for _, loc := range mongoAggPyCallRe.FindAllStringIndex(src, -1) {
 		openParen := loc[1] - 1 // index of '('
-		coll := mongoAggPyResolveReceiver(src, loc[0])
+		coll := mongoAggPyResolveReceiverFull(src, loc[0])
 		if coll == "" {
 			continue
 		}
@@ -215,6 +241,16 @@ func mongoAggPyResolveReceiver(src string, dotPos int) string {
 		}
 	}
 	// `db.orders.aggregate(...)` / `orders_cls.aggregate(...)` — last segment.
+	//
+	// A bare identifier receiver (e.g. `inspections_cls`) is frequently a local
+	// handle bound one or more statements up to a `get_collection(...)` /
+	// `db["coll"]` / `db.coll` expression (the dominant legacy pymongo idiom:
+	// `inspections_cls = MongoDBConnection.get_collection(INSPECTIONS)` then
+	// `inspections_cls.aggregate(pipeline)`). Following that binding recovers the
+	// REAL collection name so the JOINS_COLLECTION `from` side anchors on the
+	// actual collection node rather than a mangled variable name. The full source
+	// is needed to scan the binding, so this follow lives in the caller-supplied
+	// wrapper below; here we return the bare segment as a fallback.
 	if m := mongoAggPyReceiverRe.FindStringSubmatch(window); m != nil {
 		seg := m[1]
 		// Skip obvious non-collection keywords.
@@ -225,6 +261,108 @@ func mongoAggPyResolveReceiver(src string, dotPos int) string {
 	}
 	return ""
 }
+
+// mongoAggPyResolveReceiverFull recovers the aggregating collection, following a
+// bare-identifier receiver to its same-function binding when that resolves to a
+// real collection (a `get_collection(...)` call, a `db["coll"]` subscript, or a
+// `db.coll` dotted access). Falls back to the bare identifier from
+// mongoAggPyResolveReceiver when no clarifying binding is in scope — honest, and
+// preserves the existing simple-receiver behaviour. `dotPos` is the index of the
+// `.` before `aggregate`.
+func mongoAggPyResolveReceiverFull(src string, dotPos int) string {
+	recv := mongoAggPyResolveReceiver(src, dotPos)
+	if recv == "" {
+		return ""
+	}
+	// Only attempt a binding-follow for a bare identifier receiver — i.e. the
+	// quoted/subscript/get_collection forms already returned the real name, and
+	// a bare identifier is the only shape that can be a local handle. We detect
+	// "already a real name" cheaply: those forms can contain characters a Python
+	// identifier cannot, but the simplest robust check is to re-scan: if the
+	// bare-identifier path produced `recv`, the text immediately before dotPos is
+	// exactly that identifier with no preceding `]`/`)` /`.`+name chain implying
+	// a subscript or call we already resolved.
+	if !isPyBareIdentReceiver(src, dotPos, recv) {
+		return recv
+	}
+	if real := mongoAggPyFollowCollBinding(src, recv, dotPos); real != "" {
+		return real
+	}
+	return recv
+}
+
+// isPyBareIdentReceiver reports whether the receiver immediately before dotPos is
+// the bare identifier `ident` itself (not the tail of a `db.coll` dotted chain,
+// a `db["coll"]` subscript, or a `get_collection(...)` call — those were already
+// resolved to a real name). It checks that the char before the identifier is not
+// `.`, `]`, or `)`.
+func isPyBareIdentReceiver(src string, dotPos int, ident string) bool {
+	start := dotPos - len(ident)
+	if start < 0 || src[start:dotPos] != ident {
+		return false
+	}
+	if start == 0 {
+		return true
+	}
+	prev := src[start-1]
+	return prev != '.' && prev != ']' && prev != ')'
+}
+
+// mongoAggPyFollowCollBinding finds the nearest same-function binding of `ident`
+// preceding `usePos` and, if its RHS is a recognisable collection expression,
+// returns the real collection name. Returns "" when there is no clarifying
+// binding in scope (the caller then keeps the bare identifier). Recognised RHS
+// shapes: `...get_collection("c")` / `...get_collection(CONST)`, `db["c"]` /
+// `db['c']`, and a trailing `db.c` dotted access.
+func mongoAggPyFollowCollBinding(src, ident string, usePos int) string {
+	funcStart := funcStartBefore(src, usePos)
+	re := mongoAggPyCollVarBindRe(ident)
+	bestRHS := ""
+	for _, m := range re.FindAllStringSubmatchIndex(src, -1) {
+		if m[0] >= usePos {
+			break // at/after the use — not a preceding binding.
+		}
+		if m[0] < funcStart {
+			continue // earlier function — out of scope.
+		}
+		bestRHS = src[m[2]:m[3]] // last preceding binding wins
+	}
+	if bestRHS == "" {
+		return ""
+	}
+	rhs := strings.TrimSpace(bestRHS)
+
+	// get_collection("c") / get_collection(CONST).
+	if m := mongoAggPyGetCollAnyArgRe.FindStringSubmatch(rhs); m != nil {
+		if m[1] != "" {
+			return m[1] // quoted collection name
+		}
+		if m[2] != "" {
+			return m[2] // bare constant identifier (e.g. INSPECTIONS)
+		}
+	}
+	// db["c"] / db['c'] subscript anywhere in the RHS.
+	if m := mongoAggPyCollSubscriptRe.FindStringSubmatch(rhs); m != nil {
+		return m[1]
+	}
+	// Trailing `db.coll` dotted access — last dotted segment, but only if the RHS
+	// is a pure dotted chain (no call/subscript), to avoid grabbing a method name.
+	if m := mongoAggPyCollDottedRe.FindStringSubmatch(rhs); m != nil {
+		seg := m[1]
+		if seg != "self" && seg != "cls" {
+			return seg
+		}
+	}
+	return ""
+}
+
+// mongoAggPyCollSubscriptRe matches a `db["coll"]` / `db['coll']` subscript
+// anywhere in a receiver-variable binding's RHS.
+var mongoAggPyCollSubscriptRe = regexp.MustCompile(`\[\s*['"]([a-zA-Z_][\w$.]*)['"]\s*\]`)
+
+// mongoAggPyCollDottedRe matches a pure dotted access (`db.coll`,
+// `client.db.coll`) — no trailing call or subscript — capturing the last segment.
+var mongoAggPyCollDottedRe = regexp.MustCompile(`^[A-Za-z_][\w.]*\.([A-Za-z_]\w*)$`)
 
 // mongoAggPyResolvePipeline returns the full pipeline list literal `[ ... ]`
 // (brackets included) for the aggregate call whose `(` is at `openParen`. Two
