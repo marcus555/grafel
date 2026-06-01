@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 209 · **ORMs**: 152 · **Tools**: 110 · **Other**: 121
+**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 209 · **ORMs**: 152 · **Tools**: 110 · **Other**: 124
 
 ## Coverage by language
 
@@ -9,7 +9,7 @@
 |---|---:|---:|---:|---:|
 | [JS/TS](by-language/jsts.md) | 30 | 21 | 18 | 2 |
 | [python](by-language/python.md) | 21 | 15 | 17 | 6 |
-| [C/C++](by-language/c-cpp.md) | 19 | 16 | 7 | 1 |
+| [C/C++](by-language/c-cpp.md) | 19 | 16 | 7 | 4 |
 | [java](by-language/java.md) | 19 | 10 | 14 | 3 |
 | [go](by-language/go.md) | 17 | 8 | 17 | 0 |
 | [kotlin](by-language/kotlin.md) | 17 | 0 | 7 | 0 |
@@ -67,4 +67,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 209 frameworks · 110 tools · 152 ORMs · 121 other
+Total: 209 frameworks · 110 tools · 152 ORMs · 124 other

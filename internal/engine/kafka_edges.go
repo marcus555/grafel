@@ -58,7 +58,7 @@ const transformsEdgeKind = "TRANSFORMS"
 // and Go — the languages with non-trivial Kafka adoption in the corpora.
 func kafkaSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "kotlin", "javascript", "typescript", "python", "go", "php", "rust":
+	case "java", "kotlin", "javascript", "typescript", "python", "go", "php", "rust", "cpp", "c":
 		return true
 	default:
 		return false
@@ -182,6 +182,8 @@ func applyKafkaEdges(args DetectorPassArgs) DetectorPassResult {
 		synthesizePHPRdKafka(src, emitTopic, emitEdge)
 	case "rust":
 		synthesizeRustRdKafka(src, emitTopic, emitEdge)
+	case "cpp", "c":
+		synthesizeCppRdKafka(src, emitTopic, emitEdge)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -1275,4 +1277,125 @@ func findEnclosingRustFnName(src string, offset int) string {
 		return "module"
 	}
 	return matches[len(matches)-1][1]
+}
+
+//     consumer->subscribe({"events", "orders"});
+//
+// Literal-topic-only (HONEST PARTIAL): non-literal topic names (variables,
+// config lookups) are skipped — C/C++ lacks the file-local const resolution
+// the higher-level extractors enjoy, and routing/ORM-style indirection is a
+// poor fit for the language.
+
+// cppKafkaTopicNewRe captures C-API `rd_kafka_topic_new(rk, "topic", ...)`.
+// Group 1 = topic name.
+var cppKafkaTopicNewRe = regexp.MustCompile(`rd_kafka_topic_new\s*\(\s*[^,]+,\s*"([^"\n\r]+)"`)
+
+// cppKafkaProduceCppRe captures C++-API `producer->produce("topic", ...)` /
+// `producer.produce("topic", ...)`. Group 1 = topic name.
+var cppKafkaProduceCppRe = regexp.MustCompile(`\.\s*produce\s*\(\s*"([^"\n\r]+)"|->\s*produce\s*\(\s*"([^"\n\r]+)"`)
+
+// cppKafkaTopicCreateRe captures C++-API `RdKafka::Topic::create(p, "topic", ...)`.
+// Group 1 = topic name.
+var cppKafkaTopicCreateRe = regexp.MustCompile(`RdKafka::Topic::create\s*\(\s*[^,]+,\s*"([^"\n\r]+)"`)
+
+// cppKafkaSubscribeRe captures C++-API `consumer->subscribe({"a", "b"})`.
+// Group 1 = the brace-list body.
+var cppKafkaSubscribeRe = regexp.MustCompile(`subscribe\s*\(\s*\{([^}]+)\}`)
+
+// cppKafkaPartListAddRe captures C-API
+// `rd_kafka_topic_partition_list_add(list, "topic", ...)`. Group 1 = topic.
+var cppKafkaPartListAddRe = regexp.MustCompile(`rd_kafka_topic_partition_list_add\s*\(\s*[^,]+,\s*"([^"\n\r]+)"`)
+
+// cppFunctionRe matches a C/C++ function or method definition header:
+// `ReturnType Class::method(...) {` or `ReturnType func(...) {`. Group 1 =
+// the qualified or bare name (e.g. "Producer::send" or "main").
+var cppFunctionRe = regexp.MustCompile(`(?m)^[A-Za-z_][\w:<>\*&,\s]*?\b([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*\([^;{]*\)\s*(?:const\s*)?\{`)
+
+func synthesizeCppRdKafka(
+	src string,
+	emitTopic func(topicID, topicName, broker string, dynamic bool, props map[string]string),
+	emitEdge func(callerKind, callerName, topicID, edgeKind string, props map[string]string),
+) {
+	// Fast pre-filter: only process files that reference librdkafka.
+	if !strings.Contains(src, "rd_kafka") && !strings.Contains(src, "RdKafka") &&
+		!strings.Contains(src, "rdkafka") {
+		return
+	}
+
+	enclosing := func(offset int) string { return findEnclosingCppName(src, offset) }
+
+	emitProducer := func(topic, layer string, offset int) {
+		if !looksLikeKafkaTopic(topic) {
+			return
+		}
+		id := kafkaTopicID(topic)
+		emitTopic(id, topic, "kafka", false, map[string]string{"messaging_layer": layer})
+		emitEdge("SCOPE.Operation", enclosing(offset), id, publishesToEdgeKind, map[string]string{
+			"messaging_layer": layer,
+		})
+	}
+	emitConsumer := func(topic, layer string, offset int) {
+		if !looksLikeKafkaTopic(topic) {
+			return
+		}
+		id := kafkaTopicID(topic)
+		emitTopic(id, topic, "kafka", false, map[string]string{"messaging_layer": layer})
+		emitEdge("SCOPE.Operation", enclosing(offset), id, subscribesToEdgeKind, map[string]string{
+			"messaging_layer": layer,
+		})
+	}
+
+	// C API: rd_kafka_topic_new(rk, "topic", ...) — producer-side topic handle.
+	for _, m := range cppKafkaTopicNewRe.FindAllStringSubmatchIndex(src, -1) {
+		emitProducer(src[m[2]:m[3]], "librdkafka", m[0])
+	}
+	// C++ API: RdKafka::Topic::create(p, "topic", ...) — producer-side.
+	for _, m := range cppKafkaTopicCreateRe.FindAllStringSubmatchIndex(src, -1) {
+		emitProducer(src[m[2]:m[3]], "rdkafkacpp", m[0])
+	}
+	// C++ API: producer->produce("topic", ...) — producer-side.
+	for _, m := range cppKafkaProduceCppRe.FindAllStringSubmatchIndex(src, -1) {
+		topic := ""
+		if m[2] != -1 {
+			topic = src[m[2]:m[3]]
+		} else if m[4] != -1 {
+			topic = src[m[4]:m[5]]
+		}
+		if topic != "" {
+			emitProducer(topic, "rdkafkacpp", m[0])
+		}
+	}
+	// C API: rd_kafka_topic_partition_list_add(list, "topic", ...) — consumer.
+	for _, m := range cppKafkaPartListAddRe.FindAllStringSubmatchIndex(src, -1) {
+		emitConsumer(src[m[2]:m[3]], "librdkafka", m[0])
+	}
+	// C++ API: consumer->subscribe({"a", "b"}) — consumer-side.
+	for _, m := range cppKafkaSubscribeRe.FindAllStringSubmatchIndex(src, -1) {
+		for _, tok := range strings.Split(src[m[2]:m[3]], ",") {
+			tok = strings.TrimSpace(tok)
+			if unq, ok := unquote(tok); ok {
+				emitConsumer(unq, "rdkafkacpp", m[0])
+			}
+		}
+	}
+}
+
+// findEnclosingCppName walks backward from `offset` to the nearest C/C++
+// function/method definition header. Returns "module" when none is found
+// within ~4KB so we still emit an attributable edge.
+func findEnclosingCppName(src string, offset int) string {
+	start := offset - 4000
+	if start < 0 {
+		start = 0
+	}
+	window := src[start:offset]
+	matches := cppFunctionRe.FindAllStringSubmatch(window, -1)
+	if len(matches) == 0 {
+		return "module"
+	}
+	name := matches[len(matches)-1][1]
+	if name == "" {
+		return "module"
+	}
+	return name
 }

@@ -1,12 +1,15 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 28 records · **elixir**: 1 · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1 · **rust**: 2
+**Total**: 31 records · **C/C++**: 3 · **elixir**: 1 · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Consumer extraction | Producer extraction | Topic attribution | Status | Notes |
 |---|---|---|---|---|---|---|
+| [C/C++](../by-language/c-cpp.md) | [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [C/C++](../by-language/c-cpp.md) | [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [C/C++](../by-language/c-cpp.md) | [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
