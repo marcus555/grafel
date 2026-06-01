@@ -9,7 +9,7 @@ import (
 
 func cubaExtract(t *testing.T, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_cuba_routing", fi("app.rb", "ruby", src))
+	return extract(t, "custom_ruby_cuba_routing", fi("app.rb", "ruby", src))
 }
 
 // ---------------------------------------------------------------------------

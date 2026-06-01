@@ -51,8 +51,8 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_routes", &rubyRoutesExtractor{})
-	extractor.Register("ruby_driver_schema", &rubyDriverSchemaExtractor{})
+	extractor.Register("custom_ruby_routes", &rubyRoutesExtractor{})
+	extractor.Register("custom_ruby_driver_schema", &rubyDriverSchemaExtractor{})
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ func init() {
 
 type rubyRoutesExtractor struct{}
 
-func (e *rubyRoutesExtractor) Language() string { return "ruby_routes" }
+func (e *rubyRoutesExtractor) Language() string { return "custom_ruby_routes" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes — Routes
@@ -358,7 +358,7 @@ func (e *rubyRoutesExtractor) Extract(ctx context.Context, file extractor.FileIn
 
 type rubyDriverSchemaExtractor struct{}
 
-func (e *rubyDriverSchemaExtractor) Language() string { return "ruby_driver_schema" }
+func (e *rubyDriverSchemaExtractor) Language() string { return "custom_ruby_driver_schema" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes — Driver Schema

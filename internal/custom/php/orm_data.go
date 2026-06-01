@@ -34,11 +34,11 @@ import (
 )
 
 func init() {
-	extractor.Register("php_doctrine_orm_data", &doctrineORMDataExtractor{})
-	extractor.Register("php_eloquent_orm_data", &eloquentORMDataExtractor{})
-	extractor.Register("php_cycleorm_data", &cycleORMDataExtractor{})
-	extractor.Register("php_propel_orm_data", &propelORMDataExtractor{})
-	extractor.Register("php_redbeanphp_data", &redBeanPHPDataExtractor{})
+	extractor.Register("custom_php_doctrine_orm_data", &doctrineORMDataExtractor{})
+	extractor.Register("custom_php_eloquent_orm_data", &eloquentORMDataExtractor{})
+	extractor.Register("custom_php_cycleorm_data", &cycleORMDataExtractor{})
+	extractor.Register("custom_php_propel_orm_data", &propelORMDataExtractor{})
+	extractor.Register("custom_php_redbeanphp_data", &redBeanPHPDataExtractor{})
 }
 
 // ============================================================================
@@ -61,7 +61,7 @@ func ormAdd(seen map[string]bool, entities *[]types.EntityRecord, ent types.Enti
 
 type doctrineORMDataExtractor struct{}
 
-func (e *doctrineORMDataExtractor) Language() string { return "php_doctrine_orm_data" }
+func (e *doctrineORMDataExtractor) Language() string { return "custom_php_doctrine_orm_data" }
 
 var (
 	// dctColumnAttrRe matches PHP8 attribute #[ORM\Column(...)] directly before the
@@ -313,7 +313,7 @@ func (e *doctrineORMDataExtractor) Extract(ctx context.Context, file extractor.F
 
 type eloquentORMDataExtractor struct{}
 
-func (e *eloquentORMDataExtractor) Language() string { return "php_eloquent_orm_data" }
+func (e *eloquentORMDataExtractor) Language() string { return "custom_php_eloquent_orm_data" }
 
 var (
 	// eloquentFillableRe matches $fillable or $guarded arrays (schema columns)
@@ -644,7 +644,7 @@ func (e *eloquentORMDataExtractor) Extract(ctx context.Context, file extractor.F
 
 type cycleORMDataExtractor struct{}
 
-func (e *cycleORMDataExtractor) Language() string { return "php_cycleorm_data" }
+func (e *cycleORMDataExtractor) Language() string { return "custom_php_cycleorm_data" }
 
 var (
 	// cycleEntityRe detects #[Entity] or #[Cycle\Annotated\Annotation\Entity]
@@ -790,7 +790,7 @@ func (e *cycleORMDataExtractor) Extract(ctx context.Context, file extractor.File
 
 type propelORMDataExtractor struct{}
 
-func (e *propelORMDataExtractor) Language() string { return "php_propel_orm_data" }
+func (e *propelORMDataExtractor) Language() string { return "custom_php_propel_orm_data" }
 
 var (
 	// propelTableMapRe detects Propel TableMap class (schema reflection)
@@ -917,7 +917,7 @@ func (e *propelORMDataExtractor) Extract(ctx context.Context, file extractor.Fil
 
 type redBeanPHPDataExtractor struct{}
 
-func (e *redBeanPHPDataExtractor) Language() string { return "php_redbeanphp_data" }
+func (e *redBeanPHPDataExtractor) Language() string { return "custom_php_redbeanphp_data" }
 
 var (
 	// rbDispenseRe detects R::dispense('tablename') — implicit schema creation

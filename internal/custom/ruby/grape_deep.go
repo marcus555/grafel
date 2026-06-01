@@ -43,12 +43,12 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_grape_deep", &grapeDeepExtractor{})
+	extractor.Register("custom_ruby_grape_deep", &grapeDeepExtractor{})
 }
 
 type grapeDeepExtractor struct{}
 
-func (e *grapeDeepExtractor) Language() string { return "ruby_grape_deep" }
+func (e *grapeDeepExtractor) Language() string { return "custom_ruby_grape_deep" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

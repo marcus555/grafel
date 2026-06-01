@@ -9,7 +9,7 @@ import (
 
 func valExtract(t *testing.T, path, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_validation", fi(path, "ruby", src))
+	return extract(t, "custom_ruby_validation", fi(path, "ruby", src))
 }
 
 // ---------------------------------------------------------------------------

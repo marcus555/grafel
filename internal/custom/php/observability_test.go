@@ -1,4 +1,4 @@
-// observability_test.go — value-asserting tests for the phpObs_laravel_symfony
+// observability_test.go — value-asserting tests for the custom_php_obs_laravel_symfony
 // extractor. Each test verifies that a concrete call-site pattern emits the
 // expected entity (Kind + Name). Tests intentionally use realistic PHP
 // snippets; no test forces a "full" status — detection is call-site heuristic.
@@ -30,7 +30,7 @@ class UserController extends Controller
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Http/Controllers/UserController.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Http/Controllers/UserController.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Log::info") {
 		t.Error("expected Log::info log_statement entity")
 	}
@@ -41,7 +41,7 @@ func TestPHPObsLaravelLogFacadeError(t *testing.T) {
 	src := `<?php
 Log::error('Payment failed', ['order_id' => $orderId, 'reason' => $e->getMessage()]);
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Services/PaymentService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Services/PaymentService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Log::error") {
 		t.Error("expected Log::error log_statement entity")
 	}
@@ -55,7 +55,7 @@ Log::debug('Processing item', ['id' => $id]);
 Log::warning('Item is deprecated', ['item' => $name]);
 Log::critical('Database connection failed');
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Jobs/ProcessItem.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Jobs/ProcessItem.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Log::debug") {
 		t.Error("expected Log::debug entity")
 	}
@@ -74,7 +74,7 @@ func TestPHPObsLaravelLogChannel(t *testing.T) {
 Log::channel('slack')->critical('Server is down', ['host' => $host]);
 Log::channel('daily')->info('Scheduled job completed');
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Console/Commands/HealthCheck.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Console/Commands/HealthCheck.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Log::channel(slack)") {
 		t.Error("expected Log::channel(slack) entity")
 	}
@@ -94,7 +94,7 @@ public function store(Request $request): JsonResponse
     return response()->json($order);
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Http/Controllers/OrderController.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Http/Controllers/OrderController.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "logger()->info") {
 		t.Error("expected logger()->info entity")
 	}
@@ -110,7 +110,7 @@ func TestPHPObsLaravelBackslashLogFacade(t *testing.T) {
 \Log::info('Starting import job');
 \Log::warning('Import row skipped', ['row' => $rowNumber]);
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Jobs/ImportJob.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Jobs/ImportJob.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Log::info") {
 		t.Error("expected Log::info entity for \\Log::info call")
 	}
@@ -141,7 +141,7 @@ class OrderService
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Services/OrderService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Services/OrderService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "$logger->info") {
 		t.Error("expected $logger->info Monolog call-site entity")
 	}
@@ -161,7 +161,7 @@ class AppBootstrap
     private Logger $logger;
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("bootstrap/app.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("bootstrap/app.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Monolog\\Logger") {
 		t.Error("expected Monolog\\Logger use-declaration entity")
 	}
@@ -184,7 +184,7 @@ class NotificationService
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Service/NotificationService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Service/NotificationService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "$logger->info") {
 		t.Error("expected $logger->info PSR-3 entity for Symfony injected logger")
 	}
@@ -206,7 +206,7 @@ class Calculator
     public function add(int $a, int $b): int { return $a + $b; }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Calculator.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Calculator.php", "php", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no observability entities for plain PHP, got %d", len(ents))
 	}
@@ -232,7 +232,7 @@ class MetricsService
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Service/MetricsService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Service/MetricsService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "new Counter") {
 		t.Error("expected new Counter metric entity")
 	}
@@ -251,7 +251,7 @@ use Prometheus\Histogram;
 $gauge = new Gauge('memory_usage_bytes', 'Current memory usage');
 $histogram = new Histogram('request_duration_seconds', 'Request duration', ['endpoint']);
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Metrics/AppMetrics.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Metrics/AppMetrics.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "new Gauge") {
 		t.Error("expected new Gauge metric entity")
 	}
@@ -274,7 +274,7 @@ class PrometheusBootstrap
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("bootstrap/metrics.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("bootstrap/metrics.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Prometheus") {
 		t.Error("expected Prometheus use-declaration entity")
 	}
@@ -294,7 +294,7 @@ $statsd = new StatsD();
 $statsd->increment('page.views');
 $statsd->gauge('queue.depth', $depth);
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Tracking/PageTracker.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Tracking/PageTracker.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "page.views") {
 		t.Error("expected page.views StatsD metric entity")
 	}
@@ -314,7 +314,7 @@ class StatsHelper
     public function __construct(private StatsD $statsd) {}
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/StatsHelper.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/StatsHelper.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "StatsD") {
 		t.Error("expected StatsD use-declaration entity")
 	}
@@ -327,7 +327,7 @@ func TestPHPObsLaravelMetrics(t *testing.T) {
 Metrics::counter('orders_placed');
 Metrics::gauge('active_users', $count);
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Observers/OrderObserver.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Observers/OrderObserver.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Metrics::counter") {
 		t.Error("expected Metrics::counter entity")
 	}
@@ -363,7 +363,7 @@ class OrderService
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Services/OrderService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Services/OrderService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "order.create") {
 		t.Error("expected order.create span entity from spanBuilder")
 	}
@@ -378,7 +378,7 @@ $span = $tracer->startSpan('payment.process');
 $span->setAttribute('amount', $amount);
 $span->end();
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Payment/Processor.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Payment/Processor.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "payment.process") {
 		t.Error("expected payment.process span entity from startSpan")
 	}
@@ -396,7 +396,7 @@ $span->addEvent('auth.success');
 $span->setStatus(StatusCode::STATUS_OK);
 $span->end();
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Auth/AuthService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Auth/AuthService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "$span->setAttribute") {
 		t.Error("expected $span->setAttribute lifecycle entity")
 	}
@@ -417,7 +417,7 @@ use OpenTelemetry\API\Globals;
 $tracerProvider = Globals::tracerProvider();
 $tracer = $tracerProvider->getTracer('my-app');
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("bootstrap/otel.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("bootstrap/otel.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Globals::tracerProvider()") {
 		t.Error("expected Globals::tracerProvider() bootstrap entity")
 	}
@@ -434,7 +434,7 @@ class TracingBootstrap
     public function __construct(private TracerInterface $tracer) {}
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Tracing/Bootstrap.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Tracing/Bootstrap.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "OpenTelemetry") {
 		t.Error("expected OpenTelemetry use-declaration entity")
 	}
@@ -463,7 +463,7 @@ class DataImportService
     }
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Service/DataImportService.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Service/DataImportService.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "data.import") {
 		t.Error("expected data.import Stopwatch trace_span entity")
 	}
@@ -482,7 +482,7 @@ foreach ($items as $item) {
 }
 $stopwatch->stop('batch.processing');
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Batch/Processor.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Batch/Processor.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "batch.processing") {
 		t.Error("expected batch.processing Stopwatch entity")
 	}
@@ -499,7 +499,7 @@ class ProfilerHelper
     public function __construct(private Stopwatch $stopwatch) {}
 }
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Profiler/Helper.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Profiler/Helper.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "Stopwatch") {
 		t.Error("expected Stopwatch use-declaration entity")
 	}
@@ -520,7 +520,7 @@ func TestPHPObsDDTrace(t *testing.T) {
     $span->name = 'user.repo.find';
 });
 `
-	ents := extract(t, "phpObs_laravel_symfony", fi("src/Tracing/DatadogTracing.php", "php", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("src/Tracing/DatadogTracing.php", "php", src))
 	if !containsEntity(ents, "SCOPE.Pattern", "DDTrace\\trace_function") {
 		t.Error("expected DDTrace\\trace_function entity")
 	}
@@ -537,7 +537,7 @@ func TestPHPObsDDTrace(t *testing.T) {
 // non-php language files.
 func TestPHPObsIgnoresNonPHP(t *testing.T) {
 	src := `Log::info('This is PHP-like code but in a JS file');`
-	ents := extract(t, "phpObs_laravel_symfony", fi("frontend/app.js", "javascript", src))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("frontend/app.js", "javascript", src))
 	if len(ents) != 0 {
 		t.Errorf("expected 0 entities for non-php file, got %d", len(ents))
 	}
@@ -545,7 +545,7 @@ func TestPHPObsIgnoresNonPHP(t *testing.T) {
 
 // TestPHPObsIgnoresEmptyFile verifies empty files return no entities.
 func TestPHPObsIgnoresEmptyFile(t *testing.T) {
-	ents := extract(t, "phpObs_laravel_symfony", fi("app/Empty.php", "php", ""))
+	ents := extract(t, "custom_php_obs_laravel_symfony", fi("app/Empty.php", "php", ""))
 	if len(ents) != 0 {
 		t.Errorf("expected 0 entities for empty file, got %d", len(ents))
 	}

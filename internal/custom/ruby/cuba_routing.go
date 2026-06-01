@@ -48,12 +48,12 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_cuba_routing", &cubaSynthesisExtractor{})
+	extractor.Register("custom_ruby_cuba_routing", &cubaSynthesisExtractor{})
 }
 
 type cubaSynthesisExtractor struct{}
 
-func (e *cubaSynthesisExtractor) Language() string { return "ruby_cuba_routing" }
+func (e *cubaSynthesisExtractor) Language() string { return "custom_ruby_cuba_routing" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

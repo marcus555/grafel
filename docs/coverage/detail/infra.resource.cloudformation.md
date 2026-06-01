@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency attribution | ✅ `full` | `2026-05-30` | — | `internal/engine/iac_cloudformation_edges.go` | — |
-| Resource extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/iac_cloudformation_edges.go` | — |
+| Resource extraction | ✅ `full` | `2026-05-31` | — | `internal/engine/iac_cloudformation_edges.go` | cfnResourceKind now derives the SCOPE.Datastore/Queue/ServerlessFunction entity Kind from the shared types.IaCResourceCategory classifier and stamps the uniform resource_category property (#3549), so the CFN Kind and the cross-tool category can never diverge. |
 
 ## Provenance
 

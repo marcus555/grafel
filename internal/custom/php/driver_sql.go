@@ -27,12 +27,12 @@ import (
 )
 
 func init() {
-	extractor.Register("php_sql_driver_schema", &phpSQLDriverSchemaExtractor{})
+	extractor.Register("custom_php_sql_driver_schema", &phpSQLDriverSchemaExtractor{})
 }
 
 type phpSQLDriverSchemaExtractor struct{}
 
-func (e *phpSQLDriverSchemaExtractor) Language() string { return "php_sql_driver_schema" }
+func (e *phpSQLDriverSchemaExtractor) Language() string { return "custom_php_sql_driver_schema" }
 
 var (
 	// phpDriverGateRe gates the extractor: must contain a recognised PHP SQL

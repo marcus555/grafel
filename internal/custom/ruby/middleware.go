@@ -47,12 +47,12 @@ import (
 func itoa(n int) string { return strconv.Itoa(n) }
 
 func init() {
-	extractor.Register("ruby_middleware", &rubyMiddlewareExtractor{})
+	extractor.Register("custom_ruby_middleware", &rubyMiddlewareExtractor{})
 }
 
 type rubyMiddlewareExtractor struct{}
 
-func (e *rubyMiddlewareExtractor) Language() string { return "ruby_middleware" }
+func (e *rubyMiddlewareExtractor) Language() string { return "custom_ruby_middleware" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

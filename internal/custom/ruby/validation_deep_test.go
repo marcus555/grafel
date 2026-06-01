@@ -22,9 +22,9 @@ import (
 // valExtractRaw extracts raw EntityRecord values from the ruby_validation extractor.
 func valExtractRaw(t *testing.T, path, src string) []types.EntityRecord {
 	t.Helper()
-	e, ok := extreg.Get("ruby_validation")
+	e, ok := extreg.Get("custom_ruby_validation")
 	if !ok {
-		t.Fatal("ruby_validation extractor not registered")
+		t.Fatal("custom_ruby_validation extractor not registered")
 	}
 	ents, err := e.Extract(context.Background(), extreg.FileInput{
 		Path:     path,

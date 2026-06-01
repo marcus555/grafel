@@ -35,7 +35,7 @@
 // therefore remain `partial`, matching the honesty discipline established
 // by the Java, Python, and Ruby extractors.
 //
-// Extractor key: "phpObs_laravel_symfony" — registered as a dedicated
+// Extractor key: "custom_php_obs_laravel_symfony" — registered as a dedicated
 // extractor. The coarse custom_php_observability stub in frameworks.go
 // continues to run for the remaining PHP frameworks; this extractor
 // deepens detection specifically for Laravel + Symfony call-sites.
@@ -57,12 +57,12 @@ import (
 )
 
 func init() {
-	extractor.Register("phpObs_laravel_symfony", &phpObsExtractor{})
+	extractor.Register("custom_php_obs_laravel_symfony", &phpObsExtractor{})
 }
 
 type phpObsExtractor struct{}
 
-func (e *phpObsExtractor) Language() string { return "phpObs_laravel_symfony" }
+func (e *phpObsExtractor) Language() string { return "custom_php_obs_laravel_symfony" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes — log_extraction

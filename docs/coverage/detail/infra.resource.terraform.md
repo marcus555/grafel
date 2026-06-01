@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency attribution | ✅ `full` | `2026-05-28` | — | `internal/extractors/hcl/relationships.go` | — |
-| Resource extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/hcl/extractor.go`<br>`internal/extractors/hcl/relationships.go` | — |
+| Resource extraction | ✅ `full` | `2026-05-31` | — | `internal/extractors/hcl/extractor.go`<br>`internal/extractors/hcl/relationships.go` | resource blocks now carry the uniform resource_category metadata from the shared types.IaCResourceCategory classifier (#3549), so aws_db_instance→datastore, aws_sqs_queue→queue, aws_lambda_function→function are queryable cross-tool. Entity Kind stays SCOPE.Component/resource (edges unchanged). |
 
 ## Provenance
 

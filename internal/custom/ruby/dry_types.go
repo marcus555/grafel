@@ -31,12 +31,12 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_dry_types", &dryTypesExtractor{})
+	extractor.Register("custom_ruby_dry_types", &dryTypesExtractor{})
 }
 
 type dryTypesExtractor struct{}
 
-func (e *dryTypesExtractor) Language() string { return "ruby_dry_types" }
+func (e *dryTypesExtractor) Language() string { return "custom_ruby_dry_types" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

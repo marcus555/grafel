@@ -9,12 +9,12 @@ import (
 
 func routeExtract(t *testing.T, path, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_routes", fi(path, "ruby", src))
+	return extract(t, "custom_ruby_routes", fi(path, "ruby", src))
 }
 
 func driverSchemaExtract(t *testing.T, path, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_driver_schema", fi(path, "ruby", src))
+	return extract(t, "custom_ruby_driver_schema", fi(path, "ruby", src))
 }
 
 // ---------------------------------------------------------------------------

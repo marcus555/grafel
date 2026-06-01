@@ -32,13 +32,13 @@ import (
 )
 
 func init() {
-	extractor.Register("ruby_auth", &rubyAuthExtractor{})
+	extractor.Register("custom_ruby_auth", &rubyAuthExtractor{})
 }
 
 // rubyAuthExtractor detects auth patterns across Ruby source files.
 type rubyAuthExtractor struct{}
 
-func (e *rubyAuthExtractor) Language() string { return "ruby_auth" }
+func (e *rubyAuthExtractor) Language() string { return "custom_ruby_auth" }
 
 // ---------------------------------------------------------------------------
 // Compiled regexes

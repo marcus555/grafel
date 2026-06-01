@@ -13,9 +13,9 @@ import (
 // mwExtractRaw returns raw EntityRecord values so tests can inspect Properties.
 func mwExtractRaw(t *testing.T, path, src string) []interface{ GetName() string } {
 	t.Helper()
-	e, ok := extreg.Get("ruby_middleware")
+	e, ok := extreg.Get("custom_ruby_middleware")
 	if !ok {
-		t.Fatal("ruby_middleware extractor not registered")
+		t.Fatal("custom_ruby_middleware extractor not registered")
 	}
 	ents, err := e.Extract(context.Background(), extreg.FileInput{
 		Path: path, Language: "ruby", Content: []byte(src),
@@ -31,9 +31,9 @@ func mwExtractRaw(t *testing.T, path, src string) []interface{ GetName() string 
 // mwExtractProps returns raw entities so callers can access Properties.
 func mwExtractProps(t *testing.T, path, src string) []map[string]string {
 	t.Helper()
-	e, ok := extreg.Get("ruby_middleware")
+	e, ok := extreg.Get("custom_ruby_middleware")
 	if !ok {
-		t.Fatal("ruby_middleware extractor not registered")
+		t.Fatal("custom_ruby_middleware extractor not registered")
 	}
 	ents, err := e.Extract(context.Background(), extreg.FileInput{
 		Path: path, Language: "ruby", Content: []byte(src),
@@ -66,7 +66,7 @@ func findByName(props []map[string]string, name string) map[string]string {
 
 func mwExtract(t *testing.T, path, src string) []entitySummary {
 	t.Helper()
-	return extract(t, "ruby_middleware", fi(path, "ruby", src))
+	return extract(t, "custom_ruby_middleware", fi(path, "ruby", src))
 }
 
 // ---------------------------------------------------------------------------
