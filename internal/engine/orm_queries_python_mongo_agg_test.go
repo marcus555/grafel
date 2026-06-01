@@ -119,6 +119,71 @@ def inspection_report(db):
 	}
 }
 
+// THE rewrite-BLOCKING case — variable-bound pipeline whose $lookup stages use
+// the CORRELATED sub-pipeline form (`from` + `let` + `pipeline` + `as`, NO
+// localField/foreignField). The nested `pipeline: [...]` array and `let: {...}`
+// object inside each stage must not break the multiline RHS capture nor the
+// stage split. Mirrors `_get_me_inspections` from the legacy repo.
+func TestMongoAggPy_VariableBound_CorrelatedLookups(t *testing.T) {
+	src := `
+import pymongo
+from pymongo import MongoClient
+
+def _get_me_inspections():
+    inspections_cls = MongoDBConnection.get_collection(INSPECTIONS)
+    pipeline = [
+        {"$project": {"_id": 1, "checklist_type": 1}},
+        {"$match": {"checklist_type": 4, "status": "active"}},
+        {"$lookup": {"from": "inspection_groups", "let": {"gid": "$group_id"}, "pipeline": [{"$match": {"$expr": {"$eq": ["$_id", "$$gid"]}}}], "as": "inspections_group"}},
+        {"$unwind": {"path": "$inspections_group", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {"from": "m_devices", "let": {"did": "$device_id"}, "pipeline": [{"$match": {"$expr": {"$eq": ["$_id", "$$did"]}}}], "as": "device"}},
+        {"$unwind": {"path": "$device", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {"from": "m_buildings", "let": {"bid": "$building_id"}, "pipeline": [{"$match": {"$expr": {"$eq": ["$_id", "$$bid"]}}}], "as": "building"}},
+        {"$unwind": {"path": "$building"}},
+        {"$project": {"name": 1}},
+    ]
+    return list(inspections_cls.aggregate(pipeline))
+`
+	ents, rels := runMongoAggPy(t, src)
+
+	// 3 join edges to the SPECIFIC correlated from-collections.
+	wantTo := []string{"inspection_groups", "m_devices", "m_buildings"}
+	for _, coll := range wantTo {
+		j := pyFindJoinTo(rels, capitalisedSingular(coll))
+		if j == nil {
+			t.Fatalf("expected JOINS_COLLECTION edge to %s; rels=%+v", coll, rels)
+		}
+		if j.FromID != "Class:"+capitalisedSingular("INSPECTIONS") {
+			t.Errorf("join to %s from = %q, want aggregating collection INSPECTIONS", coll, j.FromID)
+		}
+		if j.Properties["stage"] != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties["stage"])
+		}
+	}
+	if n := len(rels); n != 3 {
+		t.Fatalf("expected exactly 3 join edges, got %d: %+v", n, rels)
+	}
+
+	// The correlated `as` alias is captured even without local/foreign fields.
+	jg := pyFindJoinTo(rels, capitalisedSingular("inspection_groups"))
+	if jg.Properties["as"] != "inspections_group" {
+		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties["as"])
+	}
+
+	// Stage entities + order: project, match, lookup, unwind, lookup, unwind,
+	// lookup, unwind, project (9 stages, order preserved).
+	got := pyStageSubtypesInOrder(ents)
+	want := []string{"$project", "$match", "$lookup", "$unwind", "$lookup", "$unwind", "$lookup", "$unwind", "$project"}
+	if len(got) != len(want) {
+		t.Fatalf("stage subtypes = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("stage[%d] = %q, want %q (all=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 // Inline list-literal pipeline with $lookup + $graphLookup + $group + $facet,
 // receiver via db["collname"] subscript. Asserts both join kinds, the $group
 // _id/accumulators, and the $facet keys.
