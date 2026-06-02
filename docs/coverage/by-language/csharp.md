@@ -94,7 +94,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 7/10 | |
 | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟡 6/9 | |
 | [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🔴 0/4 | |
-| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/5 | |
+| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 2/6 | |
 | [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🔴 0/4 | |
 | [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/5 | |
 | [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟡 7/10 | |

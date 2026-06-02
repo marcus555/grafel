@@ -23,7 +23,7 @@ one is a separate detail page.
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
 | [`lang.c-cpp.driver.mongocxx`](./lang.c-cpp.driver.mongocxx.md) | C/C++ | driver | 2 full, 1 partial, 3 missing, 5 n/a |
-| [`lang.csharp.driver.mongodb`](./lang.csharp.driver.mongodb.md) | C# | driver | 1 partial, 4 missing, 6 n/a |
+| [`lang.csharp.driver.mongodb`](./lang.csharp.driver.mongodb.md) | C# | driver | 1 full, 1 partial, 4 missing, 6 n/a |
 | [`lang.elixir.driver.mongodb`](./lang.elixir.driver.mongodb.md) | elixir | driver | 4 missing, 7 n/a |
 | [`lang.go.driver.mongodb`](./lang.go.driver.mongodb.md) | go | driver | 3 partial, 3 missing, 5 n/a |
 | [`lang.java.driver.mongodb`](./lang.java.driver.mongodb.md) | java | driver | 1 full, 3 missing, 7 n/a |

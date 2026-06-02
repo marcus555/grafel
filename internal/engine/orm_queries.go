@@ -220,6 +220,15 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 	case "csharp":
 		scanCSharpDrivers(src, funcs, emit)
 		scanInfra()
+		// Sibling pass: MongoDB.Driver aggregation `$lookup` joins (fluent
+		// positional `.Aggregate().Lookup(...)` and `new BsonDocument("$lookup",
+		// ...)` pipeline stages) → per-$lookup SCOPE.DataAccess stage entities +
+		// JOINS_COLLECTION edges, matching the Python/Go/Java/Mongoose contract
+		// (#3848).
+		scanCSharpMongoAggregation(src, funcs, path, lang,
+			func(ent types.EntityRecord) { entities = append(entities, ent) },
+			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
+		)
 	case "php":
 		scanPHPDrivers(src, funcs, emit)
 		scanInfra()
