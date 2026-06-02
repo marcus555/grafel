@@ -11,7 +11,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Cross repo linkage | 🟢 `partial` | `2026-05-28` | — | `internal/engine/http_endpoint_match.go` | — |
+| Cross repo linkage | 🟢 `partial` | `2026-06-02` | — | `internal/engine/http_endpoint_graphql_client.go`<br>`internal/engine/http_endpoint_match.go` | — |
 | Method attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/graphql_subscriptions.go` | — |
 | Service extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/graphql_subscriptions.go`<br>`internal/engine/rules/graphql/frameworks/graphql_schema.yaml` | — |
 

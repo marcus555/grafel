@@ -1267,6 +1267,18 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 		synthesizeReactQueryCalls(content, funcsRQ, symsRQ, emit)
 	}
 
+	// GraphQL client operations (Apollo / urql / graphql-request / raw gql
+	// docs) emit operation-level http_endpoint_call entities keyed to the
+	// server endpoint shape http:GRAPHQL:/graphql/<Root>/<field> (#3608).
+	// Runs before the REST early-exit guard below since GraphQL client files
+	// may contain none of the fetch/axios markers.
+	if strings.Contains(content, "gql`") || strings.Contains(content, "graphql`") ||
+		strings.Contains(content, "useQuery") || strings.Contains(content, "useMutation") ||
+		strings.Contains(content, "useSubscription") || strings.Contains(content, "request(") {
+		funcsGQL := indexJSEnclosingFunctions(content)
+		synthesizeGraphQLClientCalls(content, funcsGQL, emit)
+	}
+
 	if !strings.Contains(content, "fetch(") &&
 		!strings.Contains(content, "axios.") &&
 		!strings.Contains(content, "axios(") &&
