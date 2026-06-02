@@ -111,7 +111,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🔴 `missing` | — | 3613 | — | — |
 | Reachability analysis | 🔴 `missing` | — | 3613 | — | — |
 | Request shape extraction | 🔴 `missing` | — | 3613 | — | — |
-| Request sink dataflow | 🔴 `missing` | `2026-06-02` | 3918 | `internal/substrate/dataflow.go`<br>`internal/substrate/substrate_golang_graphql_gqlgen_test.go` | #3918 (verify-first NEGATIVE, stays missing): there is NO Go dataflow sniffer registered at all — only "jsts" and "python" call RegisterDataFlowSnifferEx (dataflow_jsts.go / dataflow_python.go). DataFlowSnifferFor("go") is nil, so the request_sink flow cannot fire for ANY Go framework; and gqlgen reads typed args, not req.body, regardless. Doubly N/A. Proven by TestSubstrate_Go_Gqlgen_NoGoDataFlowSniffer. |
+| Request sink dataflow | 🔴 `missing` | `2026-06-03` | 3918 | `internal/substrate/dataflow.go`<br>`internal/substrate/substrate_golang_graphql_gqlgen_test.go` | #3918 (verify-first NEGATIVE, stays missing): there is NO Go dataflow sniffer registered at all — only "jsts" and "python" call RegisterDataFlowSnifferEx (dataflow_jsts.go / dataflow_python.go). DataFlowSnifferFor("go") is nil, so the request_sink flow cannot fire for ANY Go framework; and gqlgen reads typed args, not req.body, regardless. Doubly N/A. Proven by TestSubstrate_Go_Gqlgen_NoGoDataFlowSniffer. |
 | Response shape extraction | 🔴 `missing` | — | 3613 | — | — |
 | Sanitizer recognition | 🔴 `missing` | — | 3613 | — | — |
 | Schema drift detection | 🔴 `missing` | — | 3613 | — | — |
