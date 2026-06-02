@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3643) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | ✅ `full` | `2026-06-02` | 3643 | `internal/custom/rust/redis.go` | Key/channel/stream topology extracted from redis-rs (typed Commands trait con.get/set/publish/xadd + low-level cmd("VERB").arg("key") builder): concrete literal keys/channels/streams; READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Rust has no in-literal interpolation, so format!()/bare-var keys stay dynamic (honest-partial, no fabricated key). Mirrors the Python template (#3668). Value-asserting tests in internal/custom/rust/redis_test.go (literal key, turbofish, publish channel, stream add, cmd-builder GET/SET/PUBLISH, dynamic-key negative). |
 
 ### Migrations
 

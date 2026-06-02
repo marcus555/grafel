@@ -100,4 +100,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟢 7/7 | |
 | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🔴 0/1 | |
 | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🔴 0/1 | |
-| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🔴 0/1 | |
+| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | ✅ 1/1 | |

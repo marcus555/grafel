@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3643) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | ✅ `full` | `2026-06-02` | 3643 | `internal/custom/ruby/redis.go` | Key/channel/stream topology extracted from redis-rb: concrete keys, prefix globs (user:*) from plus-concat and double-quoted interpolation heads (user:#{id}); single-quoted literals are not interpolated (treated as concrete keys). READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Mirrors the Python template (#3668). Value-asserting tests in internal/custom/ruby/redis_test.go (literal key, concat/interpolated prefix glob, single-quote no-interp, publish/subscribe channel, stream add, dynamic-key negative). |
 
 ### Migrations
 

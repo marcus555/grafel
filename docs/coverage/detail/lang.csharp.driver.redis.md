@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3643) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | ✅ `full` | `2026-06-02` | 3643 | `internal/custom/csharp/redis.go` | Key/channel/stream topology extracted from StackExchange.Redis: concrete keys, prefix globs (user:*) from string-concat and $"…{}" interpolation heads; READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Mirrors the Python template (#3668). Value-asserting tests in internal/custom/csharp/redis_test.go (literal key, concat prefix, interpolated prefix, publish/subscribe channel, stream add/read, dynamic-key negative). |
 
 ### Migrations
 

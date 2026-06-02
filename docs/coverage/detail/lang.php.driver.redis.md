@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3643) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | ✅ `full` | `2026-06-02` | 3643 | `internal/custom/php/redis.go` | Key/channel/stream topology extracted from predis/phpredis: concrete keys, prefix globs (user:*) from dot-concat and double-quoted interpolation heads (user:$id / user:{$id}); READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Mirrors the Python template (#3668). Value-asserting tests in internal/custom/php/redis_test.go (literal key, prefix glob, publish/subscribe channel, stream add/read, dynamic-key negative). |
 
 ### Migrations
 

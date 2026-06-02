@@ -31,7 +31,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C#](../by-language/csharp.md) | [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟢 7/7 | |
 | [C#](../by-language/csharp.md) | [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🔴 0/1 | |
 | [C#](../by-language/csharp.md) | [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🔴 0/1 | |
-| [C#](../by-language/csharp.md) | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🔴 0/1 | |
+| [C#](../by-language/csharp.md) | [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | ✅ 1/1 | |
 | [elixir](../by-language/elixir.md) | [Ecto](../detail/lang.elixir.orm.ecto.md) | ✅ 7/7 | |
 | [elixir](../by-language/elixir.md) | [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🔴 0/1 | |
 | [elixir](../by-language/elixir.md) | [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🔴 0/1 | |
@@ -111,7 +111,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🔴 0/1 | |
 | [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🔴 0/1 | |
 | [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟢 3/3 | |
-| [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🔴 0/1 | |
+| [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | ✅ 1/1 | |
 | [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/6 | |
 | [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
@@ -140,7 +140,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🔴 0/1 | |
 | [ruby](../by-language/ruby.md) | [neo4j-ruby-driver / activegraph OGM](../detail/lang.ruby.driver.neo4j.md) | 🟡 3/4 | |
 | [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🔴 0/1 | |
-| [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🔴 0/1 | |
+| [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | ✅ 1/1 | |
 | [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟢 7/7 | |
 | [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟢 4/4 | |
@@ -152,7 +152,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 3/3 | |
-| [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🔴 0/1 | |
+| [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | ✅ 1/1 | |
 | [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
