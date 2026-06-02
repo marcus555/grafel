@@ -21,23 +21,36 @@
 //     aggregate call site, subtype = the stage operator, stage order preserved
 //     as stage_index. $group captures `_id` + accumulators; $facet its keys.
 //
-// SCOPE — two pipeline forms are resolved:
+// SCOPE — these pipeline forms are resolved:
 //
 //   - INLINE list literal: `coll.aggregate([ {"$lookup": {...}}, ... ])`.
 //   - VARIABLE-BOUND (the important case — ~100% of real legacy usage):
 //     `pipeline = [ {"$lookup": {...}}, ... ]` one statement up, then
 //     `coll.aggregate(pipeline)`. We follow the identifier to its
 //     same-function assignment whose RHS is a list literal (single-binding
-//     follow). If the binding isn't a literal list in the same scope, we leave
-//     it unresolved — honest.
+//     follow).
+//   - BUILDER-FUNCTION INDIRECTION (#3866, "ask 3"): the pipeline is produced by
+//     a same-file builder function rather than a local literal:
+//     `coll.aggregate(build_fn())` (direct call argument) OR
+//     `pipeline = build_fn(); coll.aggregate(pipeline)` (call binding then use).
+//     We resolve `build_fn` to its same-file definition and scan ITS body for
+//     the returned pipeline list literal (`return [ ... ]` or
+//     `pipeline = [ ... ]; return pipeline`). The `$lookup` stages from the
+//     builder body are attributed to the AGGREGATING collection at the executor
+//     site. Bounded follow (1-2 hops, same file). Cross-module / dynamic
+//     dispatch / non-literal builder return → left unresolved — honest.
 //
 // The aggregating collection is recovered from pymongo idioms: `db.coll`,
-// `db["coll"]`, `client.db.coll`, `get_collection("coll")`, or a bare
-// `*_cls` / Collection variable name.
+// `db["coll"]`, `client.db.coll`, `get_collection("coll")`, a bare `*_cls` /
+// Collection variable name, or `get_collection(CONST)` where CONST is a
+// resolvable module-level / UPPER_SNAKE collection-name constant (#3866) — the
+// constant resolves to the named collection node (Class:Inspection), so the
+// anchor + JOINS_COLLECTION FromID land on the real collection rather than the
+// shared ext:get_collection node or an all-caps phantom.
 //
-// HONEST LIMIT: builder/`.build()`-produced pipelines and cross-function
-// pipelines stay unresolved (that is ask 3, a separate PR). We never fabricate
-// stages or joins we cannot statically see.
+// HONEST LIMIT: cross-module builders, dynamic builder dispatch, runtime URLs,
+// and unresolvable (lowercase-local-var) get_collection constants stay
+// unresolved. We never fabricate stages or joins we cannot statically see.
 package engine
 
 import (
@@ -91,6 +104,65 @@ var mongoAggPyGetCollRe = regexp.MustCompile(
 var mongoAggPyGetCollAnyArgRe = regexp.MustCompile(
 	`get_collection\(\s*(?:['"]([a-zA-Z_][\w$.]*)['"]|([A-Za-z_][\w]*))`,
 )
+
+// mongoAggPyDirectGetCollConstRe matches a `get_collection(CONST)` call whose
+// single argument is a BARE constant identifier (NOT a quoted string), used as
+// the immediate receiver of `.aggregate(`. Group 1 is the constant name. The
+// pattern anchors at end-of-window (immediately before the `.aggregate` dot, up
+// to surrounding whitespace) so it only fires when get_collection is the direct
+// receiver — `db.get_collection(INSPECTIONS).aggregate(...)`.
+var mongoAggPyDirectGetCollConstRe = regexp.MustCompile(
+	`get_collection\(\s*([A-Za-z_]\w*)\s*\)\s*$`,
+)
+
+// mongoAggPyResolveDirectGetCollConst handles the direct
+// `get_collection(BARE_CONST).aggregate(...)` receiver form, resolving the
+// constant to its collection token. Returns "" when the immediate receiver is
+// not a bare-constant get_collection call (e.g. a quoted arg already resolved
+// elsewhere, a dynamic variable arg, or a different receiver shape) — honest:
+// the caller then falls back to the normal receiver resolution.
+func mongoAggPyResolveDirectGetCollConst(src string, dotPos int) string {
+	winStart := dotPos - 200
+	if winStart < 0 {
+		winStart = 0
+	}
+	window := src[winStart:dotPos]
+	m := mongoAggPyDirectGetCollConstRe.FindStringSubmatch(window)
+	if m == nil {
+		return ""
+	}
+	name := m[1]
+	// A quoted arg can never match `([A-Za-z_]\w*)` framed by `(` and `)` with
+	// no quotes, so this is unambiguously a bare identifier. But a bare
+	// identifier may be a genuine module-level constant OR a dynamic local
+	// variable (`get_collection(coll_var)`). We only resolve when it is plausibly
+	// a constant: a same-file `NAME = "value"` definition exists, OR the name is
+	// UPPER_SNAKE_CASE (the cross-module collection-constant convention). A
+	// lowercase local var stays unresolved — honest-partial, current behavior.
+	if mongoAggPyConstAssignRe(name).MatchString(src) || isUpperSnakeConst(name) {
+		return mongoAggPyResolveCollConst(src, name)
+	}
+	return ""
+}
+
+// isUpperSnakeConst reports whether `name` follows the UPPER_SNAKE_CASE
+// convention used for module-level collection-name constants (only A-Z, 0-9 and
+// underscore, with at least one letter). Lowercase/mixed names — likely local
+// variables — return false.
+func isUpperSnakeConst(name string) bool {
+	hasLetter := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+			hasLetter = true
+		case (c >= '0' && c <= '9') || c == '_':
+		default:
+			return false
+		}
+	}
+	return hasLetter
+}
 
 // mongoAggPyCollVarBindRe matches a same-function binding of a collection
 // variable: `<ident> = <rhs>` at the start of a (possibly indented) line. The
@@ -270,6 +342,17 @@ func mongoAggPyResolveReceiver(src string, dotPos int) string {
 // preserves the existing simple-receiver behaviour. `dotPos` is the index of the
 // `.` before `aggregate`.
 func mongoAggPyResolveReceiverFull(src string, dotPos int) string {
+	// Direct `get_collection(CONST).aggregate(...)` / `db.get_collection(CONST)`
+	// where CONST is a BARE constant identifier (the legacy idiom binds a
+	// module-level collection-name constant rather than a quoted string). The
+	// quoted form was already resolved inside mongoAggPyResolveReceiver via
+	// mongoAggPyGetCollRe; only the bare-constant arg reaches here. We resolve the
+	// constant to the collection token (same-file value, else lowercased name) so
+	// the anchor + JOINS_COLLECTION FromID lands on the real collection node
+	// (Class:Inspection) instead of the all-caps phantom (Class:INSPECTIONS).
+	if real := mongoAggPyResolveDirectGetCollConst(src, dotPos); real != "" {
+		return real
+	}
 	recv := mongoAggPyResolveReceiver(src, dotPos)
 	if recv == "" {
 		return ""
@@ -439,24 +522,95 @@ func mongoAggPyResolvePipeline(src string, openParen, dotPos int) string {
 		return mongoAggPyBracketBody(src, i)
 	}
 
-	// Form 2: a bare identifier argument (`pipeline`) → follow the binding.
+	// A leading identifier opens one of three forms: a bare-var argument
+	// (`pipeline`), a builder CALL argument (`build_fn()`), or an unresolvable
+	// expression. Lex the identifier, then look at what follows.
 	if isPyIdentStart(src[i]) {
 		idStart := i
 		for i < len(src) && isPyIdentChar(src[i]) {
 			i++
 		}
 		ident := src[idStart:i]
-		// The arg must be JUST the identifier: next non-space char is `)`.
 		j := i
 		for j < len(src) && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r') {
 			j++
 		}
-		if j >= len(src) || src[j] != ')' {
-			return "" // e.g. `pipeline + extra`, `build()`, kwargs — unresolved.
+		if j >= len(src) {
+			return ""
 		}
-		return mongoAggPyFollowBinding(src, ident, dotPos, funcStartBefore(src, dotPos))
+		funcStart := funcStartBefore(src, dotPos)
+
+		switch src[j] {
+		case ')':
+			// Form 2: bare identifier argument (`pipeline`).
+			// (a) nearest preceding `pipeline = [ ... ]` literal binding.
+			if lit := mongoAggPyFollowBinding(src, ident, dotPos, funcStart); lit != "" {
+				return lit
+			}
+			// (b) builder indirection: `pipeline = build_fn()` → resolve the
+			// builder's definition and scan its body for the returned pipeline.
+			if fn := mongoAggPyFollowCallBinding(src, ident, dotPos, funcStart); fn != "" {
+				return mongoAggPyResolveBuilderBody(src, fn)
+			}
+			return "" // non-literal / non-builder binding — honest unresolved.
+		case '(':
+			// Form 3: direct builder CALL argument — `coll.aggregate(build_fn())`.
+			// Require the call to be JUST `ident()` (empty args or simple args),
+			// closing immediately before the aggregate `)`. We accept any balanced
+			// argument list, then resolve the builder body. Bounded 1-hop follow.
+			callClose := mongoAggPyMatchParen(src, j)
+			if callClose < 0 {
+				return ""
+			}
+			k := callClose + 1
+			for k < len(src) && (src[k] == ' ' || src[k] == '\t' || src[k] == '\n' || src[k] == '\r') {
+				k++
+			}
+			if k >= len(src) || src[k] != ')' {
+				return "" // e.g. `build()['x']`, `build() + extra` — unresolved.
+			}
+			return mongoAggPyResolveBuilderBody(src, ident)
+		default:
+			return "" // `pipeline + extra`, `pipeline['x']`, attribute — unresolved.
+		}
 	}
 	return ""
+}
+
+// mongoAggPyMatchParen returns the index of the `)` matching the `(` at `open`,
+// string-aware and depth-aware. Returns -1 if unbalanced. Used to skip over a
+// builder call's argument list (`build_fn(db, status="x")`).
+func mongoAggPyMatchParen(src string, open int) int {
+	if open >= len(src) || src[open] != '(' {
+		return -1
+	}
+	depth := 0
+	inStr := byte(0)
+	for i := open; i < len(src); i++ {
+		c := src[i]
+		if inStr != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			inStr = c
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // mongoAggPyBracketBody returns the full balanced `[...]` literal (brackets
@@ -531,6 +685,156 @@ func mongoAggPyFollowBinding(src, ident string, usePos, funcStart int) string {
 		return ""
 	}
 	return mongoAggPyBracketBody(src, best)
+}
+
+// mongoAggPyCallBindReCache caches the per-ident `ident = build_fn(...)` matcher
+// used for builder-call indirection.
+var mongoAggPyCallBindReCache = map[string]*regexp.Regexp{}
+
+// mongoAggPyCallBindRe matches a same-function binding `ident = build_fn(...)`
+// whose RHS is a plain function CALL (a bare callee name immediately followed by
+// `(`), capturing the callee name in group 1. It deliberately does NOT match a
+// list literal (`ident = [`), a subscript, a method chain (`a.b()`), or an
+// expression with a trailing operator — those are handled elsewhere or left
+// unresolved. The `(?:\s*$|\s*\))` tail keeps it to a single `build()` call (no
+// `build() + extra`), but allows arguments inside the parens via `[^\n]*`.
+func mongoAggPyCallBindRe(ident string) *regexp.Regexp {
+	if re, ok := mongoAggPyCallBindReCache[ident]; ok {
+		return re
+	}
+	re := regexp.MustCompile(
+		`(?m)^[ \t]*` + regexp.QuoteMeta(ident) + `\s*=\s*([A-Za-z_]\w*)\s*\(`,
+	)
+	mongoAggPyCallBindReCache[ident] = re
+	return re
+}
+
+// mongoAggPyFollowCallBinding finds the nearest same-function binding
+// `ident = build_fn(...)` preceding `usePos` and returns the callee (builder)
+// name when the entire RHS is JUST that call (`ident = build_fn(args)` with
+// nothing trailing). Returns "" when the binding is absent, is not a plain call,
+// or has a trailing expression/subscript — honest-partial. This is the
+// `pipeline = build_fn(); coll.aggregate(pipeline)` builder-indirection hop.
+func mongoAggPyFollowCallBinding(src, ident string, usePos, funcStart int) string {
+	re := mongoAggPyCallBindRe(ident)
+	bestFn := ""
+	bestParen := -1
+	for _, m := range re.FindAllStringSubmatchIndex(src, -1) {
+		if m[0] >= usePos {
+			break
+		}
+		if m[0] < funcStart {
+			continue
+		}
+		bestFn = src[m[2]:m[3]]
+		bestParen = m[1] - 1 // index of '(' after the callee
+	}
+	if bestFn == "" || bestParen < 0 {
+		return ""
+	}
+	// The RHS must be JUST `build_fn(...)` — its matching `)` is the last
+	// non-whitespace char on the logical line. Reject `build_fn() + x`,
+	// `build_fn()[0]`, `a.build_fn()` (the latter can't match the anchor anyway).
+	close := mongoAggPyMatchParen(src, bestParen)
+	if close < 0 {
+		return ""
+	}
+	k := close + 1
+	for k < len(src) && (src[k] == ' ' || src[k] == '\t') {
+		k++
+	}
+	if k < len(src) && src[k] != '\n' && src[k] != '\r' {
+		return "" // trailing expression — not a pure builder call.
+	}
+	return bestFn
+}
+
+// mongoAggPyResolveBuilderBody resolves a builder function `fnName` defined in
+// the SAME file and returns the pipeline list literal `[ ... ]` it produces.
+// Two body shapes are followed (bounded, 1-2 hops, no cross-module):
+//
+//	def build(): return [ ... ]                      — direct returned literal.
+//	def build(): pipeline = [ ... ]; return pipeline — local var then return it.
+//
+// Returns "" when the builder is not defined in this file, returns something
+// other than a same-function list-literal (a call, a comprehension, a mutated
+// var), or the literal is unbalanced — honest-partial: the executor site then
+// stays unresolved rather than fabricating stages.
+func mongoAggPyResolveBuilderBody(src, fnName string) string {
+	defStart, bodyEnd := mongoAggPyFuncBody(src, fnName)
+	if defStart < 0 {
+		return ""
+	}
+	body := src[defStart:bodyEnd]
+
+	// Shape A: `return [ ... ]` — a list literal returned directly. Find the
+	// first `return [` and return its balanced literal.
+	if loc := mongoAggPyReturnListRe.FindStringIndex(body); loc != nil {
+		// loc[1]-1 is the index of '[' (the regex ends at the bracket).
+		if lit := mongoAggPyBracketBody(body, loc[1]-1); lit != "" {
+			return lit
+		}
+	}
+
+	// Shape B: `return <ident>` where `<ident> = [ ... ]` earlier in the body.
+	if m := mongoAggPyReturnIdentRe.FindStringSubmatch(body); m != nil {
+		retIdent := m[1]
+		// usePos = end of body (the binding precedes the return); funcStart = 0
+		// because `body` is already sliced to this one function.
+		if lit := mongoAggPyFollowBinding(body, retIdent, len(body), 0); lit != "" {
+			return lit
+		}
+	}
+	return ""
+}
+
+// mongoAggPyReturnListRe matches a `return [` (the start of a returned list
+// literal) anywhere in a function body.
+var mongoAggPyReturnListRe = regexp.MustCompile(`(?m)^[ \t]*return\s+\[`)
+
+// mongoAggPyReturnIdentRe matches `return <ident>` (a bare identifier return),
+// capturing the identifier — the pipeline-variable a builder returns after
+// assembling it.
+var mongoAggPyReturnIdentRe = regexp.MustCompile(`(?m)^[ \t]*return\s+([A-Za-z_]\w*)\s*$`)
+
+// mongoAggPyFuncBody returns the [start,end) byte offsets of the body of the
+// SAME-file function named `fnName` — from its `def`/`async def` header to the
+// start of the next top-level-or-shallower-or-equal `def` (or EOF). The body
+// span is generous (it may include nested defs) but is bounded to this function
+// for the purpose of scanning a returned pipeline. Returns (-1,-1) when no such
+// function is defined in `src`.
+func mongoAggPyFuncBody(src, fnName string) (int, int) {
+	re := mongoAggPyNamedDefRe(fnName)
+	m := re.FindStringIndex(src)
+	if m == nil {
+		return -1, -1
+	}
+	start := m[0]
+	// End at the next def header at the same or shallower indentation. Simplest
+	// honest bound: the next `def `/`async def ` line whose header begins after
+	// our header. enclosingFuncAt / funcStartBefore use the same pyOrmFuncRe.
+	end := len(src)
+	for _, d := range pyOrmFuncRe.FindAllStringIndex(src, -1) {
+		if d[0] > start {
+			end = d[0]
+			break
+		}
+	}
+	return start, end
+}
+
+// mongoAggPyNamedDefReCache caches per-name `def fnName(` matchers.
+var mongoAggPyNamedDefReCache = map[string]*regexp.Regexp{}
+
+// mongoAggPyNamedDefRe matches the `def fnName(` / `async def fnName(` header of
+// a specific function.
+func mongoAggPyNamedDefRe(name string) *regexp.Regexp {
+	if re, ok := mongoAggPyNamedDefReCache[name]; ok {
+		return re
+	}
+	re := regexp.MustCompile(`(?m)^[ \t]*(?:async\s+)?def\s+` + regexp.QuoteMeta(name) + `\s*\(`)
+	mongoAggPyNamedDefReCache[name] = re
+	return re
 }
 
 // funcStartBefore returns the offset of the nearest `def`/`async def` line
