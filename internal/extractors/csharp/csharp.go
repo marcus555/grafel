@@ -149,6 +149,10 @@ func walk(
 		if rec, ok := buildEnumEntity(node, file); ok {
 			*out = append(*out, rec)
 		}
+		// Value-carrying SCOPE.Enum value-set node (data-model, epic #3628).
+		if vs, ok := buildEnumValueSet(node, file); ok {
+			*out = append(*out, vs)
+		}
 		return
 
 	case "method_declaration":
@@ -266,6 +270,53 @@ func buildEnumEntity(node *sitter.Node, file extractor.FileInput) (types.EntityR
 		Signature:          sig,
 		EnrichmentRequired: false,
 	}, true
+}
+
+// buildEnumValueSet builds the value-carrying SCOPE.Enum node for a C# enum,
+// capturing each member's explicit literal value (`Active = 1`) when present.
+// Members with no explicit value (`Active,` — C# auto-assigns the position) are
+// recorded value-less; honest-partial avoids fabricating the implicit ordinal.
+func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	name := childFieldText(node, "name", file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+	var members []extractor.EnumMember
+	// Walk the member-declaration list in source order (findAllNodes is a
+	// stack DFS and reverses sibling order, which would corrupt the value-set).
+	list := findChildByType(node, "enum_member_declaration_list")
+	if list != nil {
+		for i := 0; i < int(list.ChildCount()); i++ {
+			member := list.Child(i)
+			if member == nil || member.Type() != "enum_member_declaration" {
+				continue
+			}
+			var mname, mval string
+			for j := 0; j < int(member.ChildCount()); j++ {
+				ch := member.Child(j)
+				if ch == nil {
+					continue
+				}
+				if ch.Type() == "identifier" && mname == "" {
+					mname = string(file.Content[ch.StartByte():ch.EndByte()])
+					continue
+				}
+				// The value follows the `=` token: the first named, non-name
+				// child is the literal/expression initialiser.
+				if mname != "" && ch.IsNamed() && ch.Type() != "identifier" {
+					mval = extractor.StripLiteralQuotes(
+						string(file.Content[ch.StartByte():ch.EndByte()]))
+				}
+			}
+			if mname != "" {
+				members = append(members, extractor.EnumMember{Name: mname, Value: mval})
+			}
+		}
+	}
+	return extractor.EnumEntity(
+		name, "csharp", "csharp_enum", file.Path,
+		int(node.StartPoint().Row)+1, int(node.EndPoint().Row)+1, members,
+	)
 }
 
 // buildOperation creates a SCOPE.Operation entity for method/constructor declarations.

@@ -7726,8 +7726,9 @@
         "Type System": {
           "enum_extraction": {
             "status": "full",
-            "cites": ["internal/extractors/csharp/csharp.go"],
-            "notes": "tree-sitter CST enum_declaration → SCOPE.Schema/enum; members collected in Signature"
+            "cites": ["internal/extractor/enum_valueset.go","internal/extractors/csharp/csharp.go"],
+            "notes": "enum_declaration -\u003e SCOPE.Schema/enum (members in Signature) AND a value-carrying SCOPE.Enum value-set node (buildEnumValueSet) recording explicit member values (Active=1); value-less for implicit-ordinal members (honest-partial).",
+            "verified_at": "2026-06-02"
           },
           "interface_extraction": {
             "status": "full",
@@ -49800,9 +49801,10 @@
         "Type System": {
           "enum_extraction": {
             "status": "full",
-            "cites": ["internal/extractors/python/types.go"],
+            "cites": ["internal/extractor/enum_valueset.go","internal/extractors/python/types.go"],
             "issue": "3049",
-            "verified_at": "2026-05-29"
+            "notes": "pattern_type=enum + enum_members stamped on the class AND a value-carrying SCOPE.Enum value-set node (internal/extractor/enum_valueset.go) capturing each member's literal value (RED=1, OPEN=open; Django TextChoices/IntegerChoices stored-value tuple element). Value-less for auto()/computed members (honest-partial).",
+            "verified_at": "2026-06-02"
           },
           "interface_extraction": {
             "status": "full",

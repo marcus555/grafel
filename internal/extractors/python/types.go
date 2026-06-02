@@ -122,7 +122,21 @@ func annotateTypeClass(cls *sitter.Node, file extractor.FileInput, out *[]types.
 		// enum_extraction.
 		patternType = "enum"
 		if members := classEnumMembers(cls, file.Content); len(members) > 0 {
-			props["enum_members"] = strings.Join(members, ", ")
+			names := make([]string, len(members))
+			for i, m := range members {
+				names[i] = m.Name
+			}
+			props["enum_members"] = strings.Join(names, ", ")
+			// Emit a value-carrying SCOPE.Enum value-set node alongside the
+			// stamped class so the graph answers "what values can enum X take?"
+			// for rewrite enum-parity (data-model, epic #3628).
+			start := int(cls.StartPoint().Row) + 1
+			end := int(cls.EndPoint().Row) + 1
+			if ent, ok := extractor.EnumEntity(
+				bareName, "python", "python_enum", file.Path, start, end, members,
+			); ok {
+				*out = append(*out, ent)
+			}
 		}
 	case baseSetContains(bases, "TypedDict"):
 		// type_extraction — a typed dict shape.
@@ -324,15 +338,19 @@ func classMethodNames(cls *sitter.Node, src []byte) []string {
 	return out
 }
 
-// classEnumMembers returns the names of enum members declared in the class
-// body (`RED = 1` → "RED", `auto()` assignments included). Dunder assignments
-// and methods are skipped.
-func classEnumMembers(cls *sitter.Node, src []byte) []string {
+// classEnumMembers returns the enum members declared in the class body
+// (`RED = 1` → {RED, "1"}, `auto()` assignments → {NAME, ""} since the value is
+// computed). Dunder assignments and methods are skipped. The literal value is
+// captured (with one layer of surrounding quotes stripped) when the RHS is a
+// number, string, or `True/False/None`; computed RHS (call, attribute,
+// arithmetic) yields a value-less member so the name is recorded honestly
+// without fabricating a value.
+func classEnumMembers(cls *sitter.Node, src []byte) []extractor.EnumMember {
 	body := cls.ChildByFieldName("body")
 	if body == nil {
 		return nil
 	}
-	var out []string
+	var out []extractor.EnumMember
 	for i := 0; i < int(body.NamedChildCount()); i++ {
 		stmt := body.NamedChild(i)
 		if stmt == nil || stmt.Type() != "expression_statement" {
@@ -351,10 +369,39 @@ func classEnumMembers(cls *sitter.Node, src []byte) []string {
 			if name == "" || strings.HasPrefix(name, "__") {
 				continue
 			}
-			out = append(out, name)
+			out = append(out, extractor.EnumMember{
+				Name:  name,
+				Value: pythonEnumLiteralValue(asn.ChildByFieldName("right"), src),
+			})
 		}
 	}
 	return out
+}
+
+// pythonEnumLiteralValue extracts the statically-known literal value of an enum
+// member's RHS. Returns "" for computed values (`auto()`, calls, arithmetic,
+// attribute access) so the member is recorded without a fabricated value.
+// Django TextChoices/IntegerChoices `("db", "Label")` tuples resolve to the
+// first element (the stored DB value), which is the parity-relevant literal.
+func pythonEnumLiteralValue(rhs *sitter.Node, src []byte) string {
+	if rhs == nil {
+		return ""
+	}
+	switch rhs.Type() {
+	case "integer", "float", "string":
+		return extractor.StripLiteralQuotes(nodeText(rhs, src))
+	case "true", "false", "none":
+		return nodeText(rhs, src)
+	case "tuple":
+		// Django (Integer|Text)Choices: `ACTIVE = "active", "Active"` → first
+		// element is the stored value.
+		for k := 0; k < int(rhs.NamedChildCount()); k++ {
+			if el := rhs.NamedChild(k); el != nil {
+				return pythonEnumLiteralValue(el, src)
+			}
+		}
+	}
+	return ""
 }
 
 // classAnnotatedFields returns the names of annotated class-body fields

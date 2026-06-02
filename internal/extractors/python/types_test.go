@@ -38,6 +38,83 @@ func findTypeAlias(ents []types.EntityRecord, name string) *types.EntityRecord {
 	return nil
 }
 
+// findEnum returns the SCOPE.Enum value-set entity named name, or nil.
+func findEnum(ents []types.EntityRecord, name string) *types.EntityRecord {
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == "SCOPE.Enum" && e.Name == name {
+			return e
+		}
+	}
+	return nil
+}
+
+// TestEnumValueSet_PythonValues asserts that a Python Enum emits a value-
+// carrying SCOPE.Enum node whose `values` property records each member's
+// literal value (RED=1) — not merely the member names.
+func TestEnumValueSet_PythonValues(t *testing.T) {
+	src := `
+import enum
+
+class Color(enum.Enum):
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+`
+	ents := extractPy(t, src, "app/colors.py")
+	en := findEnum(ents, "Color")
+	if en == nil {
+		t.Fatal("SCOPE.Enum:Color value-set node not found")
+	}
+	if got := en.QualifiedName; got != "scope:enum:app/colors.py:Color" {
+		t.Fatalf("QualifiedName = %q, want scope:enum:app/colors.py:Color", got)
+	}
+	if got := en.Properties["values"]; got != "RED=1, GREEN=2, BLUE=3" {
+		t.Fatalf("values = %q, want %q", got, "RED=1, GREEN=2, BLUE=3")
+	}
+	if got := en.Properties["member_count"]; got != "3" {
+		t.Fatalf("member_count = %q, want 3", got)
+	}
+	if got := en.Properties["kind_hint"]; got != "python_enum" {
+		t.Fatalf("kind_hint = %q, want python_enum", got)
+	}
+}
+
+// TestEnumValueSet_PythonStrEnumStripsQuotes asserts string-literal enum
+// values are recorded with surrounding quotes stripped (OPEN=open, not
+// OPEN="open").
+func TestEnumValueSet_PythonStrEnumStripsQuotes(t *testing.T) {
+	src := `
+from enum import StrEnum
+
+class Status(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
+`
+	ents := extractPy(t, src, "app/status.py")
+	en := findEnum(ents, "Status")
+	if en == nil {
+		t.Fatal("SCOPE.Enum:Status value-set node not found")
+	}
+	if got := en.Properties["values"]; got != "OPEN=open, CLOSED=closed" {
+		t.Fatalf("values = %q, want %q", got, "OPEN=open, CLOSED=closed")
+	}
+}
+
+// TestEnumValueSet_NonEnumNoNode asserts an ordinary (non-enum) class emits NO
+// SCOPE.Enum node — the negative case.
+func TestEnumValueSet_NonEnumNoNode(t *testing.T) {
+	src := `
+class Plain:
+    RED = 1
+    GREEN = 2
+`
+	ents := extractPy(t, src, "app/plain.py")
+	if en := findEnum(ents, "Plain"); en != nil {
+		t.Fatalf("non-enum class Plain produced a SCOPE.Enum node: %+v", en.Properties)
+	}
+}
+
 func TestTypeSystem_Protocol(t *testing.T) {
 	src := `
 from typing import Protocol
