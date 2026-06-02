@@ -462,6 +462,116 @@ function fetchUser(id) {
 	requireGRPCHandles(t, rels, "UserService", "getUser", "node-client")
 }
 
+// TestGRPC_Node_Client_NiceGrpc verifies the modern nice-grpc factory-function
+// client form (#3686). `createClient(GreeterDefinition, channel)` followed by
+// `client.sayHello(req)` must emit a GrpcMethod entity + GRPC_HANDLES edge with
+// the EXACT shared id `grpc:Greeter/sayHello`, so the P6 cross-repo linker can
+// join it to a server emitting the same id.
+func TestGRPC_Node_Client_NiceGrpc(t *testing.T) {
+	src := `import { createChannel, createClient } from 'nice-grpc';
+import { GreeterDefinition } from './greeter.js';
+
+export async function greet(name) {
+    const channel = createChannel('localhost:50051');
+    const client = createClient(GreeterDefinition, channel);
+    const response = await client.sayHello({ name: name });
+    return response.message;
+}
+`
+	ents, rels := runGRPCDetect(t, "typescript", "greeter_client.ts", src)
+
+	// EXACT server shape: service derived from the *Definition descriptor.
+	requireGRPCMethod(t, ents, "Greeter", "sayHello", "nice-grpc-client")
+	requireGRPCHandles(t, rels, "Greeter", "sayHello", "nice-grpc-client")
+
+	// The GRPC_HANDLES edge must originate from the enclosing function, not a
+	// synthetic placeholder.
+	edges := grpcEdgesOfKind(rels, grpcHandlesEdgeKind)
+	if len(edges) == 0 {
+		t.Fatalf("nice-grpc: no GRPC_HANDLES edge emitted")
+	}
+	if !strings.Contains(edges[0].FromID, "greet") {
+		t.Errorf("nice-grpc: GRPC_HANDLES should originate from enclosing fn 'greet'; got FromID=%q", edges[0].FromID)
+	}
+}
+
+// TestGRPC_Node_Client_Connect verifies the Connect (connectrpc) factory-client
+// form (#3686). `createPromiseClient(ElizaService, transport)` + `client.say(req)`
+// must emit `grpc:Eliza/say` (service derived from the *Service descriptor),
+// matching the exact server gRPC shape. Note: the Connect import path
+// `@connectrpc/connect` does not contain the substring "grpc", so this also
+// exercises the extended marker pre-filter.
+func TestGRPC_Node_Client_Connect(t *testing.T) {
+	src := `import { createPromiseClient } from '@connectrpc/connect';
+import { ElizaService } from './gen/eliza_connect.js';
+
+async function chat(sentence) {
+    const client = createPromiseClient(ElizaService, transport);
+    const res = await client.say({ sentence: sentence });
+    return res.sentence;
+}
+`
+	ents, rels := runGRPCDetect(t, "typescript", "eliza_client.ts", src)
+
+	requireGRPCMethod(t, ents, "Eliza", "say", "connect-client")
+	requireGRPCHandles(t, rels, "Eliza", "say", "connect-client")
+}
+
+// TestGRPC_Node_Client_FactoryParity verifies that the modern factory-client
+// id matches a server side emitting the same `grpc:Greeter/sayHello` id, so a
+// cross-repo link would form. This is the load-bearing property for #3686.
+func TestGRPC_Node_Client_FactoryParity(t *testing.T) {
+	// Go server side declaring the Greeter.sayHello RPC.
+	serverSrc := `package main
+
+import (
+    "context"
+    "google.golang.org/grpc"
+    pb "example.com/proto/greeter"
+)
+
+type greeterServer struct{}
+
+func (s *greeterServer) sayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloReply, error) {
+    return &pb.HelloReply{}, nil
+}
+
+func main() {
+    gs := grpc.NewServer()
+    pb.RegisterGreeterServer(gs, &greeterServer{})
+}
+`
+	clientSrc := `import { createClient } from 'nice-grpc';
+import { GreeterDefinition } from './greeter.js';
+async function run() {
+    const client = createClient(GreeterDefinition, channel);
+    await client.sayHello({ name: 'world' });
+}
+`
+	serverEnts, _ := runGRPCDetect(t, "go", "greeter_server.go", serverSrc)
+	clientEnts, _ := runGRPCDetect(t, "typescript", "greeter_client.ts", clientSrc)
+
+	want := "grpc:Greeter/sayHello"
+	hasServer := false
+	for _, e := range serverEnts {
+		if e.Kind == grpcMethodKind && e.Name == want {
+			hasServer = true
+		}
+	}
+	hasClient := false
+	for _, e := range clientEnts {
+		if e.Kind == grpcMethodKind && e.Name == want {
+			hasClient = true
+		}
+	}
+	if !hasServer {
+		t.Errorf("Go server did not emit %q; server GrpcMethods=%v", want, grpcEntitiesOfKind(serverEnts, grpcMethodKind))
+	}
+	if !hasClient {
+		t.Errorf("nice-grpc client did not emit matching %q; client GrpcMethods=%v", want, grpcEntitiesOfKind(clientEnts, grpcMethodKind))
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Cross-language entity ID parity
 // ---------------------------------------------------------------------------
