@@ -233,6 +233,27 @@ const (
 	// topic) converge on a single node. Answers "who joins / broadcasts to
 	// room X?". Emitted by internal/engine/ws_channel_grouping.go.
 	EntityKindChannel EntityKind = "SCOPE.Channel"
+	// #3628 area (data-model): enumerated-type value-set node. A SCOPE.Enum
+	// entity represents ONE enumerated type and carries its full member /
+	// value-set as queryable Properties — so the graph answers "what values can
+	// field X take?" for rewrite enum-parity (e.g. a Django Python Enum that a
+	// NestJS rewrite must reproduce value-for-value). One entity per declared
+	// enum, keyed on the declaring file + enum name (distinct same-named enums
+	// in different files stay distinct — unlike the file-agnostic ExceptionType).
+	// Covers Python Enum/IntEnum/StrEnum/TextChoices/IntegerChoices, TypeScript
+	// `enum` + string-literal unions, Java enum, Go iota const groups, Ruby
+	// ActiveRecord `enum`, and C# enum. Properties:
+	//   "enum_name"    : the bare enum type name.
+	//   "members"      : comma-joined member names, declaration order.
+	//   "values"       : comma-joined "Name=Literal" pairs for members whose
+	//                    literal value is statically known (omitted for members
+	//                    with no explicit value). e.g. "RED=1, GREEN=2".
+	//   "member_count" : number of members.
+	//   "kind_hint"    : the source construct ("python_enum", "ts_enum",
+	//                    "ts_literal_union", "java_enum", "go_iota",
+	//                    "rails_enum", "csharp_enum").
+	// See internal/extractor/enum_valueset.go.
+	EntityKindEnum EntityKind = "SCOPE.Enum"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -311,6 +332,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindTemplate,
 		// [realtime] WS room/channel grouping convergence node (child of #3628).
 		EntityKindChannel,
+		// #3628 data-model: enum / value-set node.
+		EntityKindEnum,
 	}
 }
 
@@ -1076,6 +1099,18 @@ const (
 	// internal/engine/ws_channel_grouping.go.
 	RelationshipKindJoinsChannel RelationshipKind = "JOINS_CHANNEL"
 	RelationshipKindBroadcastsTo RelationshipKind = "BROADCASTS_TO"
+	// #3628 data-model: field/param → enum value-set edge. Emitted from a
+	// model field, struct field, or parameter whose declared type is a
+	// SCOPE.Enum value-set node, to that node. Lets the graph answer "which
+	// fields are constrained to enum X's values?" — the inbound side of the
+	// enum-parity contract. ToID is the SCOPE.Enum entity's QualifiedName so
+	// the resolver binds it via the byQualifiedName exact-match tier. Properties:
+	//   "enum"  : the bare enum type name.
+	//   "field" : the field/param name carrying the type (when known).
+	// Honest-partial: only statically-resolvable enum-typed declarations emit
+	// this edge; dynamic / computed types do not. See
+	// internal/extractor/enum_valueset.go.
+	RelationshipKindTypedAs RelationshipKind = "TYPED_AS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -1222,6 +1257,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// [realtime] WS room/channel grouping: JOINS_CHANNEL / BROADCASTS_TO.
 		RelationshipKindJoinsChannel,
 		RelationshipKindBroadcastsTo,
+		// #3628 data-model: field/param → enum value-set edge.
+		RelationshipKindTypedAs,
 	}
 }
 

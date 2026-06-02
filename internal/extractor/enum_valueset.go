@@ -1,0 +1,143 @@
+package extractor
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/cajasmota/archigraph/internal/types"
+)
+
+// enum_valueset.go — shared cross-language helper for enum / value-set
+// extraction (epic #3628, data-model area). It mirrors the synthetic-node
+// model of exception_flow.go but keeps enums file-scoped (a Status enum in
+// orders.py and a Status enum in users.py are DIFFERENT enums, so their
+// SourceFile differs and ComputeID does not collapse them).
+//
+// The capability answers the enum-parity question a rewrite needs:
+//
+//   - "what values can field X take?" — a SCOPE.Enum value-set node carries
+//     the full member list AND each member's literal value, so a Django
+//     Python `class Status(IntEnum): ACTIVE = 1; ARCHIVED = 2` is reproduced
+//     value-for-value by a NestJS `enum Status { ACTIVE = 1, ARCHIVED = 2 }`.
+//   - "which fields are constrained to enum X?" — the inbound TYPED_AS edges
+//     from fields/params declared with the enum type.
+//
+// Each language extractor detects the enum shape (Python Enum subclass, TS
+// `enum` / string-literal union, Java enum, Go iota const block, Ruby
+// ActiveRecord enum, C# enum) and hands the parsed (name, members[], kindHint)
+// to EnumEntity here. This file owns ONLY node construction so the value-set
+// shape is identical everywhere.
+//
+// Precision-first / honest-partial: members whose literal value is not
+// statically known (computed expressions, `auto()`, bare Go iota positions
+// the caller chose not to materialise) are emitted as value-less members —
+// the member name is still recorded, but it contributes no "Name=Literal"
+// pair to the `values` property. A caller that cannot statically name the
+// enum (dynamic class, non-literal TS union) emits NO node.
+
+// EnumMember is one declared member of an enumerated type: its name plus an
+// optional statically-known literal value. Value is "" when the source did not
+// assign an explicit literal (e.g. a bare Java constant `ACTIVE`, a Go iota
+// position the extractor did not resolve, or a Python `auto()` member).
+type EnumMember struct {
+	Name  string
+	Value string // statically-known literal ("" when unknown / auto)
+}
+
+// EnumQualifiedName returns the structural-ref / QualifiedName for an enum
+// value-set node. Shape:
+//
+//	scope:enum:<sourceFile>:<EnumName>
+//
+// File-scoped so distinct same-named enums in different files stay distinct.
+// This value is stored as the entity's QualifiedName, so a TYPED_AS edge whose
+// ToID equals it binds via the resolver's byQualifiedName exact-match tier.
+func EnumQualifiedName(sourceFile, enumName string) string {
+	return "scope:enum:" + sourceFile + ":" + enumName
+}
+
+// EnumEntity builds the SCOPE.Enum value-set entity for one enumerated type.
+// name is the bare enum type name; members are in declaration order; kindHint
+// records the source construct ("python_enum", "ts_enum", "ts_literal_union",
+// "java_enum", "go_iota", "rails_enum", "csharp_enum"). sourceFile / startLine
+// / endLine locate the declaration. Returns ok=false when name is empty or no
+// members were parsed (an enum with zero members is not worth a node).
+func EnumEntity(
+	name, lang, kindHint, sourceFile string,
+	startLine, endLine int,
+	members []EnumMember,
+) (types.EntityRecord, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(members) == 0 {
+		return types.EntityRecord{}, false
+	}
+
+	memberNames := make([]string, 0, len(members))
+	valuePairs := make([]string, 0, len(members))
+	for _, m := range members {
+		mn := strings.TrimSpace(m.Name)
+		if mn == "" {
+			continue
+		}
+		memberNames = append(memberNames, mn)
+		if v := strings.TrimSpace(m.Value); v != "" {
+			valuePairs = append(valuePairs, mn+"="+v)
+		}
+	}
+	if len(memberNames) == 0 {
+		return types.EntityRecord{}, false
+	}
+
+	if startLine <= 0 {
+		startLine = 1
+	}
+	if endLine < startLine {
+		endLine = startLine
+	}
+
+	props := map[string]string{
+		"enum_name":    name,
+		"members":      strings.Join(memberNames, ", "),
+		"member_count": strconv.Itoa(len(memberNames)),
+		"kind_hint":    kindHint,
+	}
+	if len(valuePairs) > 0 {
+		props["values"] = strings.Join(valuePairs, ", ")
+	}
+
+	sig := "enum " + name + " { " + strings.Join(memberNames, ", ") + " }"
+
+	e := types.EntityRecord{
+		Name:               name,
+		QualifiedName:      EnumQualifiedName(sourceFile, name),
+		Kind:               string(types.EntityKindEnum),
+		Subtype:            "enum",
+		Language:           lang,
+		SourceFile:         sourceFile,
+		StartLine:          startLine,
+		EndLine:            endLine,
+		Signature:          sig,
+		Properties:         props,
+		EnrichmentRequired: false,
+	}
+	e.ID = e.ComputeID()
+	return e, true
+}
+
+// StripLiteralQuotes removes a single layer of matching surrounding quotes
+// (single, double, or backtick) from a literal token, returning the inner
+// text. Non-quoted tokens (numbers, bare identifiers) are returned unchanged.
+// Used to normalise enum member values so a TS `'active'` and a Python
+// `"active"` both record the literal value `active`.
+func StripLiteralQuotes(lit string) string {
+	s := strings.TrimSpace(lit)
+	if len(s) >= 2 {
+		switch s[0] {
+		case '\'', '"', '`':
+			if s[len(s)-1] == s[0] {
+				return s[1 : len(s)-1]
+			}
+		}
+	}
+	return s
+}

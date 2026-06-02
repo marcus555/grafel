@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | ✅ `full` | `2026-05-29` | 3049 | `internal/extractors/python/types.go` | — |
+| Enum extraction | ✅ `full` | `2026-06-02` | 3049 | `internal/extractor/enum_valueset.go`<br>`internal/extractors/python/types.go` | pattern_type=enum + enum_members stamped on the class AND a value-carrying SCOPE.Enum value-set node (internal/extractor/enum_valueset.go) capturing each member's literal value (RED=1, OPEN=open; Django TextChoices/IntegerChoices stored-value tuple element). Value-less for auto()/computed members (honest-partial). |
 | Interface extraction | ✅ `full` | `2026-05-29` | 3049 | `internal/extractors/python/types.go` | — |
 | Type alias extraction | ✅ `full` | `2026-05-29` | 3049 | `internal/extractors/python/types.go` | — |
 | Type extraction | ✅ `full` | `2026-05-29` | 3049 | `internal/extractors/python/types.go` | — |
