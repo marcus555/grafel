@@ -29,7 +29,9 @@ package java
 //     against its own framework set, running each function once per detected
 //     candidate is equivalent to the test harness — non-matching frameworks are
 //     rejected by the gate at zero extraction cost.
-//  3. Runs ALL 35 ExtractXxx functions, collecting their PatternResults.
+//  3. Runs ALL ExtractXxx functions in allPatternExtractors (originally 35;
+//     since grown as new framework extractors landed, e.g. the #3699 Spring/
+//     Guice DI-graph pair), collecting their PatternResults.
 //  4. Converts SecondaryEntity -> types.EntityRecord (preserving Kind/Subtype/
 //     properties/provenance) and Relationship -> an embedded
 //     types.RelationshipRecord attached to the SOURCE entity (FromID implicit,
@@ -67,6 +69,7 @@ var allPatternExtractors = []patternFn{
 	ExtractBeanValidation,
 	ExtractCDIInterceptors,
 	ExtractDropwizard,
+	ExtractGuiceDI,
 	ExtractGWT,
 	ExtractGWTDataFetching,
 	ExtractHelidonFilters,
@@ -91,6 +94,7 @@ var allPatternExtractors = []patternFn{
 	ExtractSpringAOP,
 	ExtractSpringBoot,
 	ExtractSpringDIDeepen,
+	ExtractSpringDIGraph,
 	ExtractSpringEcosystem,
 	ExtractSpringGraphQL,
 	ExtractSpringRequestResponse,
@@ -180,6 +184,13 @@ var frameworkMarkers = []frameworkMarker{
 	{"vertx", "io.vertx"},
 	{"javalin", "io.javalin"},
 	{"akka_http", "akka.http"},
+
+	// Guice — the @Inject signal is shared with jakarta_ee, but a pure Guice
+	// module file may only reference com.google.inject / AbstractModule.
+	{"jakarta_ee", "com.google.inject"},
+	{"jakarta_ee", "AbstractModule"},
+	{"jakarta_ee", "javax.inject"},
+	{"jakarta_ee", "@Inject"},
 
 	// LangChain4j.
 	{"langchain4j", "dev.langchain4j"},
