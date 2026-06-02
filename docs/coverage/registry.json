@@ -18067,8 +18067,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_golang.go","internal/substrate/dataflow_golang_test.go"],
+            "issue": "3943",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), added via #3943: a Go dataflow sniffer (dataflow_golang.go) is now registered on the \"go\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts sniffers. Sources: gin c.Query/PostForm/Param/ShouldBindJSON/Bind, echo c.QueryParam/FormValue/Param/Bind, chi chi.URLParam/r.FormValue/r.URL.Query().Get, net/http r.FormValue/r.URL.Query().Get/json.NewDecoder(r.Body).Decode. Bind sources (ShouldBindJSON(\u0026dto)/Decode(\u0026dto)) taint the pointed-to root; field lifted from dto.Field member access. Intra-fn assignment tracking (:= and =) + multi-hop (\u003c=DataFlowMaxHops=3) local-call + cross-file propagation; sinks gorm Create/Save/Updates + database/sql/sqlx Exec/Query, c.JSON/w.Write/json.NewEncoder(w).Encode response, http.Post/client.Do outbound. HONEST-PARTIAL: drops reassignment, dynamic keys (-\u003eflow w/o field), embedded-arg, variadic spread, type-only/unnamed/multi-line params, recursion/cycle, 4th hop, external/ambiguous imports. Java/Ruby/PHP sniffers remain follow-up. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -18357,8 +18360,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_golang.go","internal/substrate/dataflow_golang_test.go"],
+            "issue": "3943",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), added via #3943: a Go dataflow sniffer (dataflow_golang.go) is now registered on the \"go\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts sniffers. Sources: gin c.Query/PostForm/Param/ShouldBindJSON/Bind, echo c.QueryParam/FormValue/Param/Bind, chi chi.URLParam/r.FormValue/r.URL.Query().Get, net/http r.FormValue/r.URL.Query().Get/json.NewDecoder(r.Body).Decode. Bind sources (ShouldBindJSON(\u0026dto)/Decode(\u0026dto)) taint the pointed-to root; field lifted from dto.Field member access. Intra-fn assignment tracking (:= and =) + multi-hop (\u003c=DataFlowMaxHops=3) local-call + cross-file propagation; sinks gorm Create/Save/Updates + database/sql/sqlx Exec/Query, c.JSON/w.Write/json.NewEncoder(w).Encode response, http.Post/client.Do outbound. HONEST-PARTIAL: drops reassignment, dynamic keys (-\u003eflow w/o field), embedded-arg, variadic spread, type-only/unnamed/multi-line params, recursion/cycle, 4th hop, external/ambiguous imports. Java/Ruby/PHP sniffers remain follow-up. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -19567,8 +19573,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_golang.go","internal/substrate/dataflow_golang_test.go"],
+            "issue": "3943",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), added via #3943: a Go dataflow sniffer (dataflow_golang.go) is now registered on the \"go\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts sniffers. Sources: gin c.Query/PostForm/Param/ShouldBindJSON/Bind, echo c.QueryParam/FormValue/Param/Bind, chi chi.URLParam/r.FormValue/r.URL.Query().Get, net/http r.FormValue/r.URL.Query().Get/json.NewDecoder(r.Body).Decode. Bind sources (ShouldBindJSON(\u0026dto)/Decode(\u0026dto)) taint the pointed-to root; field lifted from dto.Field member access. Intra-fn assignment tracking (:= and =) + multi-hop (\u003c=DataFlowMaxHops=3) local-call + cross-file propagation; sinks gorm Create/Save/Updates + database/sql/sqlx Exec/Query, c.JSON/w.Write/json.NewEncoder(w).Encode response, http.Post/client.Do outbound. HONEST-PARTIAL: drops reassignment, dynamic keys (-\u003eflow w/o field), embedded-arg, variadic spread, type-only/unnamed/multi-line params, recursion/cycle, 4th hop, external/ambiguous imports. Java/Ruby/PHP sniffers remain follow-up. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -22037,8 +22046,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_golang.go","internal/substrate/dataflow_golang_test.go"],
+            "issue": "3943",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), added via #3943: a Go dataflow sniffer (dataflow_golang.go) is now registered on the \"go\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts sniffers. Sources: gin c.Query/PostForm/Param/ShouldBindJSON/Bind, echo c.QueryParam/FormValue/Param/Bind, chi chi.URLParam/r.FormValue/r.URL.Query().Get, net/http r.FormValue/r.URL.Query().Get/json.NewDecoder(r.Body).Decode. Bind sources (ShouldBindJSON(\u0026dto)/Decode(\u0026dto)) taint the pointed-to root; field lifted from dto.Field member access. Intra-fn assignment tracking (:= and =) + multi-hop (\u003c=DataFlowMaxHops=3) local-call + cross-file propagation; sinks gorm Create/Save/Updates + database/sql/sqlx Exec/Query, c.JSON/w.Write/json.NewEncoder(w).Encode response, http.Post/client.Do outbound. HONEST-PARTIAL: drops reassignment, dynamic keys (-\u003eflow w/o field), embedded-arg, variadic spread, type-only/unnamed/multi-line params, recursion/cycle, 4th hop, external/ambiguous imports. Java/Ruby/PHP sniffers remain follow-up. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
