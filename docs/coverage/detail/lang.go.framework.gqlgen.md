@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 36
+- **Capability cells:** 37
 
 ## Capabilities
 
@@ -72,6 +72,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🔴 `missing` | — | 3613 | — | — |
+| Config consumption | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Constant propagation | 🔴 `missing` | — | 3613 | — | — |
 | Dead code detection | 🔴 `missing` | — | 3613 | — | — |
 | Def use chain extraction | 🔴 `missing` | — | 3613 | — | — |

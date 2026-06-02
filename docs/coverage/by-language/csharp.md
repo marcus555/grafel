@@ -30,7 +30,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [Carter](../detail/lang.csharp.framework.carter.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [FastEndpoints](../detail/lang.csharp.framework.fastendpoints.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [HotChocolate (GraphQL)](../detail/lang.csharp.framework.hotchocolate.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🔴 0/7 | |
+| [HotChocolate (GraphQL)](../detail/lang.csharp.framework.hotchocolate.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/7 | |
 | [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 
@@ -70,15 +70,15 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Tools
 
-| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
-|---|---|---|---|---|---|
-| [.csproj / packages.config](../detail/pkg.csproj.md) | — | ✅ | ✅ | — | |
-| [FluentAssertions](../detail/test.fluentassertions.md) | 🔴 | — | — | 🔴 | |
-| [MSTest](../detail/test.mstest.md) | 🟢 | — | — | 🟢 | |
-| [NUnit](../detail/test.nunit.md) | 🟢 | — | — | 🟢 | |
-| [NuGet](../detail/build.nuget.md) | 🟢 | — | — | 🟢 | |
-| [dotnet CLI / MSBuild](../detail/build.dotnet.md) | ✅ | — | — | ✅ | |
-| [xUnit](../detail/test.xunit.md) | 🟢 | — | — | 🟢 | |
+| Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
+|---|---|---|---|---|---|---|
+| [.csproj / packages.config](../detail/pkg.csproj.md) | — | — | ✅ | ✅ | — | |
+| [FluentAssertions](../detail/test.fluentassertions.md) | 🔴 | — | — | — | 🔴 | |
+| [MSTest](../detail/test.mstest.md) | 🟢 | — | — | — | 🟢 | |
+| [NUnit](../detail/test.nunit.md) | 🟢 | — | — | — | 🟢 | |
+| [NuGet](../detail/build.nuget.md) | 🟢 | — | — | — | 🟢 | |
+| [dotnet CLI / MSBuild](../detail/build.dotnet.md) | ✅ | — | — | — | ✅ | |
+| [xUnit](../detail/test.xunit.md) | 🟢 | — | — | — | 🟢 | |
 
 ## ORMs
 

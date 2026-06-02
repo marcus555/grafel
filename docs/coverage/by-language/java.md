@@ -35,11 +35,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/16 | |
 | [Javalin](../detail/lang.java.framework.javalin.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/7 | |
 | [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 13/16 | |
-| [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🔴 0/16 | |
+| [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/16 | |
 | [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 4/16 | |
 | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 3/3 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 22/22 | 🟡 15/18 | |
 | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 12/16 | |
-| [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🔴 0/16 | |
+| [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/16 | |
 | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 3/7 | |
 
 
@@ -75,18 +75,18 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Tools
 
-| Name | Dependency graph | Lockfile parsing | Manifest parsing | Target extraction | Notes |
-|---|---|---|---|---|---|
-| [AssertJ](../detail/test.assertj.md) | 🔴 | — | — | 🔴 | |
-| [Gradle (Groovy + Kotlin DSL)](../detail/build.gradle.md) | ✅ | — | — | ✅ | |
-| [JUnit 4](../detail/test.junit4.md) | 🟢 | — | — | 🟢 | |
-| [JUnit 5](../detail/test.junit5.md) | ✅ | — | — | ✅ | |
-| [Maven (pom.xml)](../detail/build.maven.md) | ✅ | — | — | ✅ | |
-| [Mockito](../detail/test.mockito.md) | 🔴 | — | — | 🔴 | |
-| [REST-assured](../detail/test.restassured.md) | 🔴 | — | — | 🔴 | |
-| [TestNG](../detail/test.testng.md) | 🔴 | — | — | 🟢 | |
-| [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | 🔴 | 🔴 | — | |
-| [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | — | |
+| Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
+|---|---|---|---|---|---|---|
+| [AssertJ](../detail/test.assertj.md) | 🔴 | — | — | — | 🔴 | |
+| [Gradle (Groovy + Kotlin DSL)](../detail/build.gradle.md) | ✅ | — | — | — | ✅ | |
+| [JUnit 4](../detail/test.junit4.md) | 🟢 | — | — | — | 🟢 | |
+| [JUnit 5](../detail/test.junit5.md) | ✅ | — | — | — | ✅ | |
+| [Maven (pom.xml)](../detail/build.maven.md) | ✅ | — | — | — | ✅ | |
+| [Mockito](../detail/test.mockito.md) | 🔴 | — | — | — | 🔴 | |
+| [REST-assured](../detail/test.restassured.md) | 🔴 | — | — | — | 🔴 | |
+| [TestNG](../detail/test.testng.md) | 🔴 | — | — | — | 🟢 | |
+| [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | — | 🔴 | 🔴 | — | |
+| [pom.xml](../detail/pkg.pom.md) | — | — | — | ✅ | — | |
 
 ## ORMs
 
