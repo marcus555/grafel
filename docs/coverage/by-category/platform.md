@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 26 records · **java**: 1 · **JS/TS**: 1 · **multi**: 24
+**Total**: 27 records · **java**: 1 · **JS/TS**: 1 · **multi**: 25
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -28,6 +28,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [OpenTofu (HCL)](../detail/infra.iac.opentofu.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | — | — | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [Reverse-proxy / gateway request topology](../detail/infra.deployment.request-topology.md) | ✅ | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | — | — | ✅ | ✅ | |
