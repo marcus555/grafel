@@ -123,6 +123,14 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 		synthesizeQuarkusScheduled(src, path, lang, emitJob)
 	case "go":
 		synthesizeGoCron(src, path, emitJob)
+	case "ruby":
+		// #3700: Sidekiq worker jobs + sidekiq-cron scheduled jobs, plus
+		// ENQUEUES edges from `Worker.perform_async/in/at` dispatch sites to
+		// the worker job entity. synthesizeRubySidekiq registers job IDs into
+		// seenJob; synthesizeSidekiqEnqueueEdges resolves dispatch call sites
+		// to those IDs and appends the caller→job ENQUEUES edges.
+		synthesizeRubySidekiq(src, path, emitJob)
+		relationships = synthesizeSidekiqEnqueueEdges(src, seenJob, relationships)
 	}
 
 	// YAML-based detectors run regardless of `lang` because the language
@@ -590,6 +598,185 @@ func synthesizeGoCron(
 		jobID := "go_cron:" + path + ":" + expr
 		emitJob(jobID, handler, expr, "go_cron", nil)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Ruby — Sidekiq workers + sidekiq-cron (#3700)
+// ---------------------------------------------------------------------------
+//
+// A Sidekiq worker is a class that `include Sidekiq::Worker` (or the newer
+// `Sidekiq::Job`) and defines `def perform`. The async execution of that
+// `perform` method IS the background job, so we model the worker as a
+// SCOPE.ScheduledJob entity and emit a TRIGGERS edge to the `perform`
+// handler (the runtime invokes perform when the job is popped off the queue).
+//
+// Dispatch happens at `Worker.perform_async/perform_in/perform_at(...)` call
+// sites; each such call ENQUEUES work onto the queue. We emit an ENQUEUES
+// edge from the enclosing Ruby method to the worker's job entity.
+//
+// sidekiq-cron declares recurring jobs via `Sidekiq::Cron::Job.create(
+// name: '...', cron: 'EXPR', class: 'SomeWorker')` (or a YAML schedule loaded
+// through `Sidekiq::Cron::Job.load_from_hash`). The `cron:` expression is the
+// schedule; the `class:` value is the worker that runs.
+
+// rubySidekiqWorkerJobID is the canonical job-entity ID for a Sidekiq worker
+// class. Stable across files (no path) so a `perform_async` dispatch in one
+// file resolves to the worker job defined in another. Cron jobs reuse the
+// same ID when their `class:` names the worker, so the scheduled job and the
+// dispatch target collapse onto one node.
+func rubySidekiqWorkerJobID(workerClass string) string {
+	return "sidekiq:" + workerClass
+}
+
+// reRubySidekiqClass captures a `class Foo` (or `class Foo::Bar`) declaration.
+// Group 1 = class name.
+var reRubySidekiqClass = regexp.MustCompile(`(?m)^\s*class\s+([A-Z][A-Za-z0-9_:]*)`)
+
+// reRubySidekiqInclude matches `include Sidekiq::Worker` / `include Sidekiq::Job`.
+var reRubySidekiqInclude = regexp.MustCompile(`(?m)^\s*include\s+Sidekiq::(?:Worker|Job)\b`)
+
+// reRubySidekiqPerform matches the `def perform` method of a worker.
+var reRubySidekiqPerform = regexp.MustCompile(`(?m)^\s*def\s+perform\b`)
+
+// reRubySidekiqDispatch captures `Worker.perform_async(...)` /
+// `Worker.perform_in(...)` / `Worker.perform_at(...)` dispatch sites.
+// Group 1 = worker class, group 2 = dispatch method.
+var reRubySidekiqDispatch = regexp.MustCompile(`([A-Z][A-Za-z0-9_:]*)\.(perform_async|perform_in|perform_at|perform_bulk)\b`)
+
+// reRubySidekiqCron captures sidekiq-cron job declarations. We match the
+// `cron:` and `class:` kwargs of a `Sidekiq::Cron::Job.create`/`load_from_hash`
+// block within a single literal hash. Two narrowly-scoped regexes pull the
+// cron expression and the worker class respectively from the same statement.
+var reRubySidekiqCronCreate = regexp.MustCompile(`Sidekiq::Cron::Job\.(?:create|load_from_hash!?)`)
+var reRubySidekiqCronExpr = regexp.MustCompile(`(?m)['"]?cron['"]?\s*(?:=>|:)\s*['"]([^'"]+)['"]`)
+var reRubySidekiqCronClass = regexp.MustCompile(`(?m)['"]?class['"]?\s*(?:=>|:)\s*['"]?([A-Z][A-Za-z0-9_:]*)`)
+
+// reRubyEnclosingMethod captures Ruby `def name` declarations (with or without
+// parentheses). Used to attribute a dispatch call site to its enclosing method.
+var reRubyEnclosingMethod = regexp.MustCompile(`(?m)^\s*def\s+([A-Za-z_][\w?!]*)`)
+
+// rubyEnclosingMethod returns the name of the Ruby method enclosing pos, or
+// "" when the call site is at class/module body level (no enclosing def).
+func rubyEnclosingMethod(src string, pos int) string {
+	if pos > len(src) {
+		pos = len(src)
+	}
+	matches := reRubyEnclosingMethod.FindAllStringSubmatch(src[:pos], -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[len(matches)-1][1]
+}
+
+// synthesizeRubySidekiq emits SCOPE.ScheduledJob entities for Sidekiq worker
+// classes (with a TRIGGERS edge to `perform`) and for sidekiq-cron recurring
+// jobs (carrying the cron expression). emitJob registers every job ID into the
+// caller's seenJob map so the ENQUEUES pass can resolve dispatch targets.
+func synthesizeRubySidekiq(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	if !strings.Contains(src, "Sidekiq") && !strings.Contains(src, "perform_async") {
+		return
+	}
+
+	// 1. sidekiq-cron recurring jobs FIRST, so the schedule-carrying variant
+	//    wins the seenJob dedup over the plain worker-class entity below (both
+	//    share the `sidekiq:<Worker>` ID). emitJob already emits the
+	//    TRIGGERS → perform edge for the scheduled variant.
+	if reRubySidekiqCronCreate.MatchString(src) {
+		for _, eloc := range reRubySidekiqCronExpr.FindAllStringSubmatchIndex(src, -1) {
+			expr := src[eloc[2]:eloc[3]]
+			// Find the worker class within the same `create(...)` literal hash.
+			workerClass := ""
+			win := src[eloc[0]:min(eloc[0]+400, len(src))]
+			if cm := reRubySidekiqCronClass.FindStringSubmatch(win); len(cm) >= 2 {
+				workerClass = cm[1]
+			} else {
+				back := src[max(eloc[0]-400, 0):eloc[0]]
+				if cm := reRubySidekiqCronClass.FindStringSubmatch(back); len(cm) >= 2 {
+					workerClass = cm[1]
+				}
+			}
+			var jobID string
+			if workerClass != "" {
+				jobID = rubySidekiqWorkerJobID(workerClass)
+			} else {
+				jobID = "sidekiq_cron:" + path + ":" + expr
+			}
+			emitJob(jobID, "perform", expr, "sidekiq_cron", map[string]string{
+				"worker_class": workerClass,
+				"job_type":     "scheduled",
+			})
+		}
+	}
+
+	// 2. Worker classes: a class that includes Sidekiq::Worker/Job AND defines
+	//    `def perform`. We require both to avoid flagging arbitrary classes.
+	//    Deduped against any cron entity emitted above (same job ID).
+	if reRubySidekiqInclude.MatchString(src) && reRubySidekiqPerform.MatchString(src) {
+		// Attribute each `include Sidekiq::Worker` to the class declared above
+		// it, mirroring internal/custom/ruby/sidekiq.go's class resolution.
+		for _, inc := range reRubySidekiqInclude.FindAllStringIndex(src, -1) {
+			classMatches := reRubySidekiqClass.FindAllStringSubmatch(src[:inc[0]], -1)
+			if len(classMatches) == 0 {
+				continue
+			}
+			workerClass := classMatches[len(classMatches)-1][1]
+			jobID := rubySidekiqWorkerJobID(workerClass)
+			// handler == "perform": the job triggers the worker's perform method.
+			emitJob(jobID, "perform", "", "sidekiq", map[string]string{
+				"worker_class": workerClass,
+				"job_type":     "queue",
+			})
+		}
+	}
+}
+
+// synthesizeSidekiqEnqueueEdges emits ENQUEUES edges from the enclosing Ruby
+// method of each `Worker.perform_async/in/at` dispatch site to the worker's
+// job entity. Only emits when the worker job ID is present in knownJobs (the
+// seenJob map) — this prevents phantom-node creation when the worker class is
+// defined in another, un-indexed file. Dedupes on (caller, jobID).
+func synthesizeSidekiqEnqueueEdges(
+	src string,
+	knownJobs map[string]bool,
+	relationships []types.RelationshipRecord,
+) []types.RelationshipRecord {
+	if !strings.Contains(src, "perform_async") && !strings.Contains(src, "perform_in") &&
+		!strings.Contains(src, "perform_at") && !strings.Contains(src, "perform_bulk") {
+		return relationships
+	}
+
+	seenEdge := map[string]bool{}
+	for _, idx := range reRubySidekiqDispatch.FindAllStringSubmatchIndex(src, -1) {
+		workerClass := src[idx[2]:idx[3]]
+		jobID := rubySidekiqWorkerJobID(workerClass)
+		if !knownJobs[jobID] {
+			continue
+		}
+		caller := rubyEnclosingMethod(src, idx[0])
+		if caller == "" {
+			caller = "module"
+		}
+		key := caller + "|" + jobID
+		if seenEdge[key] {
+			continue
+		}
+		seenEdge[key] = true
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID: "SCOPE.Operation:" + caller,
+			ToID:   scheduledJobKind + ":" + jobID,
+			Kind:   string(types.RelationshipKindEnqueues),
+			Properties: map[string]string{
+				"framework":       "sidekiq",
+				"pattern_type":    "sidekiq_enqueue_synthesis",
+				"worker_class":    workerClass,
+				"dispatch_method": src[idx[4]:idx[5]],
+			},
+		})
+	}
+	return relationships
 }
 
 // ---------------------------------------------------------------------------
