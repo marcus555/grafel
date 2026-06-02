@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | spring_webflux shares same DI model as spring_boot; @Autowired field/setter/constructor injection and @Bean method extraction handled by ExtractSpringBoot. No @Qualifier resolution. |
-| DI injection point | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | spring_webflux uses same @Autowired/@Bean extractor as spring_boot; field, setter, and constructor injection detected. No @Qualifier or @Primary resolution. |
-| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_boot.go` | spring_boot.go gate includes spring-webflux (line 13); emits spring_scope property (line 427) for @Scope/@RequestScope/@SessionScope/@ApplicationScope annotations. Registry cite was missing (#3176). |
+| DI binding extraction | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/spring_di_deepen.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Spring @Autowired field/ctor DEPENDS_ON edges emit live; activation requires a spring_webflux source marker (reactor/Mono/Flux) co-present so the dispatcher selects the spring_webflux token. |
+| DI injection point | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/spring_di_deepen.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Injection-point DEPENDS_ON edges emit live under the spring_webflux token; same co-marker activation caveat as di_binding. |
+| DI scope resolution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/spring_di_deepen.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | spring_boot.go gate includes spring-webflux (line 13); emits spring_scope property (line 427) for @Scope/@RequestScope/@SessionScope/@ApplicationScope annotations. Registry cite was missing (#3176). |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation |
-| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> and TxType.<MODE>; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
-| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction boundary extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | @Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation |
+| Transaction propagation | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | propagation=Propagation.<MODE> and TxType.<MODE>; isolation + readOnly; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction rollback rules | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | rollbackFor/noRollbackFor single + list; spring-webflux in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | Spring AOP shares same extractor as spring-boot; all 5 advice types (@Before/@After/@Around/@AfterReturning/@AfterThrowing) with advice_type+pointcut_expression+aspect; OWNS+REFERENCES edges; spring-webflux in aopFrameworks gate; value-asserting tests TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
-| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Aspect-annotated classes detected as SCOPE.Pattern(subtype=aspect); spring-webflux is explicitly gated in aopFrameworks; same extraction as spring-boot; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
-| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_aop.go` | @Pointcut declarations extracted; named reference resolution via REFERENCES; spring-webflux in aopFrameworks; TestSpringAOP_AllAdviceTypes_Issue3004 uses spring-webflux framework |
+| Advice attribution | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/spring_aop.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Advice entities + OWNS edges emit under spring_webflux token; webflux co-marker activation caveat. |
+| Aspect extraction | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/spring_aop.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | @Aspect/@Pointcut/@Around emit under the spring_webflux token; activation requires a webflux source marker co-present. |
+| Pointcut resolution | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/spring_aop.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Pointcut entities + REFERENCES edges emit under spring_webflux token; webflux co-marker activation caveat. |
 
 ### Observability
 

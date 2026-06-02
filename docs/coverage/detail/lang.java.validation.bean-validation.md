@@ -15,15 +15,15 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Nested model extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go` | @Valid (cascade/nested validation marker) is recognized and lifts the annotated parameter to required; no recursion into the nested type's own fields. |
-| Schema extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go`<br>`testdata/fixtures/sources/java/bean_validation/ValidatedDtoFixture.java` | Parameter-level Bean Validation constraints (@NotNull, @NotBlank, @Size, @Min, @Max, @Email, @Pattern) are captured in the Annotations slice on each handler parameter and drive the Required flag. Field-level recursion into nested DTO classes is not implemented (partial scope). Proven by TestBeanValidation_SchemaExtraction_Issue3002 and TestBeanValidation_MultipleConstraints_Issue3002. |
+| Nested model extraction | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/bean_validation.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Nested @Valid field schema entities emit live; the VALIDATES edge (owner class -> nested type) is dropped by the no-carrier policy because its SourceRef (scope:class:bean_validation:...) has no carrier entity. |
+| Schema extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/bean_validation.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Parameter-level Bean Validation constraints (@NotNull, @NotBlank, @Size, @Min, @Max, @Email, @Pattern) are captured in the Annotations slice on each handler parameter and drive the Required flag. Field-level recursion into nested DTO classes is not implemented (partial scope). Proven by TestBeanValidation_SchemaExtraction_Issue3002 and TestBeanValidation_MultipleConstraints_Issue3002. |
 
 ### Constraints
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Constraint extraction | ✅ `full` | `2026-05-29` | 3100 | `internal/engine/java_annotation_params.go` | Bean-Validation annotations (@NotNull/@NotBlank/@NotEmpty/@Size/@Min/@Max/@Pattern/@Email) are collected on each handler parameter and drive the Required flag; captured as annotation strings, not structured constraint records (no value bounds parsed). |
-| Custom validator extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/bean_validation.go`<br>`internal/custom/java/bean_validation_test.go` | Extracting classes that implement ConstraintValidator<A,T> requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002. |
+| Custom validator extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/bean_validation.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Extracting classes that implement ConstraintValidator<A,T> requires scanning for the interface-implementation pattern. No current extractor does this. Leave red — out of scope for #3002. |
 
 ### Coercion
 

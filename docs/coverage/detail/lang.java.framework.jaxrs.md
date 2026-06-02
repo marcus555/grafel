@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jaxrs_filters.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java` | — |
+| Middleware coverage | ✅ `full` | `2026-06-01` | — | `internal/custom/java/jaxrs_filters.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | — |
 
 ### Testing
 
@@ -57,25 +57,25 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go` | — |
-| DI injection point | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go` | — |
-| DI scope resolution | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/jaxrs_filters_test.go`<br>`testdata/fixtures/sources/java/jaxrs/JaxrsFiltersFixture.java` | — |
+| DI binding extraction | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/jakarta_ee.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | CDI/EJB bean entities (SCOPE.Service/Component) emit live for jaxrs files carrying jakarta_ee markers; the @EJB/@Inject DEPENDS_ON injection edge is dropped by the no-carrier policy in patternResultToRecords. |
+| DI injection point | 🔴 `missing` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/jakarta_ee.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | @Inject/@EJB injection DEPENDS_ON edges are constructed but DROPPED live: their SourceRef (scope:dependency:jakarta:...) has no carrier entity in patternResultToRecords, so the edge never reaches the graph. Genuinely not produced. |
+| DI scope resolution | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | CDI scope components (@RequestScoped/@ConversationScoped) emit live with cdi_scope/scope props; no DEPENDS_ON injection wiring (that edge is dropped). |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs |
-| Transaction propagation | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation/TxType; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
-| Transaction rollback rules | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor/noRollbackFor; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction boundary extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | @Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs |
+| Transaction propagation | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | propagation/TxType; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
+| Transaction rollback rules | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | rollbackFor/noRollbackFor; jaxrs in txFrameworks; TestTransactional_FrameworkGating_Issue3003 |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | CDI @Interceptor + @AroundInvoke/@AroundConstruct methods extracted as SCOPE.Pattern(subtype=advice) with advice_type (around_invoke/around_construct) + aspect + framework properties; OWNS edge; value-asserting TestCDI_JAXRS_InterceptorClass_Issue3082 |
-| Aspect extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | @Interceptor-annotated classes detected as SCOPE.Pattern(subtype=aspect, kind=cdi_interceptor) with framework=jaxrs; TestCDI_JAXRS_InterceptorClass_Issue3082 value-asserting |
-| Pointcut resolution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/cdi_interceptors.go`<br>`internal/custom/java/cdi_interceptors_test.go` | @InterceptorBinding annotation type declarations extracted as SCOPE.Pattern(subtype=pointcut, kind=interceptor_binding); REFERENCES edge from advice to binding; value-asserting TestCDI_JAXRS_InterceptorBinding_Issue3082 |
+| Advice attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/cdi_interceptors.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | CDI @Interceptor + @AroundInvoke/@AroundConstruct methods extracted as SCOPE.Pattern(subtype=advice) with advice_type (around_invoke/around_construct) + aspect + framework properties; OWNS edge; value-asserting TestCDI_JAXRS_InterceptorClass_Issue3082 |
+| Aspect extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/cdi_interceptors.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | @Interceptor-annotated classes detected as SCOPE.Pattern(subtype=aspect, kind=cdi_interceptor) with framework=jaxrs; TestCDI_JAXRS_InterceptorClass_Issue3082 value-asserting |
+| Pointcut resolution | 🟢 `partial` | `2026-06-01` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/cdi_interceptors.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Pointcut entities emit only via the @InterceptorBinding selector path; a plain @Interceptor+@AroundInvoke pair emits aspect+advice but no separate pointcut entity. |
 
 ### Observability
 
