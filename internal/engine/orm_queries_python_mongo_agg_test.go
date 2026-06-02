@@ -153,8 +153,12 @@ def _get_me_inspections():
 		if j == nil {
 			t.Fatalf("expected JOINS_COLLECTION edge to %s; rels=%+v", coll, rels)
 		}
-		if j.FromID != "Class:"+capitalisedSingular("INSPECTIONS") {
-			t.Errorf("join to %s from = %q, want aggregating collection INSPECTIONS", coll, j.FromID)
+		// The `INSPECTIONS` constant receiver (imported cross-module, no in-file
+		// value) must resolve to the SAME canonical collection node as the
+		// string-literal `"inspections"` viewset forms: Class:Inspection, NOT a
+		// phantom Class:INSPECTIONS. This is the real-vs-fixture fix.
+		if j.FromID != "Class:"+capitalisedSingular("inspections") {
+			t.Errorf("join to %s from = %q, want aggregating collection Class:Inspection", coll, j.FromID)
 		}
 		if j.Properties["stage"] != "lookup" {
 			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties["stage"])
@@ -181,6 +185,180 @@ def _get_me_inspections():
 		if got[i] != want[i] {
 			t.Fatalf("stage[%d] = %q, want %q (all=%v)", i, got[i], want[i], got)
 		}
+	}
+}
+
+// REAL-FORM regression — verbatim copy of the production
+// `core.tasks.maintenance_evaluation_notifications._get_me_inspections`
+// pipeline (multiline stage objects, nested `let`/`pipeline`/`$project` on
+// their OWN lines, `$first` accessor, `True` Python literals). The earlier
+// #3567 fixture collapsed each `$lookup` onto ONE line, which hid a stage-split
+// failure that occurs on the real multiline form. Must emit the 3 correlated
+// joins (inspection_groups, m_devices, m_buildings) and the full 8-stage order.
+func TestMongoAggPy_RealForm_GetMeInspections(t *testing.T) {
+	src := `
+import logging
+from core.helper.mongo_helper import MongoDBConnection
+from core.mongodb_collections import INSPECTIONS
+
+
+def _get_me_inspections():
+    inspections_cls = MongoDBConnection.get_collection(INSPECTIONS)
+    pipeline = [
+        {
+            "$project": {
+                "device_id": 1,
+                "inspectionGroupId": 1,
+                "status": 1,
+                "checklist_id": {"$first": "$inspection_checklists.id"},
+                "checklist_type": {"$first": "$inspection_checklists.type"},
+            }
+        },
+        {"$match": {"checklist_type": 4, "status": {"$in": ["Results Reviewed", "Assembling Report"]}}},
+        {
+            "$lookup": {
+                "from": "inspection_groups",
+                "let": {"inspections_group_id": "$inspectionGroupId"},
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$_id", "$$inspections_group_id"]}}},
+                    {"$project": {"_id": 1, "buildingId": 1, "groupId": 1}},
+                ],
+                "as": "inspections_group",
+            }
+        },
+        {"$unwind": {"path": "$inspections_group", "preserveNullAndEmptyArrays": True}},
+        {
+            "$lookup": {
+                "from": "m_devices",
+                "let": {"device_id": "$device_id"},
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$postgresql_id", "$$device_id"]}}},
+                    {"$project": {"_id": 0, "id": "$postgresql_id", "name": 1}},
+                ],
+                "as": "device",
+            }
+        },
+        {"$unwind": {"path": "$device", "preserveNullAndEmptyArrays": True}},
+        {
+            "$lookup": {
+                "from": "m_buildings",
+                "let": {"building_id": "$inspections_group.buildingId"},
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$postgresql_id", "$$building_id"]}}},
+                    {"$project": {"_id": 0, "id": "$postgresql_id", "name": 1}},
+                ],
+                "as": "building",
+            }
+        },
+        {"$unwind": {"path": "$building", "preserveNullAndEmptyArrays": True}},
+    ]
+    return list(inspections_cls.aggregate(pipeline))
+`
+	ents, rels := runMongoAggPy(t, src)
+
+	// The 3 correlated joins to the SPECIFIC from-collections.
+	wantTo := []string{"inspection_groups", "m_devices", "m_buildings"}
+	for _, coll := range wantTo {
+		j := pyFindJoinTo(rels, capitalisedSingular(coll))
+		if j == nil {
+			t.Fatalf("expected JOINS_COLLECTION edge to %s; rels=%+v", coll, rels)
+		}
+		// Cross-module `INSPECTIONS` constant resolves to the canonical
+		// Class:Inspection node — identical to the string-literal viewset forms.
+		if j.FromID != "Class:"+capitalisedSingular("inspections") {
+			t.Errorf("join to %s from = %q, want aggregating collection Class:Inspection", coll, j.FromID)
+		}
+		if j.Properties["stage"] != "lookup" {
+			t.Errorf("join to %s stage = %q, want lookup", coll, j.Properties["stage"])
+		}
+	}
+	if n := len(rels); n != 3 {
+		t.Fatalf("expected exactly 3 join edges, got %d: %+v", n, rels)
+	}
+
+	jg := pyFindJoinTo(rels, capitalisedSingular("inspection_groups"))
+	if jg.Properties["as"] != "inspections_group" {
+		t.Errorf("inspection_groups join as = %q, want inspections_group", jg.Properties["as"])
+	}
+
+	// 8 stages, order preserved: project, match, lookup, unwind, lookup, unwind,
+	// lookup, unwind.
+	got := pyStageSubtypesInOrder(ents)
+	want := []string{"$project", "$match", "$lookup", "$unwind", "$lookup", "$unwind", "$lookup", "$unwind"}
+	if len(got) != len(want) {
+		t.Fatalf("stage subtypes = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("stage[%d] = %q, want %q (all=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+// Same-file constant definition: `INSPECTIONS = "inspections"` at module scope,
+// then `get_collection(INSPECTIONS)`. The constant must resolve to its literal
+// VALUE "inspections" → Class:Inspection, exactly as a quoted receiver would.
+func TestMongoAggPy_CollConstResolvedToValue_SameFile(t *testing.T) {
+	src := `
+import pymongo
+from core.helper.mongo_helper import MongoDBConnection
+
+INSPECTIONS = "inspections"
+
+
+def run():
+    inspections_cls = MongoDBConnection.get_collection(INSPECTIONS)
+    pipeline = [
+        {"$lookup": {"from": "m_devices", "localField": "device_id", "foreignField": "_id", "as": "device"}},
+    ]
+    return list(inspections_cls.aggregate(pipeline))
+`
+	ents, rels := runMongoAggPy(t, src)
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 join edge, got %d: %+v", len(rels), rels)
+	}
+	if rels[0].FromID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("join from = %q, want Class:Inspection (constant resolved to value)", rels[0].FromID)
+	}
+	if len(ents) == 0 || ents[0].Properties["collection"] != "inspections" {
+		t.Errorf("stage collection = %q, want inspections", ents[0].Properties["collection"])
+	}
+}
+
+// REGRESSION GUARD for the 57 string-literal viewset aggregations: a quoted
+// `get_collection("inspections")` receiver via the same variable-binding follow
+// must keep producing Class:Inspection. The constant-resolution change must not
+// touch this path.
+func TestMongoAggPy_ViewsetStringLiteralReceiver_Unchanged(t *testing.T) {
+	src := `
+from core.helper.mongo_helper import MongoDBConnection
+
+
+def get_inspection_details(self):
+    inspections_group_cln = MongoDBConnection.get_collection("inspection_groups")
+    pipeline = [
+        {"$lookup": {"from": "inspections", "localField": "_id", "foreignField": "inspectionGroupId", "as": "inspections"}},
+        {"$lookup": {"from": "m_buildings", "localField": "buildingId", "foreignField": "postgresql_id", "as": "building"}},
+    ]
+    return inspections_group_cln.aggregate(pipeline)
+`
+	ents, rels := runMongoAggPy(t, src)
+	if len(rels) != 2 {
+		t.Fatalf("expected 2 join edges, got %d: %+v", len(rels), rels)
+	}
+	for _, r := range rels {
+		if r.FromID != "Class:"+capitalisedSingular("inspection_groups") {
+			t.Errorf("join from = %q, want aggregating collection Class:Inspection_group", r.FromID)
+		}
+	}
+	if pyFindJoinTo(rels, capitalisedSingular("inspections")) == nil {
+		t.Errorf("expected join to inspections; rels=%+v", rels)
+	}
+	if pyFindJoinTo(rels, capitalisedSingular("m_buildings")) == nil {
+		t.Errorf("expected join to m_buildings; rels=%+v", rels)
+	}
+	if len(ents) != 2 {
+		t.Fatalf("expected 2 stage entities, got %d", len(ents))
 	}
 }
 
