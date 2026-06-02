@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 11
+- **Capability cells:** 12
 
 ## Capabilities
 
@@ -46,6 +46,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
+
+## Framework-specific
+
+### Aggregation Joins
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Aggregation join extraction | ✅ `full` | — | 3848 | `internal/engine/orm_queries_csharp_mongo_agg.go`<br>`internal/engine/orm_queries_csharp_mongo_agg_test.go` | scanCSharpMongoAggregation (#3848, epic #3837) parses MongoDB.Driver aggregation $lookup into a JOINS_COLLECTION edge aggregating-collection -> from collection (Class:Book -> Class:Author) plus a SCOPE.DataAccess stage entity, matching the Python/Go/Java/Mongoose contract. Two idioms: the fluent positional db.GetCollection<Book>("books").Aggregate().Lookup("authors","authorId","_id","author") overload, and the new BsonDocument("$lookup", new BsonDocument { { "from", "authors" }, ... }) pipeline stage (C# collection-initialiser tuple form, the analogue of Go bson.D; the { "from": "authors" } colon map form is also accepted). Aggregating collection resolved file-scoped from GetCollection<T>("books") (string-literal first, else the <T> generic entity name) or an IMongoCollection<Book> field typing. Value-asserting tests TestMongoAggCSharp_FluentLookup_GetCollectionString + TestMongoAggCSharp_BsonDocumentLookup assert the joined-collection node ids. Honest-partial: dynamic from (.Lookup(var,..) / { "from", var }), unresolvable aggregating collection, and cross-file pipeline assembly stay unresolved (no fabricated edge). |
 
 ## Related extraction records
 

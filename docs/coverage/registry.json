@@ -8107,6 +8107,16 @@
             "issue": "3628-transaction-function-stamping"
           }
         }
+      },
+      "framework_specific": {
+        "Aggregation Joins": {
+          "aggregation_join_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/orm_queries_csharp_mongo_agg.go","internal/engine/orm_queries_csharp_mongo_agg_test.go"],
+            "issue": "3848",
+            "notes": "scanCSharpMongoAggregation (#3848, epic #3837) parses MongoDB.Driver aggregation $lookup into a JOINS_COLLECTION edge aggregating-collection -\u003e from collection (Class:Book -\u003e Class:Author) plus a SCOPE.DataAccess stage entity, matching the Python/Go/Java/Mongoose contract. Two idioms: the fluent positional db.GetCollection\u003cBook\u003e(\"books\").Aggregate().Lookup(\"authors\",\"authorId\",\"_id\",\"author\") overload, and the new BsonDocument(\"$lookup\", new BsonDocument { { \"from\", \"authors\" }, ... }) pipeline stage (C# collection-initialiser tuple form, the analogue of Go bson.D; the { \"from\": \"authors\" } colon map form is also accepted). Aggregating collection resolved file-scoped from GetCollection\u003cT\u003e(\"books\") (string-literal first, else the \u003cT\u003e generic entity name) or an IMongoCollection\u003cBook\u003e field typing. Value-asserting tests TestMongoAggCSharp_FluentLookup_GetCollectionString + TestMongoAggCSharp_BsonDocumentLookup assert the joined-collection node ids. Honest-partial: dynamic from (.Lookup(var,..) / { \"from\", var }), unresolvable aggregating collection, and cross-file pipeline assembly stay unresolved (no fabricated edge)."
+          }
+        }
       }
     },
     {
