@@ -749,6 +749,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Producer side (#2692): ASP.NET Core attribute routing —
 		// [HttpGet/Post/...] + class-level [Route("/api/[controller]")].
 		synthesizeASPNetCore(string(content), emit)
+		// Producer side (#3617): HotChocolate GraphQL server. Maps the three
+		// root types ([QueryType]/[MutationType]/[SubscriptionType] markers,
+		// [ExtendObjectType(...)] extensions, or fluent .AddQueryType<T>()
+		// registrations) to http:GRAPHQL:/graphql/<Root>/<field> synthetics —
+		// the SAME canonical shape the JS / Python / Go / Elixir GraphQL
+		// servers emit — with a HANDLES edge to each C# resolver method.
+		// Gated on a HotChocolate file-signal so it no-ops on other C# files.
+		synthesizeHotChocolate(string(content), emit)
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	case "rust":
