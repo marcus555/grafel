@@ -37,6 +37,6 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [python](../by-language/python.md) | [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | ✅ | |
-| [ruby](../by-language/ruby.md) | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🔴 | 🔴 | — | 🔴 | |
+| [ruby](../by-language/ruby.md) | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🟢 | 🟢 | — | 🟢 | |
 | [rust](../by-language/rust.md) | [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [rust](../by-language/rust.md) | [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |

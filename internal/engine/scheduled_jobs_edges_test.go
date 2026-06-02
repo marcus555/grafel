@@ -395,3 +395,136 @@ func main() {
 		t.Errorf("expected no entities/rels for unrelated file, got %d/%d", len(ents), len(rels))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Ruby — Sidekiq workers + sidekiq-cron + ENQUEUES edges (#3700)
+// ---------------------------------------------------------------------------
+
+func enqueuesEdges(rels []types.RelationshipRecord) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	for _, r := range rels {
+		if r.Kind == string(types.RelationshipKindEnqueues) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// A Sidekiq worker class becomes a ScheduledJob with a TRIGGERS edge to its
+// perform method, and a `Worker.perform_async` dispatch site emits an ENQUEUES
+// edge from the enclosing method to the worker job.
+func TestScheduledJobs_RubySidekiq_EnqueuesEdge(t *testing.T) {
+	src := `class EmailWorker
+  include Sidekiq::Worker
+
+  def perform(user_id)
+    # send the email
+  end
+end
+
+class SignupService
+  def register(user)
+    EmailWorker.perform_async(user.id)
+  end
+end
+`
+	ents, rels := runScheduledDetect(t, "ruby", "app/workers/email_worker.rb", src)
+
+	jobs := scheduledJobsByFramework(ents, "sidekiq")
+	if len(jobs) != 1 {
+		t.Fatalf("expected exactly 1 sidekiq ScheduledJob, got %d (%v)", len(jobs), ents)
+	}
+	job := jobs[0]
+	if job.Name != "sidekiq:EmailWorker" {
+		t.Errorf("expected job ID sidekiq:EmailWorker, got %q", job.Name)
+	}
+	if job.Properties["handler"] != "perform" {
+		t.Errorf("expected handler=perform, got %q", job.Properties["handler"])
+	}
+
+	// TRIGGERS: job -> perform handler.
+	var gotTrigger bool
+	for _, e := range triggersEdges(rels) {
+		if e.FromID == scheduledJobKind+":sidekiq:EmailWorker" && e.ToID == "Function:perform" {
+			gotTrigger = true
+		}
+	}
+	if !gotTrigger {
+		t.Errorf("expected TRIGGERS edge sidekiq:EmailWorker -> Function:perform, got %v", triggersEdges(rels))
+	}
+
+	// ENQUEUES: caller `register` -> worker job.
+	enq := enqueuesEdges(rels)
+	if len(enq) != 1 {
+		t.Fatalf("expected exactly 1 ENQUEUES edge, got %d (%v)", len(enq), enq)
+	}
+	e := enq[0]
+	if e.FromID != "SCOPE.Operation:register" {
+		t.Errorf("expected ENQUEUES from SCOPE.Operation:register, got %q", e.FromID)
+	}
+	if e.ToID != scheduledJobKind+":sidekiq:EmailWorker" {
+		t.Errorf("expected ENQUEUES to %s:sidekiq:EmailWorker, got %q", scheduledJobKind, e.ToID)
+	}
+	if e.Properties["dispatch_method"] != "perform_async" {
+		t.Errorf("expected dispatch_method=perform_async, got %q", e.Properties["dispatch_method"])
+	}
+	if e.Properties["worker_class"] != "EmailWorker" {
+		t.Errorf("expected worker_class=EmailWorker, got %q", e.Properties["worker_class"])
+	}
+}
+
+// sidekiq-cron declares a recurring job carrying a cron expression; it reuses
+// the worker job ID so the scheduled job and the dispatch target are one node.
+func TestScheduledJobs_RubySidekiqCron_Schedule(t *testing.T) {
+	src := `class CleanupWorker
+  include Sidekiq::Job
+
+  def perform
+    Account.stale.delete_all
+  end
+end
+
+Sidekiq::Cron::Job.create(
+  name: 'nightly-cleanup',
+  cron: '0 0 * * *',
+  class: 'CleanupWorker'
+)
+`
+	ents, _ := runScheduledDetect(t, "ruby", "config/schedule.rb", src)
+
+	var cronJob *types.EntityRecord
+	for i := range ents {
+		if ents[i].Properties["framework"] == "sidekiq_cron" {
+			cronJob = &ents[i]
+		}
+	}
+	if cronJob == nil {
+		t.Fatalf("expected a sidekiq_cron ScheduledJob, got %v", ents)
+	}
+	if cronJob.Properties["schedule"] != "0 0 * * *" {
+		t.Errorf("expected cron schedule '0 0 * * *', got %q", cronJob.Properties["schedule"])
+	}
+	if cronJob.Name != "sidekiq:CleanupWorker" {
+		t.Errorf("expected cron job to reuse worker ID sidekiq:CleanupWorker, got %q", cronJob.Name)
+	}
+}
+
+// Negative: a plain Ruby class with no Sidekiq include must not produce any
+// job entity or enqueue edge.
+func TestScheduledJobs_RubyPlainClass_NoJob(t *testing.T) {
+	src := `class Calculator
+  def add(a, b)
+    a + b
+  end
+end
+`
+	ents, rels := runScheduledDetect(t, "ruby", "lib/calculator.rb", src)
+	for _, e := range ents {
+		if e.Kind == scheduledJobKind {
+			t.Errorf("expected no ScheduledJob entity for plain class, got %v", e)
+		}
+	}
+	if len(enqueuesEdges(rels)) != 0 {
+		t.Errorf("expected no ENQUEUES edges for plain class, got %v", enqueuesEdges(rels))
+	}
+}

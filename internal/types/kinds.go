@@ -358,6 +358,18 @@ const (
 	//              (scheduler fires the handler on the declared schedule)
 	RelationshipKindTriggers RelationshipKind = "TRIGGERS"
 
+	// #3700 (child of #3628 area #14): background-job enqueue topology.
+	//   ENQUEUES : enclosing function (the caller) → SCOPE.ScheduledJob job
+	//              entity. Emitted at a dispatch call site that pushes work
+	//              onto a background-job queue for asynchronous execution —
+	//              e.g. Sidekiq `Worker.perform_async/perform_in/perform_at`,
+	//              Resque/Que enqueue calls. This is the queue-system
+	//              counterpart of TRIGGERS (scheduler→handler): TRIGGERS says
+	//              "fired on a schedule", ENQUEUES says "a caller pushed this
+	//              job onto the queue". Distinct from PUBLISHES_TO, which
+	//              carries broker pub/sub fan-out semantics.
+	RelationshipKindEnqueues RelationshipKind = "ENQUEUES"
+
 	// #725: gRPC service definitions + client/server cross-repo edges.
 	//   GRPC_IMPLEMENTS : handler method → GrpcMethod (server declares it implements this RPC).
 	//   GRPC_HANDLES    : client call site → GrpcMethod (client invokes this RPC).
