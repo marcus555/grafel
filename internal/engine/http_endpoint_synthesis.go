@@ -867,7 +867,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// the SAME canonical shape the JS / Python / Go / Elixir GraphQL
 		// servers emit — with a HANDLES edge to each C# resolver method.
 		// Gated on a HotChocolate file-signal so it no-ops on other C# files.
+		hcBefore := len(entities)
 		synthesizeHotChocolate(string(content), emit)
+		// Producer side (#3961): stamp [Authorize] / [Authorize(Roles=...)] /
+		// [Authorize(Policy=...)] / [AllowAnonymous] from each HotChocolate
+		// resolver method onto its just-emitted GRAPHQL endpoint, plus the
+		// resolver's typed-arg request shape + typed-return response shape.
+		// Mutates Properties in place; never adds/removes entities.
+		applyHotChocolateAuthShapes(string(content), path, entities, hcBefore)
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	case "rust":

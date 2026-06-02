@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Auth coverage | ✅ `full` | `2026-06-02` | 3961 | `internal/custom/csharp/auth.go`<br>`internal/engine/http_endpoint_hotchocolate_auth.go`<br>`internal/engine/http_endpoint_hotchocolate_auth_test.go`<br>`internal/engine/http_endpoint_jsts_auth.go`<br>`internal/mcp/auth_coverage.go` | #3961: applyHotChocolateAuthShapes stamps [Authorize]/[Authorize(Roles=...)]/[Authorize(Policy=...)]/[AllowAnonymous] from each HotChocolate resolver method (and inherited type-level [Authorize]) onto its http:GRAPHQL: endpoint via the shared stampAuthPolicy contract — auth_required + auth_roles + auth_permissions + auth_policy, plus signal-1 auth_decorator so archigraph_auth_coverage fires. [AllowAnonymous] overrides class-level Authorize to explicit-public. Value-asserting tests assert the verdict on the specific resolver endpoint + negative (undecorated/no-signal) cases. |
 
 ### Validation
 
@@ -110,9 +110,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | 🟢 `partial` | `2026-06-02` | 3961 | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go`<br>`internal/substrate/payload_shapes_hotchocolate_test.go` | #3961: sniffHotChocolateResolverShapes surfaces each HotChocolate resolver method's typed argument list as a producer REQUEST shape (DTO-typed args expanded to the DTO's fields; scalar args one field each; ambient framework params like CancellationToken/IResolverContext skipped) and its typed return as a producer RESPONSE shape (Task<>/IEnumerable<>/List<>/nullable wrappers unwrapped to the leaf DTO), flowing through the standard payload-drift join. Gated on a HotChocolate file-signal. Partial: DTO-field + scalar-arg expansion only — no inline-literal resolver-body resolution or cross-file DTO import. |
 | Request sink dataflow | 🔴 `missing` | — | 3740 | — | — |
-| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | 🟢 `partial` | `2026-06-02` | 3961 | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go`<br>`internal/substrate/payload_shapes_hotchocolate_test.go` | #3961: sniffHotChocolateResolverShapes surfaces each HotChocolate resolver method's typed argument list as a producer REQUEST shape (DTO-typed args expanded to the DTO's fields; scalar args one field each; ambient framework params like CancellationToken/IResolverContext skipped) and its typed return as a producer RESPONSE shape (Task<>/IEnumerable<>/List<>/nullable wrappers unwrapped to the leaf DTO), flowing through the standard payload-drift join. Gated on a HotChocolate file-signal. Partial: DTO-field + scalar-arg expansion only — no inline-literal resolver-body resolution or cross-file DTO import. |
 | Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

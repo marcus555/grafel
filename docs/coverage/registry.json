@@ -10439,8 +10439,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/csharp/auth.go","internal/engine/http_endpoint_hotchocolate_auth.go","internal/engine/http_endpoint_hotchocolate_auth_test.go","internal/engine/http_endpoint_jsts_auth.go","internal/mcp/auth_coverage.go"],
+            "issue": "3961",
+            "notes": "#3961: applyHotChocolateAuthShapes stamps [Authorize]/[Authorize(Roles=...)]/[Authorize(Policy=...)]/[AllowAnonymous] from each HotChocolate resolver method (and inherited type-level [Authorize]) onto its http:GRAPHQL: endpoint via the shared stampAuthPolicy contract — auth_required + auth_roles + auth_permissions + auth_policy, plus signal-1 auth_decorator so archigraph_auth_coverage fires. [AllowAnonymous] overrides class-level Authorize to explicit-public. Value-asserting tests assert the verdict on the specific resolver endpoint + negative (undecorated/no-signal) cases.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -10594,16 +10597,22 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go","internal/substrate/payload_shapes_hotchocolate_test.go"],
+            "issue": "3961",
+            "notes": "#3961: sniffHotChocolateResolverShapes surfaces each HotChocolate resolver method's typed argument list as a producer REQUEST shape (DTO-typed args expanded to the DTO's fields; scalar args one field each; ambient framework params like CancellationToken/IResolverContext skipped) and its typed return as a producer RESPONSE shape (Task\u003c\u003e/IEnumerable\u003c\u003e/List\u003c\u003e/nullable wrappers unwrapped to the leaf DTO), flowing through the standard payload-drift join. Gated on a HotChocolate file-signal. Partial: DTO-field + scalar-arg expansion only — no inline-literal resolver-body resolution or cross-file DTO import.",
+            "verified_at": "2026-06-02"
           },
           "request_sink_dataflow": {
             "status": "missing",
             "issue": "3740"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go","internal/substrate/payload_shapes_hotchocolate_test.go"],
+            "issue": "3961",
+            "notes": "#3961: sniffHotChocolateResolverShapes surfaces each HotChocolate resolver method's typed argument list as a producer REQUEST shape (DTO-typed args expanded to the DTO's fields; scalar args one field each; ambient framework params like CancellationToken/IResolverContext skipped) and its typed return as a producer RESPONSE shape (Task\u003c\u003e/IEnumerable\u003c\u003e/List\u003c\u003e/nullable wrappers unwrapped to the leaf DTO), flowing through the standard payload-drift join. Gated on a HotChocolate file-signal. Partial: DTO-field + scalar-arg expansion only — no inline-literal resolver-body resolution or cross-file DTO import.",
+            "verified_at": "2026-06-02"
           },
           "sanitizer_recognition": {
             "status": "missing",

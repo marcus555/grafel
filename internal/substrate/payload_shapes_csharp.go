@@ -154,7 +154,165 @@ func sniffPayloadShapesCSharp(content string) []PayloadShape {
 		})
 	}
 
+	// Producer-side: HotChocolate GraphQL resolver methods (#3961). A resolver's
+	// typed argument list is the request shape; its typed return is the response
+	// shape. Gated on a HotChocolate file-signal so plain ASP.NET methods don't
+	// double-emit.
+	out = append(out, sniffHotChocolateResolverShapes(content, classFields)...)
+
 	return out
+}
+
+// hcShapeSignalRe detects a HotChocolate GraphQL server in the file (import or
+// fluent server registration), mirroring hotChocolateHasSignal in the engine.
+var hcShapeSignalRe = regexp.MustCompile(`HotChocolate|\.AddGraphQLServer\s*\(`)
+
+// hcResolverSigRe matches a public HotChocolate resolver method declaration,
+// capturing the return type, method name, and the parenthesised argument list.
+//
+//	public User GetUser(GetUserInput input) => ...
+//	public async Task<User> GetUser(int id, CancellationToken ct) { ... }
+//
+// Group 1 = return type chunk; group 2 = method name; group 3 = arg list body.
+var hcResolverSigRe = regexp.MustCompile(
+	`(?m)^\s*(?:\[[^\]\r\n]+\]\s*)*\s*public\s+` +
+		`(?:static\s+|virtual\s+|override\s+|async\s+|sealed\s+)*` +
+		`([\w<>\[\],.\s?]+?)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)`,
+)
+
+// hcAmbientArgTypes are framework-injected resolver parameters that are NOT part
+// of the GraphQL request shape (HotChocolate service/context injection). Matched
+// on the leaf type name, case-insensitively.
+var hcAmbientArgTypes = map[string]bool{
+	"cancellationtoken":    true,
+	"iresolvercontext":     true,
+	"claimsprincipal":      true,
+	"httpcontext":          true,
+	"ihttpcontextaccessor": true,
+}
+
+// sniffHotChocolateResolverShapes emits one producer request shape (from the
+// typed argument list) and one producer response shape (from the return type)
+// per HotChocolate resolver method. A request field whose static type resolves
+// to a DTO class in this file expands to that DTO's fields; a scalar argument
+// contributes a single field named after the parameter. The response shape is
+// the return type's DTO fields (after stripping Task<>/IEnumerable<>/nullable
+// wrappers).
+func sniffHotChocolateResolverShapes(content string, classFields map[string][]PayloadField) []PayloadShape {
+	if !hcShapeSignalRe.MatchString(content) {
+		return nil
+	}
+	var out []PayloadShape
+	for _, m := range hcResolverSigRe.FindAllStringSubmatchIndex(content, -1) {
+		retType := strings.TrimSpace(content[m[2]:m[3]])
+		method := content[m[4]:m[5]]
+		argList := content[m[6]:m[7]]
+		line := lineOfOffset(content, m[0])
+
+		// Skip non-resolver return types: void / constructors have no return
+		// type captured by the regex (it requires `<ret> <name>`), but guard
+		// against `void` explicitly.
+		if retType == "" || retType == "void" {
+			continue
+		}
+
+		// Request shape from the typed argument list.
+		if reqFields := hcRequestFields(argList, classFields); len(reqFields) > 0 {
+			out = append(out, PayloadShape{
+				Function:   method,
+				Line:       line,
+				Direction:  PayloadDirectionRequest,
+				Side:       PayloadSideProducer,
+				Fields:     DedupFields(reqFields),
+				Confidence: 0.85,
+			})
+		}
+
+		// Response shape from the (unwrapped) return type's DTO fields.
+		retLeaf := hcUnwrapType(retType)
+		if fields := classFields[retLeaf]; len(fields) > 0 {
+			out = append(out, PayloadShape{
+				Function:   method,
+				Line:       line,
+				Direction:  PayloadDirectionResponse,
+				Side:       PayloadSideProducer,
+				Fields:     fields,
+				Confidence: 0.85,
+			})
+		}
+	}
+	return out
+}
+
+// hcRequestFields builds the request-shape fields from a resolver argument list.
+// A DTO-typed argument (type resolves to a class in the file) expands to that
+// DTO's fields; a scalar/unknown argument contributes one field named after the
+// parameter. Framework-injected ambient parameters are skipped.
+func hcRequestFields(argList string, classFields map[string][]PayloadField) []PayloadField {
+	var fields []PayloadField
+	for _, raw := range splitTopLevel(argList) {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		// Drop a leading parameter attribute (e.g. `[Service] X x`).
+		for strings.HasPrefix(p, "[") {
+			if j := strings.IndexByte(p, ']'); j >= 0 {
+				p = strings.TrimSpace(p[j+1:])
+			} else {
+				break
+			}
+		}
+		// Drop a default-value suffix (`int id = 0`).
+		if eq := strings.IndexByte(p, '='); eq >= 0 {
+			p = strings.TrimSpace(p[:eq])
+		}
+		// `Type Name` — split on last whitespace.
+		i := strings.LastIndexAny(p, " \t")
+		if i <= 0 {
+			continue
+		}
+		typ := strings.TrimSpace(p[:i])
+		name := strings.TrimSpace(p[i+1:])
+		if !isPlainIdent(name) {
+			continue
+		}
+		leaf := hcUnwrapType(typ)
+		if hcAmbientArgTypes[strings.ToLower(leaf)] {
+			continue
+		}
+		if dtoFields := classFields[leaf]; len(dtoFields) > 0 {
+			fields = append(fields, dtoFields...)
+			continue
+		}
+		optional := strings.HasSuffix(typ, "?")
+		fields = append(fields, PayloadField{Name: name, Type: typ, Optional: optional})
+	}
+	return fields
+}
+
+// hcUnwrapType reduces a resolver type to its leaf DTO name by stripping common
+// async / collection / nullable wrappers: `Task<User>` → `User`,
+// `IEnumerable<User?>` → `User`, `List<User>` → `User`, `User?` → `User`.
+// Namespace qualification is dropped (`Types.User` → `User`).
+func hcUnwrapType(t string) string {
+	t = strings.TrimSpace(t)
+	// Peel one or more generic wrappers down to the innermost argument.
+	for {
+		lt := strings.IndexByte(t, '<')
+		gt := strings.LastIndexByte(t, '>')
+		if lt < 0 || gt < 0 || gt < lt {
+			break
+		}
+		t = strings.TrimSpace(t[lt+1 : gt])
+	}
+	t = strings.TrimSuffix(t, "?")
+	t = strings.TrimSuffix(t, "[]")
+	t = strings.TrimSpace(t)
+	if i := strings.LastIndexByte(t, '.'); i >= 0 {
+		t = t[i+1:]
+	}
+	return t
 }
 
 // scanCSharpClassFields walks the file once and returns a map of
