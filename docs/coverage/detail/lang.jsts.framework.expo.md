@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Mobile
-- **Capability cells:** 38
+- **Capability cells:** 39
 
 ## Capabilities
 
@@ -97,7 +97,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Eas build detection | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/eas.json` | — |
-| Expo config extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/app.json` | — |
+| Expo config extraction | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/app.json` | parseExpoManifest mines app.json / app.config.{js,ts} Expo manifest → expo_name, expo_slug, expo_version, expo_sdk_version, expo_scheme, expo_plugins. #3580 added sdkVersion (expo_sdk_version), value-asserted in TestDiscover_MobileFixtures (51.0.0). |
 | Expo router specifics | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/navigation.go` | — |
 
 ### Expo Internals
@@ -105,6 +105,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | HOC wrapper recognition | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/extractor.go` | — |
+| Native module bridge | ✅ `full` | — | 3580 | `internal/extractors/javascript/issue3580_native_bridge_test.go`<br>`internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/NativeBridge.tsx` | Shared mobile_navigation.go emitNativeBridgeEntities pass (RN-and-Expo). Expo modules-core requireNativeModule('ExpoBattery') → SCOPE.External native_module entity 'ExpoBattery' + DEPENDS_ON edge; same path also covers TurboModuleRegistry/codegenNativeComponent/requireNativeComponent/NativeModules-destructuring. Value-asserting test issue3580_native_bridge_test.go. |
 
 ## Provenance
 

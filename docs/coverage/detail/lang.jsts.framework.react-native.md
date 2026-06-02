@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Mobile
-- **Capability cells:** 44
+- **Capability cells:** 45
 
 ## Capabilities
 
@@ -116,6 +116,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | HOC wrapper recognition | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/extractor.go` | — |
+| Native module bridge | ✅ `full` | — | 3580 | `internal/extractors/javascript/issue3580_native_bridge_test.go`<br>`internal/extractors/javascript/mobile_navigation.go`<br>`internal/extractors/javascript/testdata/mobile_react_native/NativeBridge.tsx` | emitNativeBridgeEntities materialises the JS↔native boundary as first-class SCOPE.External entities (subtype native_module | native_component) + DEPENDS_ON edges from the file entity, beyond the #2860 summary native_modules property. Value-asserting test proves: const {BiometricAuth}=NativeModules → native_module 'BiometricAuth'; TurboModuleRegistry.getEnforcing('RNDeviceInfo') → native_module 'RNDeviceInfo' (new arch); requireNativeComponent('RCTMapView') → native_component 'RCTMapView'; codegenNativeComponent('RCTWebView') → native_component 'RCTWebView' (Fabric); requireNativeModule('ExpoBattery') → native_module 'ExpoBattery'. via property records the bridge mechanism. |
 
 ## Provenance
 

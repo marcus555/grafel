@@ -216,10 +216,10 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🟢 2/2 | 🟢 1/1 | 🟢 18/18 | 🟢 4/4 | |
 | [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🟢 2/2 | 🔴 0/1 | 🟢 18/18 | 🟡 7/8 | |
 | [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🟢 2/2 | 🔴 0/1 | 🟢 18/18 | 🟡 7/8 | |
-| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 13/13 | |
+| [JS/TS](../by-language/jsts.md) | [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 14/14 | |
 | [JS/TS](../by-language/jsts.md) | [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 10/10 | |
 | [JS/TS](../by-language/jsts.md) | [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 10/10 | |
-| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 19/19 | |
+| [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 20/20 | |
 | [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | ✅ 1/1 | 🟢 18/18 | 🟢 9/9 | |
 | [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [swift](../by-language/swift.md) | [Alamofire (HTTP client)](../detail/lang.swift.framework.alamofire.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/21 | 🔴 0/9 | |
