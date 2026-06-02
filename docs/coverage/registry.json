@@ -72107,6 +72107,19 @@
       }
     },
     {
+      "id": "security.cors-policy",
+      "category": "security",
+      "language": "multi",
+      "label": "CORS policy extraction (origins/credentials/wildcard) — Express, FastAPI/Starlette, django-cors-headers, Spring @CrossOrigin/CorsRegistry, ASP.NET, Rails rack-cors",
+      "capabilities": {
+        "cors_policy": {
+          "status": "full",
+          "cites": ["internal/patterns/cors_extractor.go"],
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "security.csrf",
       "category": "security",
       "language": "multi",
