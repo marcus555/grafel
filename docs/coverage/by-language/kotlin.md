@@ -64,10 +64,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟡 7/8 | |
-| [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 7/9 | |
-| [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟡 7/8 | |
-| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/3 | |
-| [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 7/8 | |
-| [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 7/8 | |
-| [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 7/9 | |
+| [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟡 7/9 | |
+| [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 7/10 | |
+| [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟡 7/9 | |
+| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/4 | |
+| [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 7/9 | |
+| [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 7/9 | |
+| [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 7/10 | |

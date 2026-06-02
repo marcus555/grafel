@@ -2174,6 +2174,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -2236,6 +2240,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -2297,6 +2305,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -2354,6 +2366,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -6892,6 +6908,10 @@
             "status": "not_applicable",
             "notes": "ODB has no built-in migration system",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -6959,6 +6979,10 @@
             "status": "not_applicable",
             "notes": "SOCI has no built-in migration system",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7025,6 +7049,10 @@
             "status": "not_applicable",
             "notes": "sqlpp11 has no built-in migration system",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7343,6 +7371,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7400,6 +7432,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7457,6 +7493,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7514,6 +7554,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7569,6 +7613,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7624,6 +7672,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7679,6 +7731,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7735,6 +7791,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -7790,6 +7850,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11174,6 +11238,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11237,6 +11305,10 @@
             "status": "full",
             "issue": "3262",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11308,6 +11380,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11377,6 +11453,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11450,6 +11530,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11680,6 +11764,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11735,6 +11823,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11790,6 +11882,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11845,6 +11941,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11905,6 +12005,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -11960,6 +12064,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -12015,6 +12123,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -12070,6 +12182,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15574,6 +15690,10 @@
             "cites": ["internal/custom/elixir/ecto.go"],
             "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15641,6 +15761,10 @@
             "cites": ["internal/custom/elixir/ecto.go"],
             "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15698,6 +15822,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15758,6 +15886,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15821,6 +15953,10 @@
             "cites": ["internal/custom/golang/elasticsearch.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/elasticsearch_go.yaml"],
             "issue": "3214",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15877,6 +16013,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15938,6 +16078,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -15997,6 +16141,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -16050,6 +16198,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -16109,6 +16261,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21223,6 +21379,10 @@
             "cites": ["internal/custom/golang/bun.go","internal/custom/golang/bun_test.go"],
             "issue": "3255",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21294,6 +21454,10 @@
             "cites": ["internal/custom/golang/ent.go","internal/custom/golang/ent_test.go"],
             "issue": "3255",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21353,6 +21517,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "gen generates query code, not migrations (gorm.go)"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21418,6 +21586,10 @@
             "status": "full",
             "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21475,6 +21647,10 @@
             "status": "partial",
             "cites": ["internal/engine/rules/go/orms/golang_migrate.yaml"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21537,6 +21713,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21601,6 +21781,10 @@
             "cites": ["internal/custom/golang/sqlc.go","internal/custom/golang/sqlc_test.go"],
             "notes": "file-based NNN_slug.up/down.sql migration file recognition; sqlc.yaml config has_schema/has_queries properties extracted; TestSqlcConfig + TestSqlcMigrationFile prove both",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21667,6 +21851,10 @@
             "issue": "3214",
             "notes": "file-based NNN_slug.up/down.sql migrations recognised by filename; no migration runner integration; ALTER TABLE in migration content not parsed for schema delta",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21734,6 +21922,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "xo introspects existing schema; no migration management"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -21791,6 +21983,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28013,6 +28209,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28085,6 +28285,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28156,6 +28360,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28227,6 +28435,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28297,6 +28509,10 @@
             "cites": ["internal/custom/java/jooq.go"],
             "issue": "3098",
             "notes": "jOOQ is a query DSL, not schema-migration tooling; migration_parsing is not applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28370,6 +28586,13 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "partial",
+            "cites": ["internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go","internal/extractors/sql/sql.go"],
+            "issue": "3628",
+            "notes": "Flyway/Liquibase versioned SQL (Vn__*.sql) CREATE TABLE parsed by the SQL DDL extractor (SCOPE.Datastore subtype=table, migration_file set) converges via MODIFIES_TABLE op=create_table (#3628). Asserted by TestFlywaySQLCreateTable. Partial: ALTER TABLE ADD/DROP COLUMN inside migrations not yet mapped to add_column/drop_column ops.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -28445,6 +28668,10 @@
             "status": "not_applicable",
             "notes": "MyBatis is an SQL mapper; database migration files are owned by Flyway/Liquibase, not MyBatis. Same rationale as T1 ORM sweep (#3180).",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28515,6 +28742,10 @@
             "cites": ["internal/custom/java/neo4j.go"],
             "issue": "3098",
             "notes": "Neo4j graph database has no SQL migration files; migration_parsing is not applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28591,6 +28822,10 @@
             "status": "not_applicable",
             "notes": "Panache is a JPA wrapper (Quarkus-backed); database migration files are owned by Flyway/Liquibase. Same rationale as T1 ORM sweep (#3180).",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28657,6 +28892,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28723,6 +28962,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28794,6 +29037,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28860,6 +29107,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -28926,6 +29177,10 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29061,6 +29316,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29120,6 +29379,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29179,6 +29442,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29238,6 +29505,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29297,6 +29568,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29360,6 +29635,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29419,6 +29698,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29478,6 +29761,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29537,6 +29824,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -29596,6 +29887,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -37965,6 +38260,10 @@
             "status": "full",
             "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/extractors_coverage_test.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -38036,6 +38335,12 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/knex.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/knex.go","internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go"],
+            "notes": "knex schema-builder ops (createTable/table/dropTable) SCOPE.Evolution entities converge via MODIFIES_TABLE (#3628). Asserted by TestKnexCreateTable.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -38106,6 +38411,10 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mikroorm.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -38169,6 +38478,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -38232,6 +38545,10 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -38308,6 +38625,10 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/prisma.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -38378,6 +38699,12 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/sequelize.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/sequelize.go","internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go"],
+            "notes": "Sequelize queryInterface.createTable/addColumn migration ops converge via MODIFIES_TABLE (#3628). Same engine pass as knex/typeorm.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -38446,6 +38773,12 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/typeorm.go"],
             "verified_at": "2026-05-28"
+          },
+          "migration_schema_ops": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/typeorm.go","internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go"],
+            "notes": "TypeORM queryRunner.createTable/addColumn migration ops converge via MODIFIES_TABLE (#3628). Asserted by TestTypeORMAddColumn.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -42727,6 +43060,10 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -42798,6 +43135,10 @@
             "status": "partial",
             "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
             "notes": "New extractor: kotlinJPAMigrationExtractor emits migration entities from Flyway versioned/repeatable class declarations (V2__...), BaseJavaMigration extends, Liquibase @ChangeSet annotations, flyway.migrate() calls, and config bean detection. Partial because SQL migration files (V1__init.sql) are handled by internal/extractors/sql/sql.go."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -42862,6 +43203,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "Ktorm has no built-in migration layer; migrations are handled externally (Flyway, Liquibase, etc.)"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -42919,6 +43264,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -42981,6 +43330,10 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -43052,6 +43405,10 @@
             "status": "partial",
             "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
             "notes": "New extractor: kotlinJPAMigrationExtractor covers Flyway/Liquibase migration declarations in Kotlin — same patterns apply to Spring Data JPA projects (both use Flyway/Liquibase for schema migration). SpringLiquibase bean detection is explicit."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -43115,6 +43472,10 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44155,6 +44516,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44211,6 +44576,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44267,6 +44636,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44323,6 +44696,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44380,6 +44757,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44440,6 +44821,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44497,6 +44882,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44553,6 +44942,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -44610,6 +45003,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48592,6 +48989,10 @@
             "status": "partial",
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "CycleORM #[Entity]/#[Column] attributes; HasMany/BelongsTo/ManyToMany relations; lazy Promise proxy; findByPK/findOne/select queries; MigrationInterface class and schema sync."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48661,6 +49062,10 @@
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "AbstractMigration subclasses + up/down methods scanned.",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48724,6 +49129,10 @@
             "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48792,6 +49201,10 @@
             "status": "partial",
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "Propel TableMap COL_* constants (schema); addRelation/addForeignKey (relations/FK); LAZY_LOAD constant; PropelMigration classes; XxxQuery::create() calls."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48855,6 +49268,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "RedBeanPHP is zero-config — schema is created/altered automatically at runtime; no migration files to parse."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48911,6 +49328,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -48967,6 +49388,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49023,6 +49448,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49080,6 +49509,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49138,6 +49571,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49201,6 +49638,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49259,6 +49700,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49315,6 +49760,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -49373,6 +49822,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -55568,6 +56021,10 @@
             "issue": "3639",
             "notes": "Previously FALSE-full (#3630): the cited migration_sequence_enricher.go was orphaned (imported by zero production code) so no sequence/ordering metadata was ever emitted. #3639 wires it as live Pass 8.9 (engine.ApplyMigrationSequence, cmd/archigraph/index.go): each Alembic versions/*.py entity is stamped sequence_number/migration_name/migration_pattern from the filename, and the pass reads the file body (enrichers.ParseAlembicRevisions) to emit a PRECEDES edge along the down_revision to revision DAG, making the migration chain traversable. Separately alembic_schema.go parses upgrade() op content. Partial: op.alter_column type changes, dropped columns, and server_default/constraint metadata are still not modeled.",
             "verified_at": "2026-06-02"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -55634,6 +56091,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -55704,6 +56165,12 @@
             "issue": "3639",
             "notes": "django_migration.go parses NNNN_name.py into op_count/operations/dependencies. #3639 additionally stamps sequence_number (the NNNN ordinal) + migration_name + migration_pattern=django on each migration entity via live Pass 8.9 (engine.ApplyMigrationSequence).",
             "verified_at": "2026-06-02"
+          },
+          "migration_schema_ops": {
+            "status": "full",
+            "cites": ["internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go","internal/extractors/python/django_migration.go"],
+            "notes": "Django CreateModel/AddField/RemoveField operations (from the Migration entity operations JSON) emit MODIFIES_TABLE edges keyed by model name (#3628). Asserted by TestDjangoCreateModelAndAddField.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -55772,6 +56239,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -55836,6 +56307,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "Peewee-migrate is a separate optional library; core peewee has no built-in migration concept (#3184)"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -55900,6 +56375,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "Pony ORM has no built-in migration support; schema changes require manual intervention (#3184)"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -55970,6 +56449,12 @@
             "cites": ["internal/engine/rules/python/orms/alembic.yaml"],
             "issue": "3060",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "full",
+            "cites": ["internal/custom/python/alembic_schema.go","internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go"],
+            "notes": "Alembic op.create_table/add_column/create_index SCOPE.Schema entities converge onto a synthetic SCOPE.Table via MODIFIES_TABLE edges (engine pass, #3628). Asserted by TestAlembicCreateTableAndAddColumn.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -56043,6 +56528,10 @@
             "cites": ["internal/engine/rules/python/orms/alembic.yaml"],
             "issue": "3056",
             "verified_at": "2026-05-29"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56109,6 +56598,10 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "Aerich handles migrations separately; core tortoise-orm has no built-in migration support (#3184)"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56332,6 +56825,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56388,6 +56885,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56445,6 +56946,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56502,6 +57007,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56557,6 +57066,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56620,6 +57133,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56675,6 +57192,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56731,6 +57252,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -56786,6 +57311,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59178,6 +59707,12 @@
             "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go","internal/engine/migration_sequence.go"],
             "issue": "3639",
             "notes": "db/migrate/*.rb parsed into normalized SCOPE.Evolution ops (create_table/add_column/drop_column/alter_column/create_index/add_reference/add_foreign_key/drop_table), plus typed columns inside create_table blocks and FK entities. Test: TestDeepMigration_CreateTableColumnsAndOps asserts exact op subtypes+columns+FKs. #3639 additionally stamps sequence_number (the YYYYMMDDHHMMSS timestamp) + migration_name + migration_pattern=rails on each db/migrate entity via live Pass 8.9 (engine.ApplyMigrationSequence)."
+          },
+          "migration_schema_ops": {
+            "status": "full",
+            "cites": ["internal/custom/ruby/activerecord_deep.go","internal/engine/migration_schema_ops.go","internal/engine/migration_schema_ops_test.go"],
+            "notes": "Rails create_table/add_column/drop_column/add_index SCOPE.Evolution ops converge via MODIFIES_TABLE (#3628). Asserted by TestRailsAddColumn.",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
@@ -59245,6 +59780,10 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/activerecord.go"],
             "notes": "DataMapper::Migration / migration(n, :name) blocks, create_table/add_column via dm-migrations. Part of #3282."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59310,6 +59849,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59375,6 +59918,10 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/activerecord.go"],
             "notes": "ROM-rb uses Sequel.migration underneath; migration block detection covers this. Part of #3282."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59440,6 +59987,10 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/activerecord.go"],
             "notes": "Sequel.migration, DB.create_table/alter_table, add_column inside Sequel migration blocks. Part of #3282."
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59496,6 +60047,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59551,6 +60106,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59606,6 +60165,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59662,6 +60225,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59717,6 +60284,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59777,6 +60348,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59832,6 +60407,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59888,6 +60467,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -59943,6 +60526,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -62150,6 +62737,10 @@
           "migration_parsing": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -63576,6 +64167,10 @@
             "cites": ["internal/custom/rust/diesel.go","internal/custom/rust/diesel_seaorm_test.go","internal/custom/rust/orm_props_test.go","internal/custom/rust/testdata/diesel_up.sql"],
             "notes": "Detects embed_migrations!(), run_pending_migrations(), impl MigrationHarness patterns",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -63640,6 +64235,10 @@
             "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
             "notes": "Detects table_meta! and rbatis::table_sync! migration macros",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -63694,6 +64293,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -63764,6 +64367,10 @@
             "status": "partial",
             "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_migration.rs"],
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -63825,6 +64432,10 @@
             "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
             "notes": "sqlx::migrate! path + migration file refs detected; parsing the referenced migrations/*.sql DDL is out of scope (sqlx resolves them at compile time, not in the .rs source).",
             "verified_at": "2026-05-30"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -67812,6 +68423,10 @@
             "status": "not_applicable",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "Doobie does not manage migrations; use Flyway or Liquibase alongside doobie"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -67873,6 +68488,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -67937,6 +68556,10 @@
             "status": "not_applicable",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "Quill does not manage schema migrations; use Flyway/Liquibase/scala-migrations alongside Quill"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -68000,6 +68623,10 @@
             "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "scalikejdbcDBMigrationRe captures DB autoCommit/localTx blocks which can contain DDL; scalikejdbc-play-support includes DB evolution integration"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -68061,6 +68688,10 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {
@@ -68126,6 +68757,10 @@
             "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway)"
+          },
+          "migration_schema_ops": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Transactions": {

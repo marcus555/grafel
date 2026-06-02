@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 9
+- **Capability cells:** 10
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | — `not_applicable` | `2026-05-29` | — | — | ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A. |
+| Migration schema ops | 🟢 `partial` | `2026-06-02` | 3628 | `internal/engine/migration_schema_ops.go`<br>`internal/engine/migration_schema_ops_test.go`<br>`internal/extractors/sql/sql.go` | Flyway/Liquibase versioned SQL (Vn__*.sql) CREATE TABLE parsed by the SQL DDL extractor (SCOPE.Datastore subtype=table, migration_file set) converges via MODIFIES_TABLE op=create_table (#3628). Asserted by TestFlywaySQLCreateTable. Partial: ALTER TABLE ADD/DROP COLUMN inside migrations not yet mapped to add_column/drop_column ops. |
 
 ### Transactions
 

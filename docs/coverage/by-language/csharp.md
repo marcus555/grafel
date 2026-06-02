@@ -87,20 +87,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/3 | |
-| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/3 | |
-| [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 3/4 | |
-| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | 🟡 8/9 | |
-| [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 7/8 | |
-| [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟡 6/7 | |
-| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🔴 0/2 | |
-| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/3 | |
-| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🔴 0/2 | |
-| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/3 | |
-| [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟡 7/8 | |
-| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🔴 0/2 | |
-| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🔴 0/2 | |
-| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟡 1/2 | |
+| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/4 | |
+| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/4 | |
+| [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 3/5 | |
+| [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | 🟡 8/10 | |
+| [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟡 7/9 | |
+| [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟡 6/8 | |
+| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🔴 0/3 | |
+| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/4 | |
+| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🔴 0/3 | |
+| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/4 | |
+| [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟡 7/9 | |
+| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🔴 0/3 | |
+| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🔴 0/3 | |
+| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟡 1/3 | |
 
 
 ## Other

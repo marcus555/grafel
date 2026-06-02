@@ -42,7 +42,7 @@ func TestBucketCapabilityKeys(t *testing.T) {
 
 	// ORMs: only `orm` category populated today.
 	got = bucketCapabilityKeys(BucketORMs)
-	want = []string{"migration_parsing", "model_extraction", "query_attribution"}
+	want = []string{"migration_parsing", "migration_schema_ops", "model_extraction", "query_attribution"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ORMs keys = %v, want %v", got, want)
 	}

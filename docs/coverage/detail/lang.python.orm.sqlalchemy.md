@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 9
+- **Capability cells:** 10
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | `2026-05-29` | 3060 | `internal/engine/rules/python/orms/alembic.yaml` | — |
+| Migration schema ops | ✅ `full` | `2026-06-02` | — | `internal/custom/python/alembic_schema.go`<br>`internal/engine/migration_schema_ops.go`<br>`internal/engine/migration_schema_ops_test.go` | Alembic op.create_table/add_column/create_index SCOPE.Schema entities converge onto a synthetic SCOPE.Table via MODIFIES_TABLE edges (engine pass, #3628). Asserted by TestAlembicCreateTableAndAddColumn. |
 
 ### Transactions
 
