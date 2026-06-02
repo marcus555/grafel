@@ -1188,13 +1188,29 @@ func mongoAggPipelineSubArrays(stage string) []string {
 // object key (the value follows). Used to locate correlated $lookup sub-arrays.
 var mongoAggPipelineKeyRe = regexp.MustCompile(`(?:\bpipeline\b|['"]pipeline['"])\s*:`)
 
-// mongoAggPyFromImportRe matches a Python `from <module> import <names>` line,
-// capturing the module path (group 1, e.g. `.queries`, `core.services.building.queries`)
-// and the imported-names clause (group 2, e.g. `build, other` or `build as b`).
-// Parenthesised multi-line import lists are NOT followed (single-line only) —
-// honest-partial; the dominant builder-import shape is a single-line
-// `from .queries import get_inspection_devices_pipeline`.
-var mongoAggPyFromImportRe = regexp.MustCompile(`(?m)^[ \t]*from\s+([.\w]+)\s+import\s+([^\n#]+)`)
+// mongoAggPyFromImportRe matches a SINGLE-LINE Python `from <module> import
+// <names>` statement, capturing the module path (group 1, e.g. `.queries`,
+// `core.services.building.queries`) and the imported-names clause (group 2,
+// e.g. `build, other` or `build as b`). The leading `import\s+` is constrained
+// to NOT be followed by an opening paren so the multi-line parenthesised form
+// is handled by mongoAggPyFromImportParenRe instead (the two are disjoint).
+var mongoAggPyFromImportRe = regexp.MustCompile(`(?m)^[ \t]*from\s+([.\w]+)\s+import\s+([^\n(#][^\n#]*)`)
+
+// mongoAggPyFromImportParenRe matches the MULTI-LINE parenthesised import form
+//
+//	from core.services.building.queries import (
+//	    get_inspection_devices_pipeline,
+//	    get_inspection_devices_filters_pipeline,
+//	)
+//
+// capturing the module path (group 1) and the full parenthesised names clause
+// (group 2, newlines and trailing commas included — split/trimmed by the caller).
+// `(?s)` lets `.` span newlines; `[^)]*` is non-greedy enough because a Python
+// import-name list never contains a nested `)`. This is the dominant real
+// builder-import shape in upvate-core's service.py (deploy-8 item-2): without it
+// the cross-file builder name never resolves and the $lookup `from` collections
+// orphan.
+var mongoAggPyFromImportParenRe = regexp.MustCompile(`(?ms)^[ \t]*from\s+([.\w]+)\s+import\s+\(([^)]*)\)`)
 
 // newMongoAggPyCrossFileResolver builds a cross-file builder resolver bound to
 // the executor file's imports. For a builder NAME it:
@@ -1209,12 +1225,18 @@ var mongoAggPyFromImportRe = regexp.MustCompile(`(?m)^[ \t]*from\s+([.\w]+)\s+im
 // When `repoRoot` is empty (path not absolutifiable) the resolver still works if
 // `path` is itself absolute; otherwise it yields "" for every name.
 func newMongoAggPyCrossFileResolver(repoRoot, path, src string) mongoAggPyCrossFileResolver {
-	// Pre-scan imports once: NAME → module path.
+	// Pre-scan imports once: NAME → module path. Both single-line and
+	// parenthesised multi-line `from ... import (...)` forms are scanned so a
+	// builder imported via the dominant multi-line list still resolves.
 	nameToModule := map[string]string{}
-	for _, m := range mongoAggPyFromImportRe.FindAllStringSubmatch(src, -1) {
-		module := m[1]
-		for _, raw := range strings.Split(m[2], ",") {
+	addImport := func(module, clause string) {
+		for _, raw := range strings.Split(clause, ",") {
 			name := strings.TrimSpace(raw)
+			// Drop any trailing inline comment (multi-line lists may carry one
+			// per line: `name,  # keep`).
+			if i := strings.IndexByte(name, '#'); i >= 0 {
+				name = strings.TrimSpace(name[:i])
+			}
 			if name == "" || name == "*" {
 				continue
 			}
@@ -1235,6 +1257,12 @@ func newMongoAggPyCrossFileResolver(repoRoot, path, src string) mongoAggPyCrossF
 			}
 			nameToModule[name] = module + "\x00" + orig
 		}
+	}
+	for _, m := range mongoAggPyFromImportRe.FindAllStringSubmatch(src, -1) {
+		addImport(m[1], m[2])
+	}
+	for _, m := range mongoAggPyFromImportParenRe.FindAllStringSubmatch(src, -1) {
+		addImport(m[1], m[2])
 	}
 
 	return func(builderName string) string {
