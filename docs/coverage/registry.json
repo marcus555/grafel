@@ -7082,6 +7082,28 @@
             "verified_at": "2026-05-28"
           }
         }
+      },
+      "framework_specific": {
+        "Dependency Injection": {
+          "di_binding_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3699: ExtractDotnetDI (custom_csharp_dotnet_di) emits the DI binding GRAPH for Microsoft.Extensions.DependencyInjection: services.AddSingleton/AddScoped/AddTransient\u003cIFoo,Foo\u003e() (and Try/Keyed + typeof(IFoo),typeof(Foo) forms) emit IFoo BINDS Foo with lifetime=Singleton|Scoped|Transient; single-type-arg AddScoped\u003cFoo\u003e() emits a self-BINDS (binding_kind=self). Value-asserted in dotnet_di_test.go (IRepo BINDS Repo lifetime=Scoped; IClock/IMailer Singleton/Transient; typeof form; self-registration).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3699: constructor params of a class emit INJECTED_INTO (service type -\u003e consumer class, via=dotnet_constructor); IConfiguration/IServiceProvider/IOptions\u003c\u003e/ILogger\u003c\u003e infrastructure types + primitives rejected. Value-asserted in dotnet_di_test.go (IOrderService INJECTED_INTO OrderController; negative: ILogger\u003c\u003e + string yield no edge). PARTIAL: the registered-as-DI gate is structural (any class ctor), and the impl/provider class resolves cross-file only via the resolver pass; factory-lambda registrations not linked.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3699: BINDS edges carry the service lifetime (Singleton/Scoped/Transient) parsed from the AddXxx registration verb. Value-asserted in dotnet_di_test.go.",
+            "verified_at": "2026-06-02"
+          }
+        }
       }
     },
     {
@@ -19638,6 +19660,229 @@
       }
     },
     {
+      "id": "lang.java.framework.guice",
+      "category": "http_framework",
+      "subcategory": "jvm_backend",
+      "language": "java",
+      "label": "Google Guice (DI)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "handler_attribution": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "route_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/java/di_graph.go","internal/custom/java/di_graph_test.go","internal/custom/java/patterns_dispatch.go"],
+            "notes": "#3699: ExtractGuiceDI emits the DI binding GRAPH: bind(Foo.class).to(FooImpl.class) in an AbstractModule emits Foo BINDS FooImpl; bind(...).toProvider(...) emits binding_kind=bind_provider; lifetime parsed from .in(Scopes.SINGLETON)/.asEagerSingleton(). Value-asserted in di_graph_test.go TestGuiceDI_BindTo_Binds (IFoo BINDS Foo, binding_kind=bind_to, lifetime=singleton).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "full",
+            "cites": ["internal/custom/java/di_graph.go","internal/custom/java/di_graph_test.go"],
+            "notes": "#3699: @Inject constructor params and @Inject fields emit INJECTED_INTO (provider type -\u003e consumer class, via=guice_constructor|guice_field), primitives rejected. Value-asserted in di_graph_test.go TestGuiceDI_InjectConstructor_InjectedInto (PaymentGateway INJECTED_INTO BillingService; negative: String yields no edge). Under the shared jakarta_ee candidate token a bind()/AbstractModule signal is required to avoid @Inject false positives (self-gate, TestGuiceDI_SelfGate_NoBindNoModule).",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "partial",
+            "cites": ["internal/custom/java/di_graph.go","internal/custom/java/di_graph_test.go"],
+            "notes": "#3699: BINDS edges carry the Guice scope (singleton/eager_singleton/no_scope) parsed from the bind tail. PARTIAL: @Singleton on a class and custom scope annotations are not yet linked to the binding.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Transactions": {
+          "transaction_boundary_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "transaction_propagation": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "transaction_rollback_rules": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "AOP": {
+          "advice_attribution": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "aspect_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "pointcut_resolution": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3699"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3699"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.java.framework.gwt",
       "category": "http_framework",
       "subcategory": "ui_frontend",
@@ -22281,20 +22526,21 @@
         "DI": {
           "di_binding_extraction": {
             "status": "full",
-            "cites": ["internal/custom/java/patterns_dispatch.go","internal/custom/java/spring_boot.go","internal/extractors/custom_java_patterns_smoke_test.go"],
-            "notes": "Re-wired live via custom_java_patterns dispatch (#3586): @Service/@Repository/@Component/@Configuration stereotype beans emit as SCOPE.Component through RunCustomExtractors; value-asserting smoke test TestJavaPatternsSpringControllerLive asserts the UserService SCOPE.Component stereotype entity emits live",
+            "cites": ["internal/custom/java/di_graph.go","internal/custom/java/di_graph_test.go","internal/custom/java/patterns_dispatch.go","internal/custom/java/spring_boot.go"],
+            "notes": "#3699: ExtractSpringDIGraph emits the DI binding GRAPH: @Bean factory methods in @Configuration classes emit BINDS (return-type token -\u003e the @Bean method, lifetime from @Scope). Value-asserted in di_graph_test.go TestSpringDI_BeanMethod_Binds (DataSource BINDS dataSource, lifetime=singleton). Plus prior stereotype-bean SCOPE.Component emission (spring_boot.go via #3586).",
             "verified_at": "2026-06-02"
           },
           "di_injection_point": {
             "status": "full",
-            "cites": ["internal/custom/java/patterns_dispatch.go","internal/custom/java/spring_boot.go","internal/extractors/custom_java_patterns_smoke_test.go"],
-            "notes": "Re-wired live via custom_java_patterns dispatch (#3586): @Autowired field/setter/constructor injection emits DEPENDS_ON edges through RunCustomExtractors; value-asserting smoke test TestJavaPatternsSpringControllerLive asserts the UserService-\u003eUserRepository DEPENDS_ON edge emits live",
+            "cites": ["internal/custom/java/di_graph.go","internal/custom/java/di_graph_test.go","internal/custom/java/spring_di_deepen.go"],
+            "notes": "#3699: ExtractSpringDIGraph emits the injection GRAPH: constructor params and @Autowired/@Inject fields of @Service/@Repository/@Component/@Controller beans emit INJECTED_INTO (provider type -\u003e consumer class), @Qualifier on the edge, primitives rejected. Value-asserted in di_graph_test.go (UserRepo INJECTED_INTO UserService via=spring_constructor; DataSource INJECTED_INTO OrderRepo via=spring_field qualifier=primaryDataSource; negative: int param yields no edge). Prior @Autowired/@Value/@Qualifier DEPENDS_ON remain (spring_di_deepen.go).",
             "verified_at": "2026-06-02"
           },
           "di_scope_resolution": {
             "status": "full",
-            "cites": ["internal/custom/java/spring_di_deepen.go","internal/extractors/custom_java_patterns_smoke_test.go"],
-            "verified_at": "2026-06-01"
+            "cites": ["internal/custom/java/di_graph.go","internal/custom/java/spring_di_deepen.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3699: @Bean BINDS edges carry lifetime from @Scope (default singleton). Plus prior @Scope/@RequestScope/@ConditionalOnMissingBean handling (spring_di_deepen.go).",
+            "verified_at": "2026-06-02"
           }
         },
         "Transactions": {
