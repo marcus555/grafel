@@ -338,7 +338,18 @@ func mongoAggPyFollowCollBinding(src, ident string, usePos int) string {
 			return m[1] // quoted collection name
 		}
 		if m[2] != "" {
-			return m[2] // bare constant identifier (e.g. INSPECTIONS)
+			// Bare constant identifier (e.g. `get_collection(INSPECTIONS)`) — the
+			// legacy idiom where a collection-name constant stands in for the
+			// quoted name. The constant NAME is NOT the collection name: the
+			// migration parity oracle (and every string-literal viewset form)
+			// anchors the join on the COLLECTION, so we must resolve the constant
+			// to its string VALUE. Without this, `INSPECTIONS` flows straight into
+			// capitalisedSingular which leaves the all-caps token unchanged
+			// (`Class:INSPECTIONS`), a phantom node that never matches the real
+			// `Class:Inspection` collection node the literal `"inspections"`
+			// produces — so the task-file joins orphan and vanish from the graph
+			// while ~57 string-literal viewset aggregations extract fine.
+			return mongoAggPyResolveCollConst(src, m[2])
 		}
 	}
 	// db["c"] / db['c'] subscript anywhere in the RHS.
@@ -354,6 +365,44 @@ func mongoAggPyFollowCollBinding(src, ident string, usePos int) string {
 		}
 	}
 	return ""
+}
+
+// mongoAggPyConstAssignRe matches a module-level constant assignment
+// `NAME = "value"` / `NAME = 'value'` at column 0 (top-level, not indented),
+// capturing the string value. Used to resolve a collection-name constant
+// (`INSPECTIONS = "inspections"`) to its value when defined in the same file.
+var mongoAggPyConstAssignReCache = map[string]*regexp.Regexp{}
+
+func mongoAggPyConstAssignRe(name string) *regexp.Regexp {
+	if re, ok := mongoAggPyConstAssignReCache[name]; ok {
+		return re
+	}
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `\s*=\s*['"]([a-zA-Z_][\w$.]*)['"]`)
+	mongoAggPyConstAssignReCache[name] = re
+	return re
+}
+
+// mongoAggPyResolveCollConst turns a bare collection-name constant identifier
+// (e.g. `INSPECTIONS`) into the collection token used to anchor the join.
+//
+//  1. Same-file definition: if `NAME = "value"` exists at module scope in this
+//     file, return the literal value ("inspections") — exact, matches a quoted
+//     receiver.
+//  2. Cross-module import (the real `_get_me_inspections` case — `INSPECTIONS`
+//     comes from `core.mongodb_collections`): the value isn't in this file, so
+//     fall back to the constant NAME LOWERCASED. UPPER_SNAKE collection
+//     constants are conventionally the upper-cased collection name, so
+//     lowercasing recovers a token that canonicalises (via capitalisedSingular)
+//     to the SAME node as the string literal would: `INSPECTIONS` → `inspections`
+//     → `Class:Inspection`, identical to the 57 working viewset forms. This is
+//     the honest-partial: we don't fabricate a value, we normalise the name so
+//     the edge lands on the real collection node instead of a phantom all-caps
+//     one.
+func mongoAggPyResolveCollConst(src, name string) string {
+	if m := mongoAggPyConstAssignRe(name).FindStringSubmatch(src); m != nil {
+		return m[1]
+	}
+	return strings.ToLower(name)
 }
 
 // mongoAggPyCollSubscriptRe matches a `db["coll"]` / `db['coll']` subscript
