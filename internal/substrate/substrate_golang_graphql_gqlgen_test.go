@@ -144,13 +144,25 @@ func TestSubstrate_Go_Gqlgen_TaintSourceDoesNotFire(t *testing.T) {
 	}
 }
 
-// TestSubstrate_Go_Gqlgen_NoGoDataFlowSniffer documents WHY
-// request_sink_dataflow is left `missing`: no Go dataflow sniffer is registered
-// at all — only "jsts" and "python" appear in the dataflow registry. The flow
-// therefore cannot fire for any Go framework, and gqlgen reads args not
-// req.body regardless.
-func TestSubstrate_Go_Gqlgen_NoGoDataFlowSniffer(t *testing.T) {
-	if DataFlowSnifferFor("go") != nil || DataFlowSnifferExFor("go") != nil {
-		t.Errorf("expected NO registered Go dataflow sniffer (request_sink is jsts/python only); one was found")
+// TestSubstrate_Go_Gqlgen_DataFlowSnifferRegistered documents that a Go
+// dataflow sniffer IS now registered (#3943 — gin/echo/chi/net-http
+// request→sink), so the registry holds "go" alongside "jsts"/"python". The
+// flow can fire for those request-receiver frameworks; gqlgen remains
+// unaffected because a gqlgen resolver reads TYPED ARGS, not a request
+// receiver (req.body / c.Query / r.FormValue), so the next test confirms no
+// flow is produced for the resolver source.
+func TestSubstrate_Go_Gqlgen_DataFlowSnifferRegistered(t *testing.T) {
+	if DataFlowSnifferFor("go") == nil || DataFlowSnifferExFor("go") == nil {
+		t.Errorf("expected the Go dataflow sniffer to be registered (#3943)")
+	}
+}
+
+// TestSubstrate_Go_Gqlgen_NoDataFlowForResolver confirms the new Go sniffer
+// does NOT fire on a gqlgen resolver: the resolver reads typed function
+// parameters, none of the recognised request receivers, so no source — hence
+// no DATA_FLOWS_TO. This keeps request_sink_dataflow honest for gqlgen.
+func TestSubstrate_Go_Gqlgen_NoDataFlowForResolver(t *testing.T) {
+	if flows := sniffDataFlowGo(gqlgenResolverSrc); len(flows) != 0 {
+		t.Errorf("expected NO dataflow for a gqlgen resolver (typed args, not a request receiver); got %+v", flows)
 	}
 }
