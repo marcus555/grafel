@@ -153,6 +153,17 @@ const (
 	//     `loader.load(id)` / `loader.loadMany(ids)` call site. This surfaces
 	//     which field resolver avoids N+1 via which batch loader.
 	EntityKindDataLoader EntityKind = "SCOPE.DataLoader"
+
+	// ORM model lifecycle-hook / signal events (child of #3628 area).
+	// A SCOPE.ModelEvent node represents a single persistence lifecycle event
+	// on a specific model/entity — e.g. `User.post_save` (Django signal),
+	// `User.after_create` (ActiveRecord callback), `Order.afterInsert`
+	// (TypeORM), `User.after_insert` (SQLAlchemy event), `User.afterCreate`
+	// (Sequelize hook), `User.save` (Mongoose post/pre middleware). The
+	// node makes both the model and the event queryable ("what runs after a
+	// User is saved?"); the handler is joined via a TRIGGERS edge
+	// (ModelEvent → handler fn). The name segment is "<Model>.<event>".
+	EntityKindModelEvent EntityKind = "SCOPE.ModelEvent"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -218,6 +229,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindPlugin,
 		// #3624 GraphQL DataLoader:
 		EntityKindDataLoader,
+		// ORM model lifecycle-hook / signal events (#3628 area):
+		EntityKindModelEvent,
 	}
 }
 
@@ -403,6 +416,14 @@ const (
 	// #728: Scheduled-job and webhook edges.
 	//   TRIGGERS : SCOPE.ScheduledJob → handler function/method
 	//              (scheduler fires the handler on the declared schedule)
+	//
+	// ORM model lifecycle-hook reuse (#3628 area):
+	//   TRIGGERS : SCOPE.ModelEvent:<Model>.<event> → handler function/method
+	//              A model persistence lifecycle event (Django post_save,
+	//              ActiveRecord after_create, TypeORM @AfterInsert, SQLAlchemy
+	//              after_insert event, Sequelize afterCreate hook, Mongoose
+	//              post('save') middleware) fires the handler. Same edge kind as
+	//              the scheduler→handler case: "this event runs that function".
 	RelationshipKindTriggers RelationshipKind = "TRIGGERS"
 
 	// #3700 (child of #3628 area #14): background-job enqueue topology.

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # JS/TS
 
-**Frameworks**: 32 · **Tools**: 21 · **ORMs**: 18 · **Other**: 2
+**Frameworks**: 32 · **Tools**: 21 · **ORMs**: 18 · **Other**: 4
 
 Back to [summary](../summary.md).
 
@@ -131,7 +131,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 |---|---|---|
 | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
 | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
-| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ✅ 7/7 | |
+| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | 🟢 7/7 | |
 | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ 6/6 | |
 | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟢 8/8 | |
 | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ✅ 1/1 | |
@@ -154,4 +154,6 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
+| [ORM model lifecycle-hook → handler TRIGGERS (TypeORM, Sequelize, Mongoose)](../detail/msg.orm-lifecycle-hooks-jsts.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
+| [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
 | [tsconfig.json](../detail/config.tsconfig.md) | [platform](../by-category/platform.md) | ✅ | |

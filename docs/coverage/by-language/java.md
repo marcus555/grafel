@@ -83,7 +83,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [JUnit 4](../detail/test.junit4.md) | 🟢 | — | — | — | 🟢 | |
 | [JUnit 5](../detail/test.junit5.md) | ✅ | — | — | — | ✅ | |
 | [Maven (pom.xml)](../detail/build.maven.md) | ✅ | — | — | — | ✅ | |
-| [Mockito](../detail/test.mockito.md) | 🔴 | — | — | — | 🔴 | |
+| [Mockito](../detail/test.mockito.md) | 🔴 | — | — | — | 🟢 | |
 | [REST-assured](../detail/test.restassured.md) | 🔴 | — | — | — | 🔴 | |
 | [TestNG](../detail/test.testng.md) | 🔴 | — | — | — | 🟢 | |
 | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | — | 🔴 | 🔴 | — | |
