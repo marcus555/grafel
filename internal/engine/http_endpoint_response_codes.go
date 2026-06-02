@@ -178,6 +178,13 @@ func resolveEndpointResponseCodes(lang, content string, e *types.EntityRecord) r
 		// forward window so @ResponseStatus is in scope.
 		sig := forwardSignatureWindow(content, anchorLine)
 		v.merge(javaResponseCodes(region+"\n"+sig, body))
+		// JAX-RS / Jakarta REST, Quarkus, Micronaut, MicroProfile, Helidon,
+		// Dropwizard share the JVM but use a DIFFERENT response API than Spring
+		// (jakarta.ws.rs Response builders + WebApplicationException subclasses;
+		// Micronaut HttpResponse builders + @Status). Resolve those too and merge
+		// (#3857). Spring + JAX-RS shapes are mutually exclusive in practice, so a
+		// merge cannot double-count.
+		v.merge(jaxrsResponseCodes(region+"\n"+sig, body))
 	case "javascript":
 		v.merge(jsResponseCodes(region, body))
 	}

@@ -141,6 +141,18 @@ func resolveEndpointPagination(lang, content string, e *types.EntityRecord) (pag
 		if v, ok := springPaginationVerdict(region + "\n" + sig); ok {
 			return v, true
 		}
+		// JAX-RS / Jakarta REST, Quarkus, Micronaut, MicroProfile, Helidon,
+		// Dropwizard use a different pagination surface than Spring (#3857):
+		// Micronaut Pageable/Page<…> (Micronaut Data) + JAX-RS @QueryParam /
+		// Micronaut @QueryValue limit/offset/cursor pairs. A class-level-@Path
+		// JAX-RS resource with no method-level @Path anchors at the CLASS line
+		// (routeDeclarationLine matches the class @Path), so the handler signature
+		// carrying the @QueryParam annotations sits further down than the small
+		// forward-signature window reaches — include the larger body window too.
+		jaxrsScope := region + "\n" + sig + "\n" + handlerBodyWindowLarge(content, handlerStart)
+		if v, ok := jaxrsPaginationVerdict(jaxrsScope); ok {
+			return v, true
+		}
 	case "javascript":
 		if v, ok := jsPaginationVerdict(region, body); ok {
 			return v, true
