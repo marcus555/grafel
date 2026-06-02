@@ -24338,19 +24338,23 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: deprecated(+deprecated_since)+api_version on JAX-RS endpoints. @Deprecated(since=) on a @GET/@Path handler -\u003e deprecated=true (shared javaDeprecationVerdict); api_version path-derived (@Path(/api/v2/..)). Value-asserted TestDeprecation_JAXRS_DeprecatedMethod + TestAPIVersion_JAXRS_PathV2; negative TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3857",
+            "notes": "#3857: paginated/pagination_style/pagination_params/pagination_source via jaxrsPaginationVerdict in the java branch of applyEndpointPagination. Signals: JAX-RS @QueryParam (Micronaut @QueryValue) limit+offset/page/cursor pairs classified by the shared vocabulary; Micronaut Data Pageable param / Page\u003c\u003e|Slice\u003c\u003e return -\u003e page. Value-asserted TestPagination_JAXRS_LimitOffsetQueryParams + negative TestPagination_JAXRS_LoneLimitNotStamped. Partial: param-shape only, no framework pagination-class signal.",
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: response_codes/success_code/response_codes_source on JAX-RS-synthesised endpoints (synthesizeJAXRS) via jaxrsResponseCodes merged into the java branch of applyEndpointResponseCodes. Signals: Response.status(NNN|Response.Status.X), Response/HttpResponse builder helpers (ok-\u003e200/created-\u003e201/accepted-\u003e202/noContent-\u003e204/notFound-\u003e404/badRequest-\u003e400/unprocessableEntity-\u003e422/serverError-\u003e500), new WebApplicationException(NNN|Status.X), typed jakarta.ws.rs exceptions (NotFoundException-\u003e404 etc), Micronaut @Status. Value-asserted in TestResponseCodes_JAXRS_*. Honest-partial: dynamic status skipped.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_synthesis": {
             "status": "full",
@@ -25141,19 +25145,23 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: deprecated(+deprecated_since)+api_version on JAX-RS endpoints. @Deprecated(since=) on a @GET/@Path handler -\u003e deprecated=true (shared javaDeprecationVerdict); api_version path-derived (@Path(/api/v2/..)). Value-asserted TestDeprecation_JAXRS_DeprecatedMethod + TestAPIVersion_JAXRS_PathV2; negative TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3857",
+            "notes": "#3857: paginated/pagination_style/pagination_params/pagination_source via jaxrsPaginationVerdict in the java branch of applyEndpointPagination. Signals: JAX-RS @QueryParam (Micronaut @QueryValue) limit+offset/page/cursor pairs classified by the shared vocabulary; Micronaut Data Pageable param / Page\u003c\u003e|Slice\u003c\u003e return -\u003e page. Value-asserted TestPagination_JAXRS_LimitOffsetQueryParams + negative TestPagination_JAXRS_LoneLimitNotStamped. Partial: param-shape only, no framework pagination-class signal.",
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: response_codes/success_code/response_codes_source on JAX-RS-synthesised endpoints (synthesizeJAXRS) via jaxrsResponseCodes merged into the java branch of applyEndpointResponseCodes. Signals: Response.status(NNN|Response.Status.X), Response/HttpResponse builder helpers (ok-\u003e200/created-\u003e201/accepted-\u003e202/noContent-\u003e204/notFound-\u003e404/badRequest-\u003e400/unprocessableEntity-\u003e422/serverError-\u003e500), new WebApplicationException(NNN|Status.X), typed jakarta.ws.rs exceptions (NotFoundException-\u003e404 etc), Micronaut @Status. Value-asserted in TestResponseCodes_JAXRS_*. Honest-partial: dynamic status skipped.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_synthesis": {
             "status": "partial",
@@ -25479,19 +25487,23 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: deprecated(+deprecated_since)+api_version on JAX-RS endpoints. @Deprecated(since=) on a @GET/@Path handler -\u003e deprecated=true (shared javaDeprecationVerdict); api_version path-derived (@Path(/api/v2/..)). Value-asserted TestDeprecation_JAXRS_DeprecatedMethod + TestAPIVersion_JAXRS_PathV2; negative TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3857",
+            "notes": "#3857: paginated/pagination_style/pagination_params/pagination_source via jaxrsPaginationVerdict in the java branch of applyEndpointPagination. Signals: JAX-RS @QueryParam (Micronaut @QueryValue) limit+offset/page/cursor pairs classified by the shared vocabulary; Micronaut Data Pageable param / Page\u003c\u003e|Slice\u003c\u003e return -\u003e page. Value-asserted TestPagination_JAXRS_LimitOffsetQueryParams + negative TestPagination_JAXRS_LoneLimitNotStamped. Partial: param-shape only, no framework pagination-class signal.",
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: response_codes/success_code/response_codes_source on JAX-RS-synthesised endpoints (synthesizeJAXRS) via jaxrsResponseCodes merged into the java branch of applyEndpointResponseCodes. Signals: Response.status(NNN|Response.Status.X), Response/HttpResponse builder helpers (ok-\u003e200/created-\u003e201/accepted-\u003e202/noContent-\u003e204/notFound-\u003e404/badRequest-\u003e400/unprocessableEntity-\u003e422/serverError-\u003e500), new WebApplicationException(NNN|Status.X), typed jakarta.ws.rs exceptions (NotFoundException-\u003e404 etc), Micronaut @Status. Value-asserted in TestResponseCodes_JAXRS_*. Honest-partial: dynamic status skipped.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_synthesis": {
             "status": "partial",
@@ -26141,19 +26153,23 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: deprecated(+deprecated_since)+api_version on JAX-RS endpoints. @Deprecated(since=) on a @GET/@Path handler -\u003e deprecated=true (shared javaDeprecationVerdict); api_version path-derived (@Path(/api/v2/..)). Value-asserted TestDeprecation_JAXRS_DeprecatedMethod + TestAPIVersion_JAXRS_PathV2; negative TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3857",
+            "notes": "#3857: paginated/pagination_style/pagination_params/pagination_source via jaxrsPaginationVerdict in the java branch of applyEndpointPagination. Signals: JAX-RS @QueryParam (Micronaut @QueryValue) limit+offset/page/cursor pairs classified by the shared vocabulary; Micronaut Data Pageable param / Page\u003c\u003e|Slice\u003c\u003e return -\u003e page. Value-asserted TestPagination_JAXRS_LimitOffsetQueryParams + negative TestPagination_JAXRS_LoneLimitNotStamped. Partial: param-shape only, no framework pagination-class signal.",
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: response_codes/success_code/response_codes_source on JAX-RS-synthesised endpoints (synthesizeJAXRS) via jaxrsResponseCodes merged into the java branch of applyEndpointResponseCodes. Signals: Response.status(NNN|Response.Status.X), Response/HttpResponse builder helpers (ok-\u003e200/created-\u003e201/accepted-\u003e202/noContent-\u003e204/notFound-\u003e404/badRequest-\u003e400/unprocessableEntity-\u003e422/serverError-\u003e500), new WebApplicationException(NNN|Status.X), typed jakarta.ws.rs exceptions (NotFoundException-\u003e404 etc), Micronaut @Status. Value-asserted in TestResponseCodes_JAXRS_*. Honest-partial: dynamic status skipped.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_synthesis": {
             "status": "full",
@@ -26865,19 +26881,23 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: deprecated(+deprecated_since)+api_version on JAX-RS endpoints. @Deprecated(since=) on a @GET/@Path handler -\u003e deprecated=true (shared javaDeprecationVerdict); api_version path-derived (@Path(/api/v2/..)). Value-asserted TestDeprecation_JAXRS_DeprecatedMethod + TestAPIVersion_JAXRS_PathV2; negative TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3857",
+            "notes": "#3857: paginated/pagination_style/pagination_params/pagination_source via jaxrsPaginationVerdict in the java branch of applyEndpointPagination. Signals: JAX-RS @QueryParam (Micronaut @QueryValue) limit+offset/page/cursor pairs classified by the shared vocabulary; Micronaut Data Pageable param / Page\u003c\u003e|Slice\u003c\u003e return -\u003e page. Value-asserted TestPagination_JAXRS_LimitOffsetQueryParams + negative TestPagination_JAXRS_LoneLimitNotStamped. Partial: param-shape only, no framework pagination-class signal.",
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: response_codes/success_code/response_codes_source on JAX-RS-synthesised endpoints (synthesizeJAXRS) via jaxrsResponseCodes merged into the java branch of applyEndpointResponseCodes. Signals: Response.status(NNN|Response.Status.X), Response/HttpResponse builder helpers (ok-\u003e200/created-\u003e201/accepted-\u003e202/noContent-\u003e204/notFound-\u003e404/badRequest-\u003e400/unprocessableEntity-\u003e422/serverError-\u003e500), new WebApplicationException(NNN|Status.X), typed jakarta.ws.rs exceptions (NotFoundException-\u003e404 etc), Micronaut @Status. Value-asserted in TestResponseCodes_JAXRS_*. Honest-partial: dynamic status skipped.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_synthesis": {
             "status": "partial",
@@ -27456,19 +27476,23 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: deprecated(+deprecated_since)+api_version on JAX-RS endpoints. @Deprecated(since=) on a @GET/@Path handler -\u003e deprecated=true (shared javaDeprecationVerdict); api_version path-derived (@Path(/api/v2/..)). Value-asserted TestDeprecation_JAXRS_DeprecatedMethod + TestAPIVersion_JAXRS_PathV2; negative TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3857",
+            "notes": "#3857: paginated/pagination_style/pagination_params/pagination_source via jaxrsPaginationVerdict in the java branch of applyEndpointPagination. Signals: JAX-RS @QueryParam (Micronaut @QueryValue) limit+offset/page/cursor pairs classified by the shared vocabulary; Micronaut Data Pageable param / Page\u003c\u003e|Slice\u003c\u003e return -\u003e page. Value-asserted TestPagination_JAXRS_LimitOffsetQueryParams + negative TestPagination_JAXRS_LoneLimitNotStamped. Partial: param-shape only, no framework pagination-class signal.",
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jaxrs_posture.go","internal/engine/http_endpoint_jaxrs_posture_test.go","internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3857: response_codes/success_code/response_codes_source on JAX-RS-synthesised endpoints (synthesizeJAXRS) via jaxrsResponseCodes merged into the java branch of applyEndpointResponseCodes. Signals: Response.status(NNN|Response.Status.X), Response/HttpResponse builder helpers (ok-\u003e200/created-\u003e201/accepted-\u003e202/noContent-\u003e204/notFound-\u003e404/badRequest-\u003e400/unprocessableEntity-\u003e422/serverError-\u003e500), new WebApplicationException(NNN|Status.X), typed jakarta.ws.rs exceptions (NotFoundException-\u003e404 etc), Micronaut @Status. Value-asserted in TestResponseCodes_JAXRS_*. Honest-partial: dynamic status skipped.",
+            "verified_at": "2026-06-02"
           },
           "endpoint_synthesis": {
             "status": "full",

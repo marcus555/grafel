@@ -2533,6 +2533,70 @@ records:
           issues_implemented: ["2996"]
           verified_at: "2026-05-29"
       Routing:
+        endpoint_response_codes:
+          # #3857 (epic #3854) — response_codes/success_code/response_codes_source
+          # on JAX-RS-synthesised endpoints via jaxrsResponseCodes merged into the
+          # java branch of applyEndpointResponseCodes. JAX-RS Response.status/builder
+          # helpers, WebApplicationException + typed jakarta.ws.rs exceptions.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsResponseCodes
+                - jaxrsStatusEnumCode
+            - file: internal/engine/http_endpoint_response_codes.go
+              functions:
+                - applyEndpointResponseCodes
+                - resolveEndpointResponseCodes
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestResponseCodes_JAXRS_ResponseStatusNumericAndBuilder
+                - TestResponseCodes_JAXRS_StatusEnumCreated
+                - TestResponseCodes_JAXRS_WebApplicationExceptionNumeric
+                - TestResponseCodes_JAXRS_TypedException
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_pagination_posture:
+          # #3857 (epic #3854) — paginated/pagination_style/pagination_params via
+          # jaxrsPaginationVerdict: JAX-RS @QueryParam (Micronaut @QueryValue)
+          # limit+offset/page/cursor pairs + Micronaut Data Pageable/Page<>.
+          # Honest-partial: lone limit unstamped; param-shape only.
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - resolveEndpointPagination
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestPagination_JAXRS_LimitOffsetQueryParams
+                - TestPagination_JAXRS_LoneLimitNotStamped
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_deprecation_versioning:
+          # #3857 (epic #3854) — deprecated(+deprecated_since)+api_version on
+          # JAX-RS endpoints: @Deprecated on a @GET/@Path handler (shared
+          # javaDeprecationVerdict) + path-derived api_version (@Path(/api/v2/..)).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestDeprecation_JAXRS_DeprecatedMethod
+                - TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected
+                - TestAPIVersion_JAXRS_PathV2
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
         route_extraction:
           status: partial
           symbols:
@@ -2643,6 +2707,70 @@ records:
           issues_implemented: ["2996"]
           verified_at: "2026-05-29"
       Routing:
+        endpoint_response_codes:
+          # #3857 (epic #3854) — response_codes/success_code/response_codes_source
+          # on JAX-RS-synthesised endpoints via jaxrsResponseCodes merged into the
+          # java branch of applyEndpointResponseCodes. JAX-RS Response.status/builder
+          # helpers, WebApplicationException + typed jakarta.ws.rs exceptions.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsResponseCodes
+                - jaxrsStatusEnumCode
+            - file: internal/engine/http_endpoint_response_codes.go
+              functions:
+                - applyEndpointResponseCodes
+                - resolveEndpointResponseCodes
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestResponseCodes_JAXRS_ResponseStatusNumericAndBuilder
+                - TestResponseCodes_JAXRS_StatusEnumCreated
+                - TestResponseCodes_JAXRS_WebApplicationExceptionNumeric
+                - TestResponseCodes_JAXRS_TypedException
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_pagination_posture:
+          # #3857 (epic #3854) — paginated/pagination_style/pagination_params via
+          # jaxrsPaginationVerdict: JAX-RS @QueryParam (Micronaut @QueryValue)
+          # limit+offset/page/cursor pairs + Micronaut Data Pageable/Page<>.
+          # Honest-partial: lone limit unstamped; param-shape only.
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - resolveEndpointPagination
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestPagination_JAXRS_LimitOffsetQueryParams
+                - TestPagination_JAXRS_LoneLimitNotStamped
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_deprecation_versioning:
+          # #3857 (epic #3854) — deprecated(+deprecated_since)+api_version on
+          # JAX-RS endpoints: @Deprecated on a @GET/@Path handler (shared
+          # javaDeprecationVerdict) + path-derived api_version (@Path(/api/v2/..)).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestDeprecation_JAXRS_DeprecatedMethod
+                - TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected
+                - TestAPIVersion_JAXRS_PathV2
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
         route_extraction:
           status: partial
           symbols:
@@ -14664,6 +14792,71 @@ records:
           verified_at: "2026-05-29"
   lang.java.framework.dropwizard:
     capabilities:
+      Routing:
+        endpoint_response_codes:
+          # #3857 (epic #3854) — response_codes/success_code/response_codes_source
+          # on JAX-RS-synthesised endpoints via jaxrsResponseCodes merged into the
+          # java branch of applyEndpointResponseCodes. JAX-RS Response.status/builder
+          # helpers, WebApplicationException + typed jakarta.ws.rs exceptions.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsResponseCodes
+                - jaxrsStatusEnumCode
+            - file: internal/engine/http_endpoint_response_codes.go
+              functions:
+                - applyEndpointResponseCodes
+                - resolveEndpointResponseCodes
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestResponseCodes_JAXRS_ResponseStatusNumericAndBuilder
+                - TestResponseCodes_JAXRS_StatusEnumCreated
+                - TestResponseCodes_JAXRS_WebApplicationExceptionNumeric
+                - TestResponseCodes_JAXRS_TypedException
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_pagination_posture:
+          # #3857 (epic #3854) — paginated/pagination_style/pagination_params via
+          # jaxrsPaginationVerdict: JAX-RS @QueryParam (Micronaut @QueryValue)
+          # limit+offset/page/cursor pairs + Micronaut Data Pageable/Page<>.
+          # Honest-partial: lone limit unstamped; param-shape only.
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - resolveEndpointPagination
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestPagination_JAXRS_LimitOffsetQueryParams
+                - TestPagination_JAXRS_LoneLimitNotStamped
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_deprecation_versioning:
+          # #3857 (epic #3854) — deprecated(+deprecated_since)+api_version on
+          # JAX-RS endpoints: @Deprecated on a @GET/@Path handler (shared
+          # javaDeprecationVerdict) + path-derived api_version (@Path(/api/v2/..)).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestDeprecation_JAXRS_DeprecatedMethod
+                - TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected
+                - TestAPIVersion_JAXRS_PathV2
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
       Observability:
         log_extraction:
           status: partial
@@ -14694,6 +14887,71 @@ records:
           verified_at: "2026-05-29"
   lang.java.framework.helidon:
     capabilities:
+      Routing:
+        endpoint_response_codes:
+          # #3857 (epic #3854) — response_codes/success_code/response_codes_source
+          # on JAX-RS-synthesised endpoints via jaxrsResponseCodes merged into the
+          # java branch of applyEndpointResponseCodes. JAX-RS Response.status/builder
+          # helpers, WebApplicationException + typed jakarta.ws.rs exceptions.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsResponseCodes
+                - jaxrsStatusEnumCode
+            - file: internal/engine/http_endpoint_response_codes.go
+              functions:
+                - applyEndpointResponseCodes
+                - resolveEndpointResponseCodes
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestResponseCodes_JAXRS_ResponseStatusNumericAndBuilder
+                - TestResponseCodes_JAXRS_StatusEnumCreated
+                - TestResponseCodes_JAXRS_WebApplicationExceptionNumeric
+                - TestResponseCodes_JAXRS_TypedException
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_pagination_posture:
+          # #3857 (epic #3854) — paginated/pagination_style/pagination_params via
+          # jaxrsPaginationVerdict: JAX-RS @QueryParam (Micronaut @QueryValue)
+          # limit+offset/page/cursor pairs + Micronaut Data Pageable/Page<>.
+          # Honest-partial: lone limit unstamped; param-shape only.
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - resolveEndpointPagination
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestPagination_JAXRS_LimitOffsetQueryParams
+                - TestPagination_JAXRS_LoneLimitNotStamped
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_deprecation_versioning:
+          # #3857 (epic #3854) — deprecated(+deprecated_since)+api_version on
+          # JAX-RS endpoints: @Deprecated on a @GET/@Path handler (shared
+          # javaDeprecationVerdict) + path-derived api_version (@Path(/api/v2/..)).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestDeprecation_JAXRS_DeprecatedMethod
+                - TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected
+                - TestAPIVersion_JAXRS_PathV2
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
       Observability:
         log_extraction:
           status: partial
@@ -14754,6 +15012,71 @@ records:
           verified_at: "2026-05-29"
   lang.java.framework.jaxrs:
     capabilities:
+      Routing:
+        endpoint_response_codes:
+          # #3857 (epic #3854) — response_codes/success_code/response_codes_source
+          # on JAX-RS-synthesised endpoints via jaxrsResponseCodes merged into the
+          # java branch of applyEndpointResponseCodes. JAX-RS Response.status/builder
+          # helpers, WebApplicationException + typed jakarta.ws.rs exceptions.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsResponseCodes
+                - jaxrsStatusEnumCode
+            - file: internal/engine/http_endpoint_response_codes.go
+              functions:
+                - applyEndpointResponseCodes
+                - resolveEndpointResponseCodes
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestResponseCodes_JAXRS_ResponseStatusNumericAndBuilder
+                - TestResponseCodes_JAXRS_StatusEnumCreated
+                - TestResponseCodes_JAXRS_WebApplicationExceptionNumeric
+                - TestResponseCodes_JAXRS_TypedException
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_pagination_posture:
+          # #3857 (epic #3854) — paginated/pagination_style/pagination_params via
+          # jaxrsPaginationVerdict: JAX-RS @QueryParam (Micronaut @QueryValue)
+          # limit+offset/page/cursor pairs + Micronaut Data Pageable/Page<>.
+          # Honest-partial: lone limit unstamped; param-shape only.
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - resolveEndpointPagination
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestPagination_JAXRS_LimitOffsetQueryParams
+                - TestPagination_JAXRS_LoneLimitNotStamped
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_deprecation_versioning:
+          # #3857 (epic #3854) — deprecated(+deprecated_since)+api_version on
+          # JAX-RS endpoints: @Deprecated on a @GET/@Path handler (shared
+          # javaDeprecationVerdict) + path-derived api_version (@Path(/api/v2/..)).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestDeprecation_JAXRS_DeprecatedMethod
+                - TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected
+                - TestAPIVersion_JAXRS_PathV2
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
       Observability:
         log_extraction:
           status: full
@@ -15025,6 +15348,71 @@ records:
           verified_at: "2026-05-30"
   lang.java.framework.quarkus:
     capabilities:
+      Routing:
+        endpoint_response_codes:
+          # #3857 (epic #3854) — response_codes/success_code/response_codes_source
+          # on JAX-RS-synthesised endpoints via jaxrsResponseCodes merged into the
+          # java branch of applyEndpointResponseCodes. JAX-RS Response.status/builder
+          # helpers, WebApplicationException + typed jakarta.ws.rs exceptions.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsResponseCodes
+                - jaxrsStatusEnumCode
+            - file: internal/engine/http_endpoint_response_codes.go
+              functions:
+                - applyEndpointResponseCodes
+                - resolveEndpointResponseCodes
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestResponseCodes_JAXRS_ResponseStatusNumericAndBuilder
+                - TestResponseCodes_JAXRS_StatusEnumCreated
+                - TestResponseCodes_JAXRS_WebApplicationExceptionNumeric
+                - TestResponseCodes_JAXRS_TypedException
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_pagination_posture:
+          # #3857 (epic #3854) — paginated/pagination_style/pagination_params via
+          # jaxrsPaginationVerdict: JAX-RS @QueryParam (Micronaut @QueryValue)
+          # limit+offset/page/cursor pairs + Micronaut Data Pageable/Page<>.
+          # Honest-partial: lone limit unstamped; param-shape only.
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jaxrs_posture.go
+              functions:
+                - jaxrsPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - resolveEndpointPagination
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestPagination_JAXRS_LimitOffsetQueryParams
+                - TestPagination_JAXRS_LoneLimitNotStamped
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
+        endpoint_deprecation_versioning:
+          # #3857 (epic #3854) — deprecated(+deprecated_since)+api_version on
+          # JAX-RS endpoints: @Deprecated on a @GET/@Path handler (shared
+          # javaDeprecationVerdict) + path-derived api_version (@Path(/api/v2/..)).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+          tests:
+            - file: internal/engine/http_endpoint_jaxrs_posture_test.go
+              functions:
+                - TestDeprecation_JAXRS_DeprecatedMethod
+                - TestDeprecation_JAXRS_NonRouteDeprecatedUnaffected
+                - TestAPIVersion_JAXRS_PathV2
+          issues_implemented: ["3857"]
+          verified_at: "2026-06-02"
       Observability:
         log_extraction:
           status: partial
