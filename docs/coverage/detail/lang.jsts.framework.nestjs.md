@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 36
+- **Capability cells:** 39
 
 ## Capabilities
 
@@ -91,6 +91,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | ✅ `full` | `2026-05-29` | 3163 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_jsts_nestjs_test.go` | Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). NestJS @Body()/@Query()/@Param() decorator-injected values are not matched by the current regex; coverage is best-effort for req.* access patterns. |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3160 | `internal/substrate/template_pattern_jsts.go`<br>`internal/substrate/template_pattern_test.go` | Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. NestJS-specific template helpers not covered. |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3163 | `internal/links/taint_flow.go`<br>`internal/links/taint_flow_test.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_jsts_nestjs_test.go` | Framework-blind taint_flow.go propagates source-to-sink paths. Decorator-injected sources (@Body/@Query/@Param/@Headers/@Req) now detected (full, #3163); sink detection covers SQL/command/path/XSS/ReDoS but NestJS @Res() response sink not in set. Chain is now source-complete for NestJS; partial on sinks. |
+
+## Framework-specific
+
+### DI
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DI binding extraction | 🟢 `partial` | `2026-06-02` | 3647 | `internal/custom/javascript/nestjs.go`<br>`internal/custom/javascript/nestjs_di.go`<br>`internal/custom/javascript/nestjs_di_test.go` | NestJS-unique DI/IoC graph (recorded under framework_specific because most http_backend frameworks have no DI container). @Module wiring → BINDS (module→provider/controller/import with an exported flag) and object-form provider tokens {provide, useClass/useValue/useFactory/useExisting} → token BINDS impl; class- and method-level @UseGuards/@UseInterceptors/@UsePipes → USES (controller/handler→guard/interceptor/pipe). Value-asserting tests prove specific edges: UsersModule BINDS UsersService; token CONFIG BINDS ConfigService; AdminController USES JwtAuthGuard; GET getSecret USES RolesGuard. Partial: token→impl BINDS resolves cross-file only when an entity with the matching token/class name exists in another file (regex single-file pass). |
+| DI injection point | 🟢 `partial` | `2026-06-02` | 3647 | `internal/custom/javascript/nestjs_di.go`<br>`internal/custom/javascript/nestjs_di_test.go` | Constructor injection → INJECTED_INTO (provider→injecting class), including @Inject(TOKEN) string-literal and identifier custom tokens. Value-asserting tests prove UsersService INJECTED_INTO UsersController, @Inject('CONFIG_TOKEN') normalisation, and reject primitive params / cross-class leakage. Partial: the edge carries the bare type/token name; cross-file binding of that name to its declaring provider entity is the resolver's job and is not proven for cross-file fixtures here. |
+| DI scope resolution | ✅ `full` | `2026-06-02` | 3647 | `internal/custom/javascript/nestjs.go`<br>`internal/custom/javascript/nestjs_di.go`<br>`internal/custom/javascript/nestjs_di_test.go` | @Injectable({ scope: Scope.REQUEST }) → di_scope property on the provider entity; @Injectable() classes tagged di_provider=true. Value-asserted by TestNestDIInjectableScope. |
 
 ## Provenance
 
