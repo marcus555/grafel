@@ -59437,13 +59437,15 @@
       "capabilities": {
         "cross_repo_linkage": {
           "status": "full",
-          "cites": ["internal/engine/grpc_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/grpc_edges.go","internal/engine/grpc_edges_test.go","internal/links/grpc_pass.go"],
+          "issue": "3686",
+          "notes": "Client stub calls emit SCOPE.GrpcMethod entities keyed grpc:\u003cService\u003e/\u003cMethod\u003e + GRPC_HANDLES edges matching the server identity; P6 (links/grpc_pass.go) joins client↔server across repos. Node/TS client coverage now includes the modern factory-function stubs nice-grpc (createClient(\u003cService\u003eDefinition, ch)) and Connect/connectrpc (createPromiseClient(\u003cService\u003eService, transport)) alongside classic @grpc/grpc-js constructor stubs.",
+          "verified_at": "2026-06-02"
         },
         "method_attribution": {
           "status": "full",
-          "cites": ["internal/engine/grpc_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/grpc_edges.go","internal/engine/grpc_edges_test.go"],
+          "verified_at": "2026-06-02"
         },
         "service_extraction": {
           "status": "full",

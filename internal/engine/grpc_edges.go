@@ -900,6 +900,45 @@ var nodeAddServiceRe = regexp.MustCompile(
 var nodeGrpcClientCtorRe = regexp.MustCompile(
 	`(?:const|let|var)\s+(\w+)\s*=\s*new\s+(?:[\w.]+\.)?(\w+)\s*\(`)
 
+// nodeGrpcFactoryClientRe captures the modern TS-first factory-function stub
+// forms used by nice-grpc and Connect (connectrpc), which do NOT use `new`:
+//
+//	const client = createClient(GreeterDefinition, channel);          // nice-grpc
+//	const client = createPromiseClient(ElizaService, transport);      // Connect
+//	const client = createCallbackClient(ElizaService, transport);     // Connect
+//
+// Group 1: variable name. Group 2: descriptor identifier (the service
+// definition/descriptor passed as the first argument, e.g. GreeterDefinition,
+// ElizaService). The canonical protobuf service name is derived from this
+// descriptor by stripping a trailing "Definition" or "Service" suffix.
+var nodeGrpcFactoryClientRe = regexp.MustCompile(
+	`(?:const|let|var)\s+(\w+)\s*=\s*` +
+		`(?:await\s+)?` +
+		`(?:create(?:Promise|Callback)?Client)\s*\(\s*` +
+		`(?:[\w.]+\.)?(\w+)\s*,`)
+
+// grpcServiceNameFromNodeDescriptor derives the canonical protobuf service
+// name from a nice-grpc / Connect descriptor identifier. The protoc-gen-* TS
+// generators name these `<Service>Definition` (nice-grpc / ts-proto) or
+// `<Service>Service` (Connect / protobuf-es). The bare service name (already
+// without a suffix) is returned unchanged so it still matches a server emitting
+// `grpc:<Service>/<Method>`.
+//
+//	"GreeterDefinition" → "Greeter"   (nice-grpc / ts-proto)
+//	"ElizaService"      → "Eliza"     (Connect / protobuf-es)
+//	"Greeter"           → "Greeter"   (already canonical)
+func grpcServiceNameFromNodeDescriptor(descriptor string) string {
+	if descriptor == "" {
+		return ""
+	}
+	for _, suffix := range []string{"Definition", "Service"} {
+		if strings.HasSuffix(descriptor, suffix) && len(descriptor) > len(suffix) {
+			return strings.TrimSuffix(descriptor, suffix)
+		}
+	}
+	return descriptor
+}
+
 // nodeGrpcCallRe captures `client.method(req, cb)`.
 // Group 1: client variable. Group 2: method name.
 var nodeGrpcCallRe = regexp.MustCompile(
@@ -911,8 +950,11 @@ var nodeGrpcCallRe = regexp.MustCompile(
 var nodeImplMethodRe = regexp.MustCompile(
 	`\b(\w+)\s*:\s*(?:async\s+)?function\s*\(|(\w+)\s*:\s*\(`)
 
-// nodeGrpcHasMarkerRe checks for any grpc-shaped token.
-var nodeGrpcHasMarkerRe = regexp.MustCompile(`grpc|@grpc/grpc-js|proto\.`)
+// nodeGrpcHasMarkerRe checks for any grpc-shaped token. Includes the modern
+// TS-first client factories (nice-grpc, Connect/connectrpc) whose import paths
+// (e.g. "@connectrpc/connect") do not contain the substring "grpc".
+var nodeGrpcHasMarkerRe = regexp.MustCompile(
+	`grpc|@grpc/grpc-js|proto\.|createPromiseClient|createCallbackClient|@connectrpc/|connectrpc`)
 
 func synthesizeNodeGRPC(
 	src, path string,
@@ -969,6 +1011,22 @@ func synthesizeNodeGRPC(
 		// Filter out non-gRPC constructors by requiring the context contains
 		// grpc, Grpc, or proto hint within a few hundred bytes.
 		if !strings.Contains(src, "grpc") && !strings.Contains(src, "proto") {
+			continue
+		}
+		stubRegistry[varName] = serviceName
+		emitService(serviceName, "grpc_node_client", map[string]string{"role": "client"})
+	}
+
+	// Modern TS-first factory-function stubs (nice-grpc, Connect). These derive
+	// the canonical service name from the descriptor argument so the emitted
+	// `grpc:<Service>/<Method>` id matches a server side exactly.
+	for _, m := range nodeGrpcFactoryClientRe.FindAllStringSubmatch(src, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		varName := m[1]
+		serviceName := grpcServiceNameFromNodeDescriptor(m[2])
+		if serviceName == "" {
 			continue
 		}
 		stubRegistry[varName] = serviceName
