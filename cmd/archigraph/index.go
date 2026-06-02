@@ -63,13 +63,14 @@ const (
 	PassDepHygiene    = "dep-hygiene"    // Pass 8.7: persist deplinker used/unused status onto deps (#3640)
 	PassSharedDB      = "shared-db"      // Pass 8.8: shared-database cross-service coupling (#3628 area #13)
 	PassLibBoundary   = "lib-boundary"   // Pass 8.9: first_party/third_party boundary on DEPENDS_ON edges (#3638)
+	PassMigrationSeq  = "migration-seq"  // Pass 8.10: DB-migration ordering metadata + Alembic PRECEDES (#3639)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassDepHygiene, PassSharedDB, PassLibBoundary, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassDepHygiene, PassSharedDB, PassLibBoundary, PassMigrationSeq, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1619,6 +1620,18 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 					"ambiguous=%d entities_annotated=%d\n",
 				lbStats.EdgesConsidered, lbStats.FirstParty, lbStats.ThirdParty,
 				lbStats.Ambiguous, lbStats.EntitiesAnnotated)
+		}
+	}
+
+	// Pass 8.10 — DB-migration ordering (#3639, epic #3625). Stamps
+	// sequence_number/migration_name from migration filenames + emits Alembic
+	// down_revision→revision PRECEDES edges. Skippable via --skip-pass=migration-seq.
+	if !i.skipPasses[PassMigrationSeq] {
+		msStats := engine.ApplyMigrationSequence(doc, engine.DiskMigrationSourceReader(absRepo))
+		if verbose() || msStats.EntitiesAnnotated > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: migration-seq files=%d entities_annotated=%d precedes_edges=%d\n",
+				msStats.FilesMatched, msStats.EntitiesAnnotated, msStats.PrecedesEdges)
 		}
 	}
 
