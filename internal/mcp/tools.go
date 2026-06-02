@@ -1111,6 +1111,10 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				}
 				// #2642: metadata block with index provenance.
 				out["metadata"] = inspectMetadata(r)
+				// #3833: surface MRO resolution for inherited members.
+				if inh := inspectInheritance(r, e); inh != nil {
+					out["inheritance"] = inh
+				}
 				return jsonResult(out), nil
 			}
 		}
@@ -1184,6 +1188,10 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	}
 	// #2642: metadata block with index provenance.
 	out["metadata"] = inspectMetadata(m.repo)
+	// #3833: surface MRO resolution for inherited members.
+	if inh := inspectInheritance(m.repo, m.ent); inh != nil {
+		out["inheritance"] = inh
+	}
 	return jsonResult(out), nil
 }
 
@@ -2197,6 +2205,42 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 		e = cands[0].ent
 		lr = cands[0].repo
 	}
+
+	// #3833 — MRO-aware resolution. When the entity is an INHERITED member (a
+	// bodyless DRF synthetic, or a method resolved via EXTENDS to a base that
+	// defines it) resolve it to the DEFINING class body instead of returning the
+	// subclass file:
+	//   - external library base (DRF mixin) -> synthesize the pack contract as
+	//     an explicit "external body" stub (no in-repo source exists);
+	//   - in-repo base -> redirect get_source to the base's real body span.
+	// Honest-partial: an unresolved inherited member falls through to the
+	// current behaviour (the subclass entity's own span).
+	if res := resolveMember(lr, e); res.IsInherited() {
+		switch res.Provenance {
+		case provInheritedExternal:
+			return mcpapi.NewToolResultText(synthesizeExternalBody(res)), nil
+		case provInheritedInRepo:
+			if res.DefiningEntity != nil {
+				// Read the base's real body; prepend an explicit provenance
+				// header so the caller knows it is the inherited definition.
+				header := fmt.Sprintf(
+					"# archigraph: %s.%s is INHERITED — body defined by %s (resolved via EXTENDS)\n",
+					res.OwningClass, res.Member, res.DefiningClass,
+				)
+				e = res.DefiningEntity
+				abs := e.SourceFile
+				if !filepath.IsAbs(abs) && lr.Path != "" {
+					abs = filepath.Join(lr.Path, e.SourceFile)
+				}
+				body, rerr := readInheritedBody(ctx, abs, e, contextLines)
+				if rerr != nil {
+					return mcpapi.NewToolResultError(rerr.Error()), nil
+				}
+				return mcpapi.NewToolResultText(header + body), nil
+			}
+		}
+	}
+
 	abs := e.SourceFile
 	if !filepath.IsAbs(abs) && lr.Path != "" {
 		abs = filepath.Join(lr.Path, e.SourceFile)
@@ -2266,6 +2310,50 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 			"get_source: read timed out after 5s on %s (file may be on a stalled filesystem or watched-path kernel stall); node_id=%s",
 			abs, nodeID,
 		)), nil
+	}
+}
+
+// readInheritedBody computes the windowed source span for entity e (reusing
+// the same degenerate-span clamp + hard cap + 5s read-timeout discipline as the
+// main get_source path) and returns the body text. Used by the #3833 MRO
+// redirect to read an in-repo base class's defining body.
+func readInheritedBody(ctx context.Context, abs string, e *graph.Entity, contextLines int) (string, error) {
+	const fallbackSpan = 60
+	const hardMaxLines = 200
+
+	startLine := e.StartLine
+	endLine := e.EndLine
+	if startLine < 1 {
+		startLine = 1
+	}
+	if endLine <= startLine || e.StartLine == 0 || e.EndLine == 0 {
+		endLine = startLine + fallbackSpan
+	}
+	start := startLine - contextLines
+	if start < 1 {
+		start = 1
+	}
+	end := endLine + contextLines
+	if end-start+1 > hardMaxLines {
+		end = start + hardMaxLines - 1
+	}
+
+	readCtx, readCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer readCancel()
+	type readOut struct {
+		text string
+		err  error
+	}
+	resCh := make(chan readOut, 1)
+	go func() {
+		text, rerr := readSourceWindow(abs, start, end)
+		resCh <- readOut{text: text, err: rerr}
+	}()
+	select {
+	case out := <-resCh:
+		return out.text, out.err
+	case <-readCtx.Done():
+		return "", fmt.Errorf("get_source: read timed out after 5s on %s (inherited body)", abs)
 	}
 }
 
