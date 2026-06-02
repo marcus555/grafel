@@ -138,7 +138,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🔴 0/1 | |
 | [ruby](../by-language/ruby.md) | [elasticsearch-ruby](../detail/lang.ruby.driver.elastic.md) | 🟡 1/2 | |
 | [ruby](../by-language/ruby.md) | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🔴 0/1 | |
-| [ruby](../by-language/ruby.md) | [neo4j-ruby-driver](../detail/lang.ruby.driver.neo4j.md) | 🔴 0/1 | |
+| [ruby](../by-language/ruby.md) | [neo4j-ruby-driver / activegraph OGM](../detail/lang.ruby.driver.neo4j.md) | 🟡 3/4 | |
 | [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🔴 0/1 | |
 | [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🔴 0/1 | |
 | [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🔴 0/1 | |

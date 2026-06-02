@@ -63,7 +63,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🔴 0/1 | |
 | [elasticsearch-ruby](../detail/lang.ruby.driver.elastic.md) | 🟡 1/2 | |
 | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🔴 0/1 | |
-| [neo4j-ruby-driver](../detail/lang.ruby.driver.neo4j.md) | 🔴 0/1 | |
+| [neo4j-ruby-driver / activegraph OGM](../detail/lang.ruby.driver.neo4j.md) | 🟡 3/4 | |
 | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🔴 0/1 | |
 | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🔴 0/1 | |
 | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🔴 0/1 | |
