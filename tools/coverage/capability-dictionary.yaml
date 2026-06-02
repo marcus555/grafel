@@ -67,7 +67,7 @@ categories:
   platform:
     capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency]
   security:
-    capabilities: [auth_policy, secret_detection, sql_injection]
+    capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
   protocol:
     capabilities: [service_extraction, method_attribution, cross_repo_linkage, schema_extraction, field_extraction]
   ci_cd:

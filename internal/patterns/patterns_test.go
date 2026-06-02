@@ -126,33 +126,195 @@ func TestCORSExtractor_AppliesTo(t *testing.T) {
 	}
 }
 
+// corsProps runs the extractor and returns the single cors_policy's properties,
+// failing if the extractor did not produce exactly one policy.
+func corsProps(t *testing.T, lang, file, src string) map[string]string {
+	t.Helper()
+	d := &corsExtractor{}
+	results := d.Detect(file, lang, src)
+	if len(results) != 1 {
+		t.Fatalf("expected exactly 1 cors_policy, got %d", len(results))
+	}
+	return results[0].Properties
+}
+
 func TestCORSExtractor_Detect_Express(t *testing.T) {
 	d := &corsExtractor{}
 	src := `app.use(cors({origin: "https://example.com", methods: "GET,POST"}))`
 	results := d.Detect("app.js", "javascript", src)
 	if len(results) == 0 {
-		t.Error("expected CORS entity")
+		t.Fatal("expected CORS entity")
 	}
-	if results[0].Properties["origin_pattern"] != "https://example.com" {
-		t.Errorf("expected origin_pattern=https://example.com, got %s", results[0].Properties["origin_pattern"])
+	p := results[0].Properties
+	if p["origin_pattern"] != "https://example.com" {
+		t.Errorf("expected origin_pattern=https://example.com, got %s", p["origin_pattern"])
+	}
+	if p["cors_origins"] != "https://example.com" {
+		t.Errorf("expected cors_origins=https://example.com, got %s", p["cors_origins"])
+	}
+	if p["cors_enabled"] != "true" {
+		t.Errorf("expected cors_enabled=true, got %q", p["cors_enabled"])
+	}
+	if p["cors_wildcard"] != "" {
+		t.Errorf("expected no cors_wildcard for explicit origin, got %q", p["cors_wildcard"])
+	}
+}
+
+// The dangerous combination: wildcard origin + credentials on a global Express
+// CORS middleware. Both flags must be stamped.
+func TestCORSExtractor_Express_WildcardCredentials(t *testing.T) {
+	p := corsProps(t, "javascript", "app.js",
+		`app.use(cors({origin: "*", credentials: true}))`)
+	if p["cors_enabled"] != "true" {
+		t.Errorf("cors_enabled: want true, got %q", p["cors_enabled"])
+	}
+	if p["cors_wildcard"] != "true" {
+		t.Errorf("cors_wildcard: want true, got %q", p["cors_wildcard"])
+	}
+	if p["cors_credentials"] != "true" {
+		t.Errorf("cors_credentials: want true, got %q", p["cors_credentials"])
+	}
+	if p["origin_pattern"] != "*" {
+		t.Errorf("origin_pattern: want *, got %q", p["origin_pattern"])
+	}
+}
+
+// Express default cors() with no options reflects any origin → wildcard.
+func TestCORSExtractor_Express_DefaultWildcard(t *testing.T) {
+	p := corsProps(t, "javascript", "app.js", `app.use(cors())`)
+	if p["cors_wildcard"] != "true" {
+		t.Errorf("default cors() should be wildcard, got %q", p["cors_wildcard"])
 	}
 }
 
 func TestCORSExtractor_Detect_Spring(t *testing.T) {
-	d := &corsExtractor{}
-	src := `@CrossOrigin(origins = "https://frontend.com")`
-	results := d.Detect("Controller.java", "java", src)
-	if len(results) == 0 {
-		t.Error("expected Spring CORS entity")
+	p := corsProps(t, "java", "Controller.java",
+		`@CrossOrigin(origins = "https://x")`)
+	if p["cors_origins"] != "https://x" {
+		t.Errorf("cors_origins: want https://x, got %q", p["cors_origins"])
+	}
+	if p["cors_wildcard"] != "" {
+		t.Errorf("expected no wildcard for explicit Spring origin, got %q", p["cors_wildcard"])
+	}
+}
+
+// Spring @CrossOrigin with allowCredentials=true and a wildcard origin pattern.
+func TestCORSExtractor_Spring_WildcardCredentials(t *testing.T) {
+	p := corsProps(t, "java", "Controller.java",
+		`@CrossOrigin(origins = "*", allowCredentials = "true")`)
+	if p["cors_wildcard"] != "true" {
+		t.Errorf("cors_wildcard: want true, got %q", p["cors_wildcard"])
+	}
+	if p["cors_credentials"] != "true" {
+		t.Errorf("cors_credentials: want true, got %q", p["cors_credentials"])
 	}
 }
 
 func TestCORSExtractor_Detect_FastAPI(t *testing.T) {
+	p := corsProps(t, "python", "main.py",
+		`app.add_middleware(CORSMiddleware, allow_origins=["https://app.com"], allow_methods=["GET", "POST"])`)
+	if p["cors_origins"] != "https://app.com" {
+		t.Errorf("cors_origins: want https://app.com, got %q", p["cors_origins"])
+	}
+	if p["methods"] != "GET,POST" {
+		t.Errorf("methods: want GET,POST, got %q", p["methods"])
+	}
+	if p["cors_wildcard"] != "" {
+		t.Errorf("expected no wildcard, got %q", p["cors_wildcard"])
+	}
+}
+
+// FastAPI wildcard + credentials.
+func TestCORSExtractor_FastAPI_WildcardCredentials(t *testing.T) {
+	p := corsProps(t, "python", "main.py",
+		`app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True)`)
+	if p["cors_wildcard"] != "true" {
+		t.Errorf("cors_wildcard: want true, got %q", p["cors_wildcard"])
+	}
+	if p["cors_credentials"] != "true" {
+		t.Errorf("cors_credentials: want true, got %q", p["cors_credentials"])
+	}
+}
+
+// django-cors-headers: CORS_ALLOW_ALL_ORIGINS=True → wildcard.
+func TestCORSExtractor_Django_AllowAll(t *testing.T) {
+	src := "CORS_ALLOW_ALL_ORIGINS = True\nCORS_ALLOW_CREDENTIALS = True\n"
+	p := corsProps(t, "python", "settings.py", src)
+	if p["framework"] != "django-cors-headers" {
+		t.Errorf("framework: want django-cors-headers, got %q", p["framework"])
+	}
+	if p["cors_wildcard"] != "true" {
+		t.Errorf("cors_wildcard: want true, got %q", p["cors_wildcard"])
+	}
+	if p["cors_credentials"] != "true" {
+		t.Errorf("cors_credentials: want true, got %q", p["cors_credentials"])
+	}
+}
+
+// django-cors-headers explicit allowlist.
+func TestCORSExtractor_Django_Allowlist(t *testing.T) {
+	src := "CORS_ALLOWED_ORIGINS = [\n    'https://app.example.com',\n    'https://admin.example.com',\n]\n"
+	p := corsProps(t, "python", "settings.py", src)
+	if p["cors_origins"] != "https://app.example.com,https://admin.example.com" {
+		t.Errorf("cors_origins: got %q", p["cors_origins"])
+	}
+	if p["cors_wildcard"] != "" {
+		t.Errorf("expected no wildcard for allowlist, got %q", p["cors_wildcard"])
+	}
+}
+
+// Rails rack-cors: origins '*' → wildcard; credentials true.
+func TestCORSExtractor_Rack_Wildcard(t *testing.T) {
+	src := "Rack::Cors.new do\n  allow do\n    origins '*'\n    credentials true\n  end\nend\n"
+	p := corsProps(t, "ruby", "config/initializers/cors.rb", src)
+	if p["framework"] != "rack-cors" {
+		t.Errorf("framework: want rack-cors, got %q", p["framework"])
+	}
+	if p["cors_wildcard"] != "true" {
+		t.Errorf("cors_wildcard: want true, got %q", p["cors_wildcard"])
+	}
+	if p["cors_credentials"] != "true" {
+		t.Errorf("cors_credentials: want true, got %q", p["cors_credentials"])
+	}
+}
+
+// Rails rack-cors explicit origin.
+func TestCORSExtractor_Rack_Explicit(t *testing.T) {
+	src := "Rack::Cors.new do\n  allow do\n    origins 'example.com'\n  end\nend\n"
+	p := corsProps(t, "ruby", "config/initializers/cors.rb", src)
+	if p["cors_origins"] != "example.com" {
+		t.Errorf("cors_origins: want example.com, got %q", p["cors_origins"])
+	}
+	if p["cors_credentials"] != "" {
+		t.Errorf("expected no credentials, got %q", p["cors_credentials"])
+	}
+}
+
+// Negative: no CORS config → cors_enabled absent (no entity).
+func TestCORSExtractor_Negative_NoConfig(t *testing.T) {
 	d := &corsExtractor{}
-	src := `app.add_middleware(CORSMiddleware, allow_origins=["https://api.example.com"], allow_methods=["GET", "POST"])`
-	results := d.Detect("main.py", "python", src)
-	if len(results) == 0 {
-		t.Error("expected FastAPI CORS entity")
+	results := d.Detect("app.js", "javascript", `console.log("no cors here")`)
+	if len(results) != 0 {
+		t.Errorf("expected no cors_policy entities, got %d", len(results))
+	}
+}
+
+// Honest-partial: dynamic origin variable → origins omitted, not fabricated,
+// but cors_enabled still stamped.
+func TestCORSExtractor_DynamicOrigin_Omitted(t *testing.T) {
+	p := corsProps(t, "javascript", "app.js",
+		`app.use(cors({origin: allowedOriginsFn, credentials: true}))`)
+	if p["cors_enabled"] != "true" {
+		t.Errorf("cors_enabled: want true, got %q", p["cors_enabled"])
+	}
+	if p["origin_pattern"] != "dynamic" {
+		t.Errorf("origin_pattern: want dynamic, got %q", p["origin_pattern"])
+	}
+	if _, ok := p["cors_origins"]; ok {
+		t.Errorf("cors_origins must be omitted for dynamic origin, got %q", p["cors_origins"])
+	}
+	if p["cors_wildcard"] != "" {
+		t.Errorf("dynamic origin must not be flagged wildcard, got %q", p["cors_wildcard"])
 	}
 }
 
