@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 9
+- **Capability cells:** 10
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | — `not_applicable` | — | — | — | Ktorm has no built-in migration layer; migrations are handled externally (Flyway, Liquibase, etc.) |
+| Migration schema ops | 🔴 `missing` | — | 3628 | — | — |
 
 ### Transactions
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 9
+- **Capability cells:** 10
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | — `not_applicable` | — | 3098 | `internal/custom/java/jooq.go` | jOOQ is a query DSL, not schema-migration tooling; migration_parsing is not applicable |
+| Migration schema ops | 🔴 `missing` | — | 3628 | — | — |
 
 ### Transactions
 

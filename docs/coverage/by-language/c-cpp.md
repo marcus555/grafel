@@ -93,13 +93,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/4 | |
-| [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/8 | |
-| [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/4 | |
-| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/4 | |
-| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/4 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/2 | |
-| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/4 | |
+| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/5 | |
+| [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/9 | |
+| [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/5 | |
+| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/5 | |
+| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/5 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/3 | |
+| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/5 | |
 
 
 ## Other

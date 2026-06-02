@@ -10,26 +10,32 @@ package types
 type EntityKind string
 
 const (
-	EntityKindOperation     EntityKind = "SCOPE.Operation"
-	EntityKindComponent     EntityKind = "SCOPE.Component"
-	EntityKindClass         EntityKind = "SCOPE.Class"
-	EntityKindFunction      EntityKind = "SCOPE.Function"
-	EntityKindSchema        EntityKind = "SCOPE.Schema"
-	EntityKindVariable      EntityKind = "SCOPE.Variable"
-	EntityKindReference     EntityKind = "SCOPE.Reference"
-	EntityKindPattern       EntityKind = "SCOPE.Pattern"
-	EntityKindEvolution     EntityKind = "SCOPE.Evolution"
-	EntityKindEndpoint      EntityKind = "SCOPE.Endpoint"
-	EntityKindRoute         EntityKind = "SCOPE.Route"
-	EntityKindService       EntityKind = "SCOPE.Service"
-	EntityKindView          EntityKind = "SCOPE.View"
-	EntityKindUIComponent   EntityKind = "SCOPE.UIComponent"
-	EntityKindJSX           EntityKind = "SCOPE.JSX"
-	EntityKindStylesheet    EntityKind = "SCOPE.Stylesheet"
-	EntityKindQueue         EntityKind = "SCOPE.Queue"
-	EntityKindEvent         EntityKind = "SCOPE.Event"
-	EntityKindDatastore     EntityKind = "SCOPE.Datastore"
-	EntityKindDataAccess    EntityKind = "SCOPE.DataAccess"
+	EntityKindOperation   EntityKind = "SCOPE.Operation"
+	EntityKindComponent   EntityKind = "SCOPE.Component"
+	EntityKindClass       EntityKind = "SCOPE.Class"
+	EntityKindFunction    EntityKind = "SCOPE.Function"
+	EntityKindSchema      EntityKind = "SCOPE.Schema"
+	EntityKindVariable    EntityKind = "SCOPE.Variable"
+	EntityKindReference   EntityKind = "SCOPE.Reference"
+	EntityKindPattern     EntityKind = "SCOPE.Pattern"
+	EntityKindEvolution   EntityKind = "SCOPE.Evolution"
+	EntityKindEndpoint    EntityKind = "SCOPE.Endpoint"
+	EntityKindRoute       EntityKind = "SCOPE.Route"
+	EntityKindService     EntityKind = "SCOPE.Service"
+	EntityKindView        EntityKind = "SCOPE.View"
+	EntityKindUIComponent EntityKind = "SCOPE.UIComponent"
+	EntityKindJSX         EntityKind = "SCOPE.JSX"
+	EntityKindStylesheet  EntityKind = "SCOPE.Stylesheet"
+	EntityKindQueue       EntityKind = "SCOPE.Queue"
+	EntityKindEvent       EntityKind = "SCOPE.Event"
+	EntityKindDatastore   EntityKind = "SCOPE.Datastore"
+	EntityKindDataAccess  EntityKind = "SCOPE.DataAccess"
+	// #3628 [schema]: synthetic per-(repo,table) convergence node. The
+	// migration-schema-ops engine pass creates one SCOPE.Table per logical
+	// table and points both migration MODIFIES_TABLE edges and (existing)
+	// query ACCESSES_TABLE accessors at it, so "what touches table X" unifies
+	// schema evolution (migrations) with data access (queries) on one node.
+	EntityKindTable         EntityKind = "SCOPE.Table"
 	EntityKindExternalAPI   EntityKind = "SCOPE.ExternalAPI"
 	EntityKindInfraResource EntityKind = "SCOPE.InfraResource"
 	EntityKindCodeBlock     EntityKind = "SCOPE.CodeBlock"
@@ -203,6 +209,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindEvent,
 		EntityKindDatastore,
 		EntityKindDataAccess,
+		// #3628 [schema] migration↔query table convergence node:
+		EntityKindTable,
 		EntityKindExternalAPI,
 		EntityKindInfraResource,
 		EntityKindCodeBlock,
@@ -334,6 +342,19 @@ const (
 	// FromID migration PRECEDES the ToID migration. Lets expand/traces walk the
 	// migration chain in apply order rather than re-deriving it from filenames.
 	RelationshipKindPrecedes RelationshipKind = "PRECEDES"
+
+	// #3628 [schema]: per-migration schema-operation edge. Emitted by the
+	// migration-schema-ops engine pass from a migration schema-change entity
+	// (Alembic op.create_table / Rails create_table / Django CreateModel /
+	// TypeORM-knex-Sequelize schema ops / Flyway-Liquibase DDL) to the table
+	// it mutates. The edge carries `op` (create_table|add_column|drop_column|
+	// create_index|drop_table|alter_column|…), `table`, and (when known)
+	// `column`. The edge's `table` property uses the SAME normalised table
+	// key that ACCESSES_TABLE uses, so the shared-DB coupling pass and
+	// "what touches table X" queries converge query→table access with
+	// migration→table evolution on one logical table. Complements PRECEDES
+	// (apply-order) with the actual operations a migration performs.
+	RelationshipKindModifiesTable RelationshipKind = "MODIFIES_TABLE"
 
 	// ADR-0018: Agent-learned pattern edge kinds (append-only additions).
 	// Outgoing from Pattern entities:
@@ -1075,6 +1096,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindFederates,
 		// #3639 (epic #3625) DB-migration apply-order edge (Alembic chain):
 		RelationshipKindPrecedes,
+		// #3628 [schema] per-migration schema-operation edge (migration→table):
+		RelationshipKindModifiesTable,
 		// #3628 error-flow: THROWS / CATCHES exception-type edges:
 		RelationshipKindThrows,
 		RelationshipKindCatches,

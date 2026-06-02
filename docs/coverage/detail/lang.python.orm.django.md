@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 9
+- **Capability cells:** 10
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | `2026-06-02` | 3639 | `internal/engine/migration_sequence.go`<br>`internal/extractors/python/django_migration.go` | django_migration.go parses NNNN_name.py into op_count/operations/dependencies. #3639 additionally stamps sequence_number (the NNNN ordinal) + migration_name + migration_pattern=django on each migration entity via live Pass 8.9 (engine.ApplyMigrationSequence). |
+| Migration schema ops | ✅ `full` | `2026-06-02` | — | `internal/engine/migration_schema_ops.go`<br>`internal/engine/migration_schema_ops_test.go`<br>`internal/extractors/python/django_migration.go` | Django CreateModel/AddField/RemoveField operations (from the Migration entity operations JSON) emit MODIFIES_TABLE edges keyed by model name (#3628). Asserted by TestDjangoCreateModelAndAddField. |
 
 ### Transactions
 

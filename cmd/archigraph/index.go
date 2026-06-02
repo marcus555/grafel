@@ -64,13 +64,14 @@ const (
 	PassSharedDB      = "shared-db"      // Pass 8.8: shared-database cross-service coupling (#3628 area #13)
 	PassLibBoundary   = "lib-boundary"   // Pass 8.9: first_party/third_party boundary on DEPENDS_ON edges (#3638)
 	PassMigrationSeq  = "migration-seq"  // Pass 8.10: DB-migration ordering metadata + Alembic PRECEDES (#3639)
+	PassMigrationOps  = "migration-ops"  // Pass 8.11: per-migration schema-op MODIFIES_TABLE edges (#3628 [schema])
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassDepHygiene, PassSharedDB, PassLibBoundary, PassMigrationSeq, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassDepHygiene, PassSharedDB, PassLibBoundary, PassMigrationSeq, PassMigrationOps, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1632,6 +1633,27 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			fmt.Fprintf(os.Stderr,
 				"archigraph: migration-seq files=%d entities_annotated=%d precedes_edges=%d\n",
 				msStats.FilesMatched, msStats.EntitiesAnnotated, msStats.PrecedesEdges)
+		}
+	}
+
+	// Pass 8.11 — per-migration schema operations (#3628 [schema], epic #3625).
+	// Complements migration-seq (apply-ORDER / PRECEDES) with the actual
+	// OPERATIONS: for every migration schema-op entity the language extractors
+	// already emit (Alembic SCOPE.Schema, Rails/JS SCOPE.Evolution, Django
+	// Migration operations JSON, Flyway/Liquibase SQL CREATE TABLE), derive
+	// (op, table[, column]) and emit a MODIFIES_TABLE edge to a synthetic
+	// SCOPE.Table convergence node keyed by the SAME normalised table key the
+	// query→table (ACCESSES_TABLE) axis uses — then rewire matching
+	// SCOPE.DataAccess accessors onto that node so "what touches table X"
+	// unifies schema evolution + data access on one node. Honest: dynamic
+	// table names are skipped. Skippable via --skip-pass=migration-ops.
+	if !i.skipPasses[PassMigrationOps] {
+		moStats := engine.ApplyMigrationSchemaOps(doc)
+		if verbose() || moStats.ModifiesEdges > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: migration-ops considered=%d tables=%d modifies_edges=%d access_converged=%d\n",
+				moStats.OpsConsidered, moStats.TablesConverged,
+				moStats.ModifiesEdges, moStats.AccessConvergedEdges)
 		}
 	}
 

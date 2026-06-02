@@ -52,7 +52,7 @@ categories:
     capabilities: [endpoint_synthesis, handler_attribution, auth_coverage, middleware_coverage]
     subcategory_order: [http_backend, jvm_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration, task_queue]
   orm:
-    capabilities: [model_extraction, query_attribution, migration_parsing]
+    capabilities: [model_extraction, query_attribution, migration_parsing, migration_schema_ops]
     subcategory_order: [orm_mapper]
   message_broker:
     capabilities: [producer_extraction, consumer_extraction, topic_attribution]
@@ -582,6 +582,7 @@ subcategories:
       - lazy_loading_recognition
       - query_attribution
       - migration_parsing
+      - migration_schema_ops
       - transaction_function_stamping
     groups:
       - name: Models
@@ -591,7 +592,7 @@ subcategories:
       - name: Queries
         keys: [query_attribution]
       - name: Migrations
-        keys: [migration_parsing]
+        keys: [migration_parsing, migration_schema_ops]
       - name: Transactions
         keys: [transaction_function_stamping]
 
