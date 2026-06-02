@@ -768,6 +768,20 @@ const (
 	//   "machine" : the owning machine / class name.
 	// Append-only — never modifies existing entities or edges.
 	RelationshipKindTransitionsTo RelationshipKind = "TRANSITIONS_TO"
+	// #3628 area #13: shared-database cross-service coupling edge. Emitted by
+	// the project-scope shared-db-coupling pass (engine.ApplySharedDataCoupling)
+	// between two synthetic Module entities that BOTH access the same table or
+	// collection entity (via ACCESSES_TABLE / JOINS_COLLECTION / SCOPE.DataAccess
+	// attribution). It is the cross-service data-ownership / boundary-violation
+	// signal: when ≥2 distinct modules touch one table, those modules are
+	// data-coupled even with no direct call/import edge between them. Properties
+	// on the edge: coupling=shared_data, shared_tables (comma-joined sorted list
+	// of the co-accessed table/collection names), shared_count (how many tables
+	// the pair co-accesses), provenance=SHARED_DB_COUPLING. The edge is
+	// undirected in meaning but emitted once per unordered module pair (the
+	// lexicographically smaller module ID is FromID) so it is deterministic and
+	// not double-counted.
+	RelationshipKindSharesData RelationshipKind = "SHARES_DATA"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -891,6 +905,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindGatedBy,
 		// #3704 FSM state-transition edge:
 		RelationshipKindTransitionsTo,
+		// #3628 area #13 shared-database cross-service coupling edge:
+		RelationshipKindSharesData,
 	}
 }
 
