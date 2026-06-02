@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Consumer extraction | 🟢 `partial` | `2026-05-31` | — | `internal/engine/cpp_messaging_edges.go` | Literal topics via mosquitto_subscribe / MQTTClient_subscribe / Paho C++ client.subscribe. |
 | Producer extraction | 🟢 `partial` | `2026-05-31` | — | `internal/engine/cpp_messaging_edges.go` | Literal topics via mosquitto_publish / MQTTClient publish / Paho C++ client.publish. |
-| Topic attribution | 🟢 `partial` | `2026-05-31` | — | `internal/engine/cpp_messaging_edges.go` | mqtt:<topic> node (supports +/# wildcards); cross-repo joinable. Literal-only. |
+| Topic attribution | 🟢 `partial` | `2026-06-02` | — | `internal/engine/cpp_messaging_edges.go`<br>`internal/links/topic_pass.go` | mqtt:<topic> SCOPE.MessageTopic node (supports +/# wildcards); topic_pass.go joins a PUBLISHES_TO producer to a SUBSCRIBES_TO consumer sharing the node Name into a cross-repo producer->consumer topology edge (channel=mqtt). Literal-only. |
 
 ## Provenance
 

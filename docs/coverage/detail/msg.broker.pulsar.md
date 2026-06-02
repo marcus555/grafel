@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Consumer extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/pulsar_edges.go` | — |
 | Producer extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/pulsar_edges.go` | — |
-| Topic attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/pulsar_edges.go` | — |
+| Topic attribution | 🟢 `partial` | `2026-06-02` | — | `internal/engine/pulsar_edges.go`<br>`internal/links/topic_pass.go` | topic:pulsar:<uri> SCOPE.MessageTopic node; topic_pass.go joins a PUBLISHES_TO producer to a SUBSCRIBES_TO consumer sharing the node Name into a cross-repo producer->consumer topology edge (channel=pulsar). |
 
 ## Provenance
 

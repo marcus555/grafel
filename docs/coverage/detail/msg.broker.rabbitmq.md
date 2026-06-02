@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Consumer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rabbitmq_edges.go` | — |
 | Producer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rabbitmq_edges.go` | — |
-| Topic attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rabbitmq_edges.go` | — |
+| Topic attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/rabbitmq_edges.go`<br>`internal/links/topic_pass.go` | rabbitmq:<queue/exchange> SCOPE.Queue node; topic_pass.go joins a PUBLISHES_TO producer (exchange 'orders') to a SUBSCRIBES_TO consumer of queue/exchange 'orders' sharing the node Name into a cross-repo producer->consumer topology edge (channel=rabbitmq). |
 
 ## Provenance
 
