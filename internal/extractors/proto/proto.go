@@ -122,8 +122,8 @@ func walkProto(node *sitter.Node, file extractor.FileInput, out *[]types.EntityR
 		}
 		return // Don't recurse further into service — already handled.
 	case "message":
-		if rec, ok := buildMessage(node, file); ok {
-			*out = append(*out, rec)
+		if recs, ok := buildMessage(node, file); ok {
+			*out = append(*out, recs...)
 		}
 	case "enum":
 		if rec, ok := buildEnum(node, file); ok {
@@ -243,27 +243,35 @@ func buildRPC(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, 
 	}, true
 }
 
-func buildMessage(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildMessage(node *sitter.Node, file extractor.FileInput) ([]types.EntityRecord, bool) {
 	nameNode := childByType(node, "message_name")
 	if nameNode == nil {
-		return types.EntityRecord{}, false
+		return nil, false
 	}
 	name := strings.TrimSpace(nodeText(nameNode, file.Content))
 	if ident := childByType(nameNode, "identifier"); ident != nil {
 		name = nodeText(ident, file.Content)
 	}
 	if name == "" {
-		return types.EntityRecord{}, false
+		return nil, false
 	}
 
 	// CONTAINS edges: file → message + message → each field.
+	// REFERENCES edges: message → each named (non-scalar) field type, so a
+	// field `repeated Order orders = 3;` yields message User → message Order.
 	var rels []types.RelationshipRecord
 	rels = append(rels, fileContainsRel(file.Path, name))
+	var fieldEnts []types.EntityRecord
 	if body := childByType(node, "message_body"); body != nil {
 		seen := make(map[string]bool)
+		refSeen := make(map[string]bool)
 		for i := range body.ChildCount() {
 			ch := body.Child(int(i))
-			if ch == nil || ch.Type() != "field" {
+			if ch == nil {
+				continue
+			}
+			isMap := ch.Type() == "map_field"
+			if ch.Type() != "field" && !isMap {
 				continue
 			}
 			fname := fieldName(ch, file.Content)
@@ -271,14 +279,39 @@ func buildMessage(node *sitter.Node, file extractor.FileInput) (types.EntityReco
 				continue
 			}
 			seen[fname] = true
+			var ftype, label string
+			if isMap {
+				ftype, label = mapFieldTypeAndLabel(ch, file.Content)
+			} else {
+				ftype, label = fieldTypeAndLabel(ch, file.Content)
+			}
 			rels = append(rels, types.RelationshipRecord{
 				ToID: fieldMemberRef(file.Path, name, fname),
 				Kind: "CONTAINS",
 			})
+			// Emit a per-field SCOPE.Field entity carrying the resolved scalar
+			// or message type + repeated/optional/required label. The entity ID
+			// reuses the Format-B member ref so it lines up with the CONTAINS
+			// edge target above.
+			fieldEnts = append(fieldEnts, buildField(file, name, fname, ftype, label, ch))
+			// REFERENCES edge to a named (non-scalar) message/enum type. Scalars
+			// (string, int32, …) carry no edge. The map type's value component is
+			// also followed (map<string, Order> → Order).
+			for _, ref := range namedTypeRefs(ftype) {
+				if refSeen[ref] {
+					continue
+				}
+				refSeen[ref] = true
+				rels = append(rels, types.RelationshipRecord{
+					ToID:       extractor.BuildOperationStructuralRef("proto", file.Path, ref),
+					Kind:       "REFERENCES",
+					Properties: map[string]string{"via_field": fname, "type": ref},
+				})
+			}
 		}
 	}
 
-	return types.EntityRecord{
+	msg := types.EntityRecord{
 		Name:               name,
 		Kind:               "SCOPE.Schema",
 		Subtype:            "message",
@@ -289,7 +322,45 @@ func buildMessage(node *sitter.Node, file extractor.FileInput) (types.EntityReco
 		Signature:          "message " + name,
 		EnrichmentRequired: false,
 		Relationships:      rels,
-	}, true
+	}
+	out := make([]types.EntityRecord, 0, 1+len(fieldEnts))
+	out = append(out, msg)
+	out = append(out, fieldEnts...)
+	return out, true
+}
+
+// buildField emits a per-message-field SCOPE.Field entity. The entity ID reuses
+// the Format-B member ref (scope:schema:column:proto:<file>:<parent>#<field>) so
+// it coincides with the message→field CONTAINS edge target. Properties carry the
+// resolved field type and the proto label (repeated/optional/required) when one
+// is present.
+func buildField(file extractor.FileInput, parent, fname, ftype, label string, node *sitter.Node) types.EntityRecord {
+	props := map[string]string{"type": ftype}
+	if label != "" {
+		props["label"] = label
+	}
+	sig := ftype + " " + fname
+	if label != "" {
+		sig = label + " " + sig
+	}
+	return types.EntityRecord{
+		// Name is "<parent>.<field>" so the Format-B member resolver
+		// (Index.byMember[file][parent][field], internal/resolve/refs.go) binds
+		// the message→field CONTAINS edge — the dotted name splits into
+		// scope=<parent>, member=<field>. Mirrors the SQL table.column and ORM
+		// Model.field conventions.
+		Name:               parent + "." + fname,
+		Kind:               "SCOPE.Schema",
+		Subtype:            "field",
+		SourceFile:         file.Path,
+		Language:           "protobuf",
+		StartLine:          int(node.StartPoint().Row) + 1,
+		EndLine:            int(node.EndPoint().Row) + 1,
+		Signature:          sig,
+		QualifiedName:      parent + "." + fname,
+		Properties:         props,
+		EnrichmentRequired: false,
+	}
 }
 
 func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
@@ -362,6 +433,100 @@ func fieldName(node *sitter.Node, src []byte) string {
 		}
 	}
 	return ""
+}
+
+// protoScalars is the set of protobuf built-in scalar types. A field whose
+// resolved type is one of these carries no REFERENCES edge.
+var protoScalars = map[string]bool{
+	"double": true, "float": true, "int32": true, "int64": true,
+	"uint32": true, "uint64": true, "sint32": true, "sint64": true,
+	"fixed32": true, "fixed64": true, "sfixed32": true, "sfixed64": true,
+	"bool": true, "string": true, "bytes": true,
+}
+
+// fieldTypeAndLabel returns the resolved field type and the proto label
+// (repeated / optional / required) for a `field` node. The grammar lays the
+// field out as an optional label keyword, a `type` node, the field-name
+// identifier, `=`, and the field number. The `type` node wraps either a scalar
+// keyword, a `message_or_enum_type`, or a `map_type` (`map<K, V>`); we return
+// the textual type (e.g. "string", "Order", "map<string, Order>").
+func fieldTypeAndLabel(node *sitter.Node, src []byte) (ftype, label string) {
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "repeated", "optional", "required":
+			label = ch.Type()
+		case "type", "map_type":
+			ftype = strings.TrimSpace(nodeText(ch, src))
+		}
+	}
+	// Some grammars surface a map field as a `map_field` node whose `type`
+	// child already includes the `map<...>` text — covered by the `type` case
+	// above. As a fallback, if no `type` child was found, scan for a
+	// message_or_enum_type directly.
+	if ftype == "" {
+		if t := childByType(node, "message_or_enum_type"); t != nil {
+			ftype = strings.TrimSpace(nodeText(t, src))
+		}
+	}
+	return ftype, label
+}
+
+// mapFieldTypeAndLabel renders a `map_field` node's type as "map<K, V>" so
+// namedTypeRefs follows the value (and key) component to any named message type.
+// Map fields carry no repeated/optional label in proto3, so the label is empty.
+// Grammar shape:
+//
+//	map_field
+//	  map  <  key_type  ,  type  >  identifier  =  field_number  ;
+func mapFieldTypeAndLabel(node *sitter.Node, src []byte) (ftype, label string) {
+	var key, val string
+	if k := childByType(node, "key_type"); k != nil {
+		key = strings.TrimSpace(nodeText(k, src))
+	}
+	if v := childByType(node, "type"); v != nil {
+		val = strings.TrimSpace(nodeText(v, src))
+	}
+	return "map<" + key + ", " + val + ">", ""
+}
+
+// namedTypeRefs extracts the named (non-scalar) type names referenced by a field
+// type and returns one structural-ref per referenced type. Scalars yield none.
+// A `map<K, V>` yields a ref for each of K and V that is itself a named type
+// (the key is constrained to scalars in proto, so in practice only V matters,
+// but both are checked for robustness). Leading dots and package qualifiers are
+// stripped to the trailing type segment so the ref binds to the local message
+// name (e.g. `.foo.bar.Order` → `Order`).
+func namedTypeRefs(ftype string) []string {
+	ftype = strings.TrimSpace(ftype)
+	if ftype == "" {
+		return nil
+	}
+	var raws []string
+	if strings.HasPrefix(ftype, "map<") && strings.HasSuffix(ftype, ">") {
+		inner := ftype[len("map<") : len(ftype)-1]
+		for _, part := range strings.Split(inner, ",") {
+			raws = append(raws, strings.TrimSpace(part))
+		}
+	} else {
+		raws = append(raws, ftype)
+	}
+	var out []string
+	for _, r := range raws {
+		// Strip leading dot and package qualifier to the trailing segment.
+		r = strings.TrimPrefix(r, ".")
+		if idx := strings.LastIndex(r, "."); idx >= 0 {
+			r = r[idx+1:]
+		}
+		if r == "" || protoScalars[r] {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // enumValueName returns the first identifier child of an `enum_field` node.

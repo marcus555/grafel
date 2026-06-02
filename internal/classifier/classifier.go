@@ -484,6 +484,13 @@ var extensionLanguageMap = map[string]string{
 	".bicep": "bicep",
 	// Protobuf
 	".proto": "protobuf",
+	// Avro schema (#3690) — Avro schemas are JSON documents with a `.avsc`
+	// extension declaring record/enum/fixed data-contract types. Routed to the
+	// content-based "avro" extractor (no tree-sitter grammar; it json-decodes
+	// the file body). The companion `.avpr` protocol file carries the same
+	// record-type schemas inside a `types` array and is handled identically.
+	".avsc": "avro",
+	".avpr": "avro",
 	// CSS / SCSS / LESS
 	".css":  "css",
 	".scss": "css",
@@ -655,6 +662,17 @@ func detectLanguage(norm string) string {
 	// the generic .json branch so OpenTofu JSON config always wins.
 	if strings.HasSuffix(lower, ".tofu.json") {
 		return "terraform"
+	}
+
+	// JSON Schema (#3690) — files following the `*.schema.json` convention are
+	// JSON Schema data-contract documents. Routed to the content-based
+	// "jsonschema" extractor, which json-decodes the body and content-sniffs for
+	// a `$schema`/`properties`/`$ref` shape before emitting (a false positive is
+	// a harmless no-op). Checked before the generic `.json` branch so schema
+	// files always win over the Debezium routing below. `.tofu.json` already
+	// returned above, so there is no conflict with the OpenTofu compound suffix.
+	if strings.HasSuffix(lower, ".schema.json") {
+		return "jsonschema"
 	}
 
 	// Issue #1708 — narrow JSON routing for Debezium / Kafka-Connect

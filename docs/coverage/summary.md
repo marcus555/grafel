@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 216 · **ORMs**: 152 · **Tools**: 111 · **Other**: 129
+**Languages**: 40 (19 active · 21 placeholder) · **Frameworks**: 216 · **ORMs**: 152 · **Tools**: 111 · **Other**: 131
 
 ## Coverage by language
 
@@ -37,9 +37,9 @@
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 10 | 3 | 0 | 7 |
 | [Observability](by-category/observability.md) | 9 | 1 | 1 | 7 |
-| [Protocols](by-category/protocol.md) | 9 | 4 | 3 | 2 |
+| [Protocols](by-category/protocol.md) | 11 | 4 | 3 | 4 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 102 | 40 | 35 | 27 |
+| **Total** | 104 | 40 | 35 | 29 |
 
 ## Languages with extractor support, no records yet
 
@@ -47,6 +47,7 @@
 
 | Language |
 |---|
+| [Avro](by-language/avro.md) |
 | [Bicep](by-language/bicep.md) |
 | [Clojure](by-language/clojure.md) |
 | [Crystal](by-language/crystal.md) |
@@ -55,6 +56,7 @@
 | [F#](by-language/fsharp.md) |
 | [Haskell](by-language/haskell.md) |
 | [Idris](by-language/idris.md) |
+| [Jsonschema](by-language/jsonschema.md) |
 | [Lisp](by-language/lisp.md) |
 | [Nim](by-language/nim.md) |
 | [OCaml](by-language/ocaml.md) |
@@ -67,4 +69,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 216 frameworks · 111 tools · 152 ORMs · 129 other
+Total: 216 frameworks · 111 tools · 152 ORMs · 131 other

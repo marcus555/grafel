@@ -11,6 +11,7 @@ package extractors
 import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/assembly"
 	_ "github.com/cajasmota/archigraph/internal/extractors/astro"
+	_ "github.com/cajasmota/archigraph/internal/extractors/avro"
 	_ "github.com/cajasmota/archigraph/internal/extractors/bicep"
 	_ "github.com/cajasmota/archigraph/internal/extractors/clojure"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cobol"
@@ -35,6 +36,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/java"
 	_ "github.com/cajasmota/archigraph/internal/extractors/javascript"
 	_ "github.com/cajasmota/archigraph/internal/extractors/jcl"
+	_ "github.com/cajasmota/archigraph/internal/extractors/jsonschema"
 	_ "github.com/cajasmota/archigraph/internal/extractors/just"
 	_ "github.com/cajasmota/archigraph/internal/extractors/kotlin"
 	_ "github.com/cajasmota/archigraph/internal/extractors/lisp"

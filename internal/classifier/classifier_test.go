@@ -193,6 +193,32 @@ func TestClassify_JavaFile(t *testing.T) {
 // Classify — vendor / dependency directory skips
 // ---------------------------------------------------------------------------
 
+func TestClassify_SerializationSchemas(t *testing.T) {
+	c := newTestClassifier(t)
+	cases := []struct {
+		path string
+		lang string
+	}{
+		{"schemas/user.avsc", "avro"},
+		{"protocols/order.avpr", "avro"},
+		{"schemas/user.schema.json", "jsonschema"},
+		{"api/order.proto", "protobuf"},
+	}
+	for _, tc := range cases {
+		r := c.Classify(context.Background(), tc.path)
+		if r.Skip {
+			t.Errorf("%s should not be skipped: reason=%q", tc.path, r.SkipReason)
+		}
+		if r.Language != tc.lang {
+			t.Errorf("%s: Language = %q, want %q", tc.path, r.Language, tc.lang)
+		}
+	}
+	// A plain config .json must NOT be routed to jsonschema.
+	if r := c.Classify(context.Background(), "package.json"); r.Language == "jsonschema" {
+		t.Errorf("package.json wrongly routed to jsonschema")
+	}
+}
+
 func TestClassify_NodeModules_Skipped(t *testing.T) {
 	c := newTestClassifier(t)
 	r := c.Classify(context.Background(), "node_modules/lodash/lodash.js")
