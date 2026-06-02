@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 36 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 30 · **python**: 1 · **ruby**: 1
+**Total**: 37 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 31 · **python**: 1 · **ruby**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -15,6 +15,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [.ini / setup.cfg / flake8 / mypy / pytest.ini](../detail/config.ini.md) | — | — | 🟢 | — | — | 🟢 | |
 | [multi](../by-language/multi.md) | [.toml](../detail/config.toml.md) | — | — | ✅ | — | — | ✅ | |
 | [multi](../by-language/multi.md) | [.yaml / .yml](../detail/config.yaml.md) | — | — | ✅ | — | — | ✅ | |
+| [multi](../by-language/multi.md) | [API-gateway route topology (application frameworks)](../detail/infra.gateway.api-routing.md) | ✅ | — | — | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.iac.cdk.md) | 🟢 | — | — | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.resource.aws-cdk.md) | — | — | — | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.iac.cloudformation.md) | ✅ | — | — | ✅ | — | ✅ | |
