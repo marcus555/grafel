@@ -56,6 +56,109 @@ func readDataFlowSidecar(t *testing.T, linksPath string) []Link {
 	return doc.Links
 }
 
+// readMainLinks reads the MAIN links document (the group edge set), not the
+// data-flow sidecar, so a test can assert the DATA_FLOWS_TO edge is reachable
+// the way a sibling structural link edge is (#3867).
+func readMainLinks(t *testing.T, linksPath string) []Link {
+	t.Helper()
+	doc, err := readDoc(linksPath)
+	if err != nil {
+		t.Fatalf("read main links: %v", err)
+	}
+	return doc.Links
+}
+
+// TestDataFlowPass_EmitsEdgeIntoMainGraph is the #3867 value assertion: after
+// the pass runs on a request-field→DB-sink fixture, the SPECIFIC DATA_FLOWS_TO
+// edge is present in the MAIN links document (the graph edge set the MCP
+// overlays) — not only in the sidecar. Asserts the exact from/to/field, the
+// way a sibling link edge would be queried.
+func TestDataFlowPass_EmitsEdgeIntoMainGraph(t *testing.T) {
+	root := t.TempDir()
+	file := "src/users.ts"
+	content := `
+function createUser(req, res) {
+  const name = req.body.name;
+  await User.create({ name });
+}
+`
+	writeFile(t, root, file, content)
+	graphs := []repoGraph{{
+		Repo:     "repo-a",
+		FileRoot: root,
+		Entities: []entityNode{{ID: "h1", Name: "createUser", Kind: "function", SourceFile: file}},
+	}}
+	linksPath := root + "/.archigraph/links.json"
+	if _, err := runDataFlowPass(graphs, Paths{Links: linksPath}, nil); err != nil {
+		t.Fatalf("pass error: %v", err)
+	}
+
+	// The edge must be in the MAIN links document, reachable exactly like a
+	// sibling structural edge — by relation kind + endpoint id.
+	main := readMainLinks(t, linksPath)
+	l := findLink(main, func(l Link) bool {
+		return l.Relation == string(types.RelationshipKindDataFlowsTo) &&
+			l.Source == "repo-a::h1" &&
+			l.Properties["field"] == "name" &&
+			l.Properties["sink"] == "User.create"
+	})
+	if l == nil {
+		t.Fatalf("DATA_FLOWS_TO edge absent from MAIN links document; got %+v", main)
+	}
+	if l.Method != MethodDataFlow {
+		t.Errorf("method = %q, want %q", l.Method, MethodDataFlow)
+	}
+	// And the sidecar still carries the same edge (no regression for the
+	// dedicated MCP tool / any future sidecar reader).
+	side := readDataFlowSidecar(t, linksPath)
+	if findLink(side, func(s Link) bool { return s.ID == l.ID }) == nil {
+		t.Errorf("edge %s present in main links but missing from sidecar", l.ID)
+	}
+}
+
+// TestDataFlowPass_MethodSegregated_PreservesOtherEdges asserts the
+// method-segregated overwrite contract: re-emitting DATA_FLOWS_TO rows leaves
+// a foreign-method edge (e.g. an import edge) untouched in the main document.
+func TestDataFlowPass_MethodSegregated_PreservesOtherEdges(t *testing.T) {
+	root := t.TempDir()
+	file := "src/users.ts"
+	content := `
+function createUser(req, res) {
+  const name = req.body.name;
+  await User.create({ name });
+}
+`
+	writeFile(t, root, file, content)
+	linksPath := root + "/.archigraph/links.json"
+	// Seed the main document with a pre-existing import edge owned by another
+	// pass.
+	seed := Link{
+		ID: "seedimp1", Source: "repo-a::x", Target: "repo-b::y",
+		Relation: RelationImports, Method: MethodImport, Confidence: 1,
+	}
+	if err := os.MkdirAll(root+"/.archigraph", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDoc(linksPath, &Document{Version: SchemaVersion, Links: []Link{seed}}); err != nil {
+		t.Fatal(err)
+	}
+	graphs := []repoGraph{{
+		Repo:     "repo-a",
+		FileRoot: root,
+		Entities: []entityNode{{ID: "h1", Name: "createUser", Kind: "function", SourceFile: file}},
+	}}
+	if _, err := runDataFlowPass(graphs, Paths{Links: linksPath}, nil); err != nil {
+		t.Fatalf("pass error: %v", err)
+	}
+	main := readMainLinks(t, linksPath)
+	if findLink(main, func(l Link) bool { return l.ID == "seedimp1" }) == nil {
+		t.Errorf("import edge was clobbered by the data-flow pass; method-segregation broken")
+	}
+	if findLink(main, func(l Link) bool { return l.Relation == string(types.RelationshipKindDataFlowsTo) }) == nil {
+		t.Errorf("data-flow pass did not add its own DATA_FLOWS_TO edge")
+	}
+}
+
 func TestDataFlowPass_JSTS_DBWrite_EmitsEdge(t *testing.T) {
 	content := `
 function createUser(req, res) {

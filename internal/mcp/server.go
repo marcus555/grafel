@@ -580,6 +580,20 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_def_use", s.handleDefUse))
 
+	// #3867 — request-input → sink DATA_FLOWS_TO projection. Surfaces the
+	// data-flow edges (with field / sink_kind / hop_path provenance) the
+	// dataflow link pass emits. Before #3867 these lived only in an unread
+	// sidecar and were invisible to every graph reader.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_data_flows",
+		mcpapi.WithDescription("Request-input→sink DATA_FLOWS_TO edges (field/sink_kind/hop_path)."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithString("entity_id", mcpapi.Description("Optional: restrict to flows from one handler entity id (<repo>::<localId>).")),
+		mcpapi.WithString("sink_kind", mcpapi.Description("Optional: filter by sink kind (e.g. db, http, fs).")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_data_flows", s.handleDataFlows))
+
 	// #2774 / #2775 — Phase 3D template-pattern catalog. Surfaces
 	// every i18n key, log-format string, and SQL template literal
 	// across the group's source files.

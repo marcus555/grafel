@@ -12,10 +12,14 @@
 //
 // Properties carried: field, sink_kind, sink, hop_via (when one-hop).
 //
-// Links are persisted to <group>-links-data-flow.json (sidecar) so the
-// method-segregated rewrite logic in RunAllPasses is undisturbed, exactly
-// as the constant-propagation resolves-to pass does. A compact summary is
-// also stamped onto the handler entity:
+// Links are emitted into the MAIN group links document (the graph edge set
+// the MCP overlays) via method-segregated overwrite — exactly as the sibling
+// structural passes (import/label/string/http) do — AND mirrored to the
+// <group>-links-data-flow.json sidecar (#3867). The sidecar is the canonical
+// source for the dedicated archigraph_data_flows MCP tool, which surfaces the
+// per-flow field / sink_kind / hop_path provenance a plain edge-kind
+// projection cannot carry. A compact summary is also stamped onto the handler
+// entity:
 //
 //	data_flows        "<field>-><sink>(<kind>)[ via <hop>],..." (bounded)
 //	data_flows_count  "<n>"
@@ -157,13 +161,38 @@ func runDataFlowPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (
 		}
 	}
 
-	res.LinksAdded = len(links)
 	res.Candidates = scanned
 
 	if paths.Links == "" {
+		// No on-disk links document configured (in-memory test harness path):
+		// report the computed link count so value-asserting tests can inspect
+		// it without a write target.
+		res.LinksAdded = len(links)
 		return res, nil
 	}
+
+	// (A) #3867 — emit DATA_FLOWS_TO into the MAIN links document (the group
+	// edge set the MCP overlays) via method-segregated overwrite, exactly as
+	// the sibling structural passes (import/label/string/http/...) do. Before
+	// this, the links lived ONLY in the sidecar below and were invisible to
+	// every graph reader. Method-segregation means a re-run rewrites only the
+	// MethodDataFlow rows and preserves every other pass's edges; the shared
+	// rejection set is honoured the same way as siblings (by source|target|
+	// method key — see replaceByMethod).
 	sort.Slice(links, func(i, j int) bool { return links[i].ID < links[j].ID })
+	added, skipped, err := replaceByMethod(paths.Links, newMethodSet(MethodDataFlow), links, rejects)
+	if err != nil {
+		return res, fmt.Errorf("emit data-flow links: %w", err)
+	}
+	res.LinksAdded = added
+	res.Skipped += skipped
+
+	// Keep the sidecar too: it carries the same DATA_FLOWS_TO rows and is the
+	// canonical source for the dedicated archigraph_data_flows MCP tool (which
+	// surfaces the per-flow field / sink_kind / hop_path provenance that a
+	// plain edge-kind projection cannot). The links list was already filtered
+	// through the rejection set by replaceByMethod above, so the sidecar and
+	// the graph stay in lock-step.
 	sidecar := strings.TrimSuffix(paths.Links, ".json") + "-data-flow.json"
 	doc := dataFlowDocument{Version: 1, Method: MethodDataFlow, Total: len(links), Links: links}
 	buf, err := json.MarshalIndent(doc, "", "  ")

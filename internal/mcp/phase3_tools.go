@@ -317,6 +317,140 @@ func (s *Server) handleDefUse(_ context.Context, req mcpapi.CallToolRequest) (*m
 }
 
 // ---------------------------------------------------------------------
+// #3867 — archigraph_data_flows
+// ---------------------------------------------------------------------
+//
+// Surfaces the request-input → sink DATA_FLOWS_TO edges computed by the
+// data-flow link pass (internal/links/dataflow_pass.go). Before #3867 those
+// edges lived ONLY in the sidecar with no reader, so `neighbors
+// fields:[data_flows_to]` returned nothing. The pass now also emits them into
+// the main links document (so they ride the cross-repo/overlay edge surface),
+// and this tool projects the sidecar so a caller gets the full per-flow
+// provenance — the tainted request `field`, the `sink_kind`, the resolved
+// `sink`, and the inter-procedural `hop_path` — that a bare edge-kind filter
+// cannot carry.
+
+// dataFlowLinkSidecar mirrors the subset of internal/links.Link the data-flow
+// sidecar persists (it serialises the full Link, we read what we project).
+type dataFlowLinkSidecar struct {
+	ID         string            `json:"id"`
+	Source     string            `json:"source"`
+	Target     string            `json:"target"`
+	Relation   string            `json:"relation"`
+	Method     string            `json:"method"`
+	Confidence float64           `json:"confidence"`
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
+type dataFlowSidecarDoc struct {
+	Version int                   `json:"version"`
+	Method  string                `json:"method"`
+	Total   int                   `json:"total_flows"`
+	Links   []dataFlowLinkSidecar `json:"links"`
+}
+
+// dataFlowEndpointRepo extracts the "<repo>" prefix from a links-pass
+// "<repo>::<localId>" endpoint key. Synthetic `sink:` residues (no repo
+// prefix) yield "" — they are kept but never repo-filtered out.
+func dataFlowEndpointRepo(key string) string {
+	if i := strings.Index(key, "::"); i > 0 {
+		return key[:i]
+	}
+	return ""
+}
+
+func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	groupName, _, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	repoFilter := map[string]bool{}
+	for _, r := range argStringSlice(req, "repo_filter") {
+		repoFilter[r] = true
+	}
+	entityFilter := strings.TrimSpace(argString(req, "entity_id", ""))
+	sinkKindFilter := strings.ToLower(strings.TrimSpace(argString(req, "sink_kind", "")))
+	limit := argInt(req, "limit", 100)
+
+	var doc dataFlowSidecarDoc
+	path := sidecarPath(groupName, "data-flow")
+	if !loadSidecar(path, &doc) {
+		return jsonResult(map[string]any{
+			"data_flows": []any{},
+			"count":      0,
+			"total":      0,
+			"source":     "missing",
+			"note":       "Data-flow sidecar absent — run the link passes to generate it (#3867).",
+		}), nil
+	}
+
+	out := make([]map[string]any, 0, len(doc.Links))
+	for _, l := range doc.Links {
+		srcRepo := dataFlowEndpointRepo(l.Source)
+		if len(repoFilter) > 0 && !repoFilter[srcRepo] {
+			continue
+		}
+		if entityFilter != "" && l.Source != entityFilter {
+			continue
+		}
+		props := l.Properties
+		if props == nil {
+			props = map[string]string{}
+		}
+		if sinkKindFilter != "" && strings.ToLower(props["sink_kind"]) != sinkKindFilter {
+			continue
+		}
+		rec := map[string]any{
+			"id":         l.ID,
+			"from":       l.Source,
+			"to":         l.Target,
+			"relation":   l.Relation,
+			"confidence": l.Confidence,
+			"field":      props["field"],
+			"sink_kind":  props["sink_kind"],
+			"sink":       props["sink"],
+		}
+		if v := props["hop_via"]; v != "" {
+			rec["hop_via"] = v
+		}
+		if v := props["hop_path"]; v != "" {
+			rec["hop_path"] = v
+		}
+		if v := props["hop_count"]; v != "" {
+			rec["hop_count"] = v
+		}
+		out = append(out, rec)
+	}
+	// Stable order: by from-endpoint, then sink, then id.
+	sort.SliceStable(out, func(i, j int) bool {
+		fi, fj := fmt.Sprint(out[i]["from"]), fmt.Sprint(out[j]["from"])
+		if fi != fj {
+			return fi < fj
+		}
+		si, sj := fmt.Sprint(out[i]["sink"]), fmt.Sprint(out[j]["sink"])
+		if si != sj {
+			return si < sj
+		}
+		return fmt.Sprint(out[i]["id"]) < fmt.Sprint(out[j]["id"])
+	})
+	total := len(out)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return jsonResult(map[string]any{
+		"data_flows": out,
+		"count":      len(out),
+		"total":      total,
+		"truncated":  total > len(out),
+		"source":     "sidecar",
+		"note": "Request-input → sink DATA_FLOWS_TO edges (intra-function + bounded inter-procedural hops). " +
+			"`from` is the request handler, `to` the resolved sink entity (or a synthetic sink: residue), " +
+			"`field` the tainted request field, `hop_path` the inter-procedural chain. " +
+			"Precision-first: a flow the sniffer did not soundly follow is never fabricated (#3867).",
+	}), nil
+}
+
+// ---------------------------------------------------------------------
 // 3D — archigraph_template_patterns
 // ---------------------------------------------------------------------
 
