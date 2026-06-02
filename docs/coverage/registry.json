@@ -6252,10 +6252,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/cassandra_csharp.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6303,10 +6303,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/dynamodb_csharp.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6354,10 +6354,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/nest_elasticsearch.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6405,10 +6405,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/mongodb_csharp.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6454,10 +6454,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/mysql_csharp.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6503,10 +6503,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/neo4j.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6552,10 +6552,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/npgsql.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6601,10 +6601,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/redis_stackexchange.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -6650,10 +6650,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/csharp/orms/sqlite_csharp.yaml"],
-            "issue": "3262",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -9820,9 +9820,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/ex_aws_dynamo.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -9868,9 +9869,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/elasticsearch_elixir.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -9916,9 +9918,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/mongodb_elixir.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -9964,9 +9967,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/myxql.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -10012,9 +10016,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -10060,9 +10065,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/postgrex.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -10108,9 +10114,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/redix.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -10156,9 +10163,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/elixir/frameworks/xandra.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -13400,9 +13408,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/go/orms/mysql_go.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -22944,9 +22953,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -23038,10 +23048,10 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "missing",
@@ -23074,10 +23084,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_cassandra.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -23098,10 +23108,10 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "missing",
@@ -23134,10 +23144,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_elasticsearch.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -23223,10 +23233,10 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "missing",
@@ -23259,10 +23269,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_mongodb.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -23283,10 +23293,10 @@
       "capabilities": {
         "Models": {
           "model_extraction": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_redis.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "missing",
@@ -23319,10 +23329,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/spring_data_redis.yaml"],
-            "issue": "3095",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36290,9 +36300,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/cassandra_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36338,9 +36349,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/dynamodb_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36386,9 +36398,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/elasticsearch_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36434,9 +36447,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/mongodb_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36484,9 +36498,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/mysql_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36532,9 +36547,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36582,9 +36598,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/postgresql_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36630,9 +36647,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/redis_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -36680,9 +36698,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/php/orms/sqlite_php.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -40198,9 +40217,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/cassandra_py.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -40246,9 +40266,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/dynamodb_py.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -40294,9 +40315,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/elasticsearch_py.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -40393,9 +40415,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -45359,9 +45382,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/beanie.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -45479,9 +45503,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/mongoengine.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -45997,9 +46022,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/cassandra_ruby.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46045,9 +46071,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/dynamodb_ruby.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46095,9 +46122,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/elasticsearch_ruby.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46143,9 +46171,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/mysql_ruby.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46191,9 +46220,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46239,9 +46269,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/pg_ruby.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46287,9 +46318,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/redis_rb.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -46335,9 +46367,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/sqlite_ruby.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48191,9 +48224,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/mongoid.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48357,9 +48391,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/cassandra_rust.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48405,9 +48440,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/dynamodb_rust.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48453,9 +48489,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/elasticsearch_rs.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48501,9 +48538,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/mongodb_mongodb.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48549,9 +48587,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/mysql_rust.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48597,9 +48636,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48645,9 +48685,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/postgresql_rust.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48693,9 +48734,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/redis_redis_rs.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -48741,9 +48783,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/rust/orms/sqlite_rust.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3644",
+            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
