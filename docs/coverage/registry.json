@@ -13476,10 +13476,10 @@
             "notes": "No lazy/eager loading; queries are explicit."
           },
           "relationship_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/golang/neo4j.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/neo4j.yaml"],
-            "issue": "3214",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/golang/neo4j.go","internal/custom/golang/neo4j_test.go","internal/custom/golang/nosql_drivers_test.go","internal/engine/rules/go/orms/neo4j.yaml"],
+            "notes": "Cypher relationship patterns promoted to GRAPH_RELATES edges between node-label entities (reCypherTriple); statically-resolvable topology full, dynamic/untyped relations honest-partial. Completes Neo4j GRAPH_RELATES set java(#3663)+py/jsts(#3670)+go(#3612); reverses #3635 downgrade.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {

@@ -5369,18 +5369,28 @@ records:
       Relationships:
         relationship_extraction:
           # Relationship types in Cypher patterns (-[:ACTED_IN]->, -[r:KNOWS]-)
-          # => SCOPE.Schema subtype=relationship (reCypherRelType). The one driver
-          # in this slice where relationships are first-class. Endpoints are not
-          # always statically resolvable from the query text, so partial.
-          status: partial
+          # => SCOPE.Schema subtype=relationship (reCypherRelType). When BOTH
+          # endpoints carry a static node label and the relation a static type
+          # ((a:Person)-[:ACTED_IN]->(m:Movie)), the graph-schema topology is
+          # additionally promoted to a traversable GRAPH_RELATES edge between the
+          # node-label entities (reCypherTriple), the graph-DB analogue of Mongo's
+          # JOINS_COLLECTION and the Java SDN @Relationship edge. The arrow head
+          # decides the OUTGOING source endpoint; undirected patterns record
+          # direction=UNDIRECTED. Dynamic / parameterised relations (untyped
+          # -[r]->, string-concat) stay type-only — honest-partial — but the
+          # statically-resolvable topology is now full. Completes the Neo4j
+          # GRAPH_RELATES set: java (#3663) + python/jsts (#3670) + go (#3612).
+          # Reverses the #3635 downgrade.
+          status: full
           symbols:
             - file: internal/engine/rules/go/orms/neo4j.yaml
             - file: internal/custom/golang/neo4j.go
               functions: [Extract]
           tests:
             - file: internal/custom/golang/nosql_drivers_test.go
-          issues_implemented: ["3214"]
-          verified_at: "2026-05-30"
+            - file: internal/custom/golang/neo4j_test.go
+          issues_implemented: ["3214", "3612"]
+          verified_at: "2026-06-02"
       Queries:
         query_attribution:
           # session.Run("CYPHER") / tx.Run / ExecuteQuery call sites;

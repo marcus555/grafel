@@ -22,14 +22,19 @@ import (
 //                    (:Movie)) are surfaced as SCOPE.Schema nodes. Labels are a
 //                    soft schema (a node may carry any labels at runtime) and
 //                    are recovered from a query string by regex, hence partial.
-//   - Relationships— partial. Relationship types in Cypher patterns
+//   - Relationships— full (topology). Relationship types in Cypher patterns
 //                    (-[:ACTED_IN]->, -[r:KNOWS]-) are surfaced as
 //                    SCOPE.Schema entities with subtype "relationship" (there
-//                    is no dedicated SCOPE.Relation kind). This is the
-//                    first-class graph case — but the endpoints of the relation
-//                    are not always statically resolvable from the query text,
-//                    so the relation type is recorded without proven endpoint
-//                    binding: partial.
+//                    is no dedicated SCOPE.Relation kind). When BOTH endpoints
+//                    of the pattern carry a static node label and the relation
+//                    a static type — (a:Person)-[:ACTED_IN]->(m:Movie) — the
+//                    graph-schema topology is additionally promoted to a
+//                    traversable GRAPH_RELATES edge between the node-label
+//                    entities (Person ─GRAPH_RELATES(ACTED_IN)→ Movie), the
+//                    graph-DB analogue of Mongo's JOINS_COLLECTION and the Java
+//                    SDN @Relationship edge (#3612, epic #3606). Parameterised
+//                    / dynamic relations (no static type, or built by string
+//                    concatenation) stay type-only — honest-partial.
 //   - Queries      — partial. `session.Run("CYPHER")` / `ExecuteQuery(...,
 //                    "CYPHER")` / `tx.Run("CYPHER")` call sites are captured
 //                    with a coarse verb sniffed from the leading Cypher clause.
@@ -65,6 +70,32 @@ var (
 
 	// A relationship type inside a Cypher pattern: -[:TYPE]-> / -[r:TYPE]-.
 	reCypherRelType = regexp.MustCompile(`-\[\s*[A-Za-z_]\w*?\s*:\s*([A-Za-z_]\w*)|-\[\s*:\s*([A-Za-z_]\w*)`)
+
+	// A full directed relationship triple inside a Cypher pattern:
+	//
+	//   (a:LeftLabel) -[ rvar :REL_TYPE ]-> (b:RightLabel)
+	//   (a:LeftLabel) <-[ rvar :REL_TYPE ]-  (b:RightLabel)
+	//
+	// Both endpoints must carry a statically-resolvable node label and the
+	// relationship must carry a statically-resolvable type for an edge to be
+	// emitted. The arrow head (-> vs <-) determines GRAPH_RELATES direction:
+	// the OUTGOING source is the label the arrow points away from.
+	//
+	// Captures:
+	//   1 = left node label
+	//   2 = optional left-arrow head ("<" when the relation points left)
+	//   3 = relationship type
+	//   4 = optional right-arrow head (">" when the relation points right)
+	//   5 = right node label
+	//
+	// A bare relationship with no type (-[r]-> / -[]->) or a parameterised /
+	// dynamic type (-[:$relType]-> built via string concat) does NOT match the
+	// type group, so no edge is emitted — honest-partial.
+	reCypherTriple = regexp.MustCompile(
+		`\(\s*(?:[A-Za-z_]\w*)?\s*:\s*([A-Za-z_]\w*)[^()]*\)\s*` +
+			`(<)?-\[\s*(?:[A-Za-z_]\w*)?\s*:\s*([A-Za-z_]\w*)[^\]]*\]-(>)?` +
+			`\s*\(\s*(?:[A-Za-z_]\w*)?\s*:\s*([A-Za-z_]\w*)`,
+	)
 )
 
 func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -98,6 +129,13 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		entities = append(entities, ent)
 	}
 
+	// nodeIdx maps a node label to the index, in `entities`, of its
+	// SCOPE.Schema node entity. Used by the GRAPH_RELATES pass to hang the
+	// graph-topology edge off the *source* node-label entity (the graph
+	// "table"), mirroring the Java SDN @Node owner and the Mongo
+	// JOINS_COLLECTION source collection.
+	nodeIdx := make(map[string]int)
+
 	for _, m := range reNeo4jRun.FindAllStringSubmatchIndex(src, -1) {
 		cypher := submatch(src, m, 2) // backtick form
 		if cypher == "" {
@@ -124,7 +162,13 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			n := makeEntity("node:"+label, "SCOPE.Schema", "", file.Path, file.Language, line)
 			setProps(&n, "framework", "neo4j", "provenance", "INFERRED_FROM_NEO4J_CYPHER",
 				"node_label", label)
+			before := len(entities)
 			add(n)
+			// Record the node entity's index the first time it is emitted.
+			// add() dedupes, so only register when it was actually appended.
+			if len(entities) == before+1 {
+				nodeIdx["node:"+label] = before
+			}
 		}
 
 		// Relationships: relationship types in the Cypher pattern (first-class).
@@ -140,6 +184,63 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			setProps(&r, "framework", "neo4j", "provenance", "INFERRED_FROM_NEO4J_CYPHER",
 				"rel_type", relType)
 			add(r)
+		}
+
+		// --- GRAPH_RELATES edges (#3612, epic #3606) ---
+		// Promote the graph-schema topology encoded in a Cypher relationship
+		// pattern — (a:Person)-[:ACTED_IN]->(m:Movie) — into a traversable
+		// edge between the node-label entities (the graph "tables"), the
+		// graph-DB analogue of the Mongo JOINS_COLLECTION and the Java SDN
+		// @Relationship GRAPH_RELATES. The edge hangs off the OUTGOING source
+		// node entity; the arrow head decides which endpoint that is:
+		//
+		//   (a:A)-[:R]->(b:B)   →  A ─GRAPH_RELATES(R, OUTGOING)→ node:B
+		//   (a:A)<-[:R]-(b:B)   →  B ─GRAPH_RELATES(R, OUTGOING)→ node:A
+		//
+		// The resolver fills FromID from the owning node entity and resolves
+		// ToID ("node:<label>") to the target node entity by name. Only emitted
+		// when BOTH endpoints carry a static label AND the relation a static
+		// type; dynamic / parameterised relations don't match and stay
+		// label/type-only — honest-partial.
+		for _, tm := range reCypherTriple.FindAllStringSubmatch(cypher, -1) {
+			leftLabel, relType, rightLabel := tm[1], tm[3], tm[5]
+			pointsRight := tm[4] == ">"
+			pointsLeft := tm[2] == "<"
+			if relType == "" || leftLabel == "" || rightLabel == "" {
+				continue
+			}
+			// Determine OUTGOING source / target from the arrow head. A
+			// pattern with no head on either side is undirected; Neo4j stores
+			// every relationship with a concrete direction, so we treat the
+			// written left→right order as the source for the edge and record
+			// direction=UNDIRECTED.
+			srcLabel, dstLabel, direction := leftLabel, rightLabel, "OUTGOING"
+			switch {
+			case pointsRight && !pointsLeft:
+				srcLabel, dstLabel = leftLabel, rightLabel
+			case pointsLeft && !pointsRight:
+				srcLabel, dstLabel = rightLabel, leftLabel
+			default:
+				direction = "UNDIRECTED"
+			}
+
+			ownerIdx, ok := nodeIdx["node:"+srcLabel]
+			if !ok {
+				continue
+			}
+			entities[ownerIdx].Relationships = append(
+				entities[ownerIdx].Relationships,
+				types.RelationshipRecord{
+					ToID: "node:" + dstLabel,
+					Kind: string(types.RelationshipKindGraphRelates),
+					Properties: map[string]string{
+						"framework":  "neo4j",
+						"rel_type":   relType,
+						"direction":  direction,
+						"provenance": "INFERRED_FROM_NEO4J_CYPHER",
+					},
+				},
+			)
 		}
 	}
 
