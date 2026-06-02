@@ -594,6 +594,7 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_pure_functions",
 		"archigraph_import_cycles",
 		"archigraph_def_use",
+		"archigraph_data_flows",
 		"archigraph_template_patterns",
 	}
 	for _, n := range wantPresent {
@@ -683,8 +684,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_security_findings (#2772 Phase 2B taint-flow).
 	// +4 archigraph_pure_functions/_import_cycles/_def_use/_template_patterns (#2774/#2775 Phase 3 misc).
 	// +1 archigraph_feedback_event (#3204 agent-experience feedback, internal test harness).
-	if got := len(allRegisteredTools); got != 54 {
-		t.Errorf("expected 54 registered tools, got %d — update this count if tools are added/removed (added archigraph_feedback_event #3204)", got)
+	// +1 archigraph_data_flows (#3867 request-input→sink DATA_FLOWS_TO projection).
+	if got := len(allRegisteredTools); got != 55 {
+		t.Errorf("expected 55 registered tools, got %d — update this count if tools are added/removed (added archigraph_data_flows #3867)", got)
 	}
 }
 
@@ -3194,6 +3196,7 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_pure_functions":    {"group": "g"},
 		"archigraph_import_cycles":     {"group": "g"},
 		"archigraph_def_use":           {"group": "g"},
+		"archigraph_data_flows":        {"group": "g"},
 		"archigraph_template_patterns": {"group": "g"},
 	}
 
@@ -3239,8 +3242,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 54 {
-		t.Errorf("expected 54 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_feedback_event #3204)", len(tools))
+	if len(tools) != 55 {
+		t.Errorf("expected 55 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_data_flows #3867)", len(tools))
 	}
 
 	for _, st := range tools {
