@@ -362,6 +362,225 @@ def get_inspection_details(self):
 	}
 }
 
+// BUILDER INDIRECTION (#3866) — direct call argument:
+// `coll.aggregate(build_fn())` where `build_fn` is a same-file builder that
+// `return [ ... ]`s a pipeline holding a $lookup. The builder body must be
+// scanned and the join attributed to the AGGREGATING collection (m_devices),
+// landing on the NAMED looked-up collection node Class:M_device.
+func TestMongoAggPy_Builder_DirectCallArg(t *testing.T) {
+	src := `
+import pymongo
+from pymongo import MongoClient
+
+def build_pipe():
+    return [{"$lookup": {"from": "m_devices", "localField": "device_id", "foreignField": "_id", "as": "d"}}]
+
+def run(db):
+    return db.inspections.aggregate(build_pipe())
+`
+	ents, rels := runMongoAggPy(t, src)
+	if len(rels) != 1 {
+		t.Fatalf("expected exactly 1 join edge from builder body, got %d: %+v", len(rels), rels)
+	}
+	j := rels[0]
+	if j.ToID != "Class:"+capitalisedSingular("m_devices") {
+		t.Errorf("join ToID = %q, want Class:M_device (named builder $lookup target)", j.ToID)
+	}
+	if j.FromID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("join FromID = %q, want Class:Inspection (aggregating collection at executor)", j.FromID)
+	}
+	if j.Properties["as"] != "d" || j.Properties["local_field"] != "device_id" {
+		t.Errorf("join props = %+v, want as=d local_field=device_id", j.Properties)
+	}
+	if len(ents) != 1 || ents[0].Subtype != "$lookup" {
+		t.Fatalf("expected 1 $lookup stage entity, got %+v", ents)
+	}
+	if ents[0].Properties["collection"] != "inspections" {
+		t.Errorf("stage collection = %q, want inspections", ents[0].Properties["collection"])
+	}
+}
+
+// BUILDER INDIRECTION (#3866) — call-binding then use:
+// `pipeline = build_pipe(); coll.aggregate(pipeline)`. The bare-var follow finds
+// no list-literal binding, falls through to the builder-call binding, resolves
+// the builder body. Same named-collection result as the direct-call form.
+func TestMongoAggPy_Builder_CallBindingThenUse(t *testing.T) {
+	src := `
+import pymongo
+
+def build_pipe():
+    return [{"$lookup": {"from": "m_devices", "localField": "device_id", "foreignField": "_id", "as": "d"}}]
+
+def run(insp):
+    pipeline = build_pipe()
+    return insp.aggregate(pipeline)
+`
+	_, rels := runMongoAggPy(t, src)
+	if len(rels) != 1 {
+		t.Fatalf("expected exactly 1 join edge, got %d: %+v", len(rels), rels)
+	}
+	if rels[0].ToID != "Class:"+capitalisedSingular("m_devices") {
+		t.Errorf("join ToID = %q, want Class:M_device", rels[0].ToID)
+	}
+}
+
+// BUILDER INDIRECTION (#3866) — builder uses the `pipeline = [ ... ]; return
+// pipeline` shape (Shape B) and the executor uses get_collection(CONST) so BOTH
+// new features compose: the builder body is scanned AND the aggregating
+// collection resolves to the named Class:Inspection node. Mirrors the real
+// `_build_inspections_pipeline` / `get_inspection_devices_pipeline` forms.
+func TestMongoAggPy_Builder_ReturnVar_WithGetCollectionConst(t *testing.T) {
+	src := `
+import pymongo
+from core.helper.mongo_helper import MongoDBConnection
+
+INSPECTIONS = "inspections"
+
+def _build_inspections_pipeline():
+    pipeline = [
+        {"$lookup": {"from": "inspection_groups", "localField": "group_id", "foreignField": "_id", "as": "g"}},
+        {"$lookup": {"from": "m_devices", "localField": "device_id", "foreignField": "_id", "as": "d"}},
+        {"$match": {"status": "active"}},
+    ]
+    return pipeline
+
+def run():
+    built = _build_inspections_pipeline()
+    return MongoDBConnection.get_collection(INSPECTIONS).aggregate(built)
+`
+	ents, rels := runMongoAggPy(t, src)
+	if len(rels) != 2 {
+		t.Fatalf("expected 2 join edges from builder body, got %d: %+v", len(rels), rels)
+	}
+	for _, coll := range []string{"inspection_groups", "m_devices"} {
+		j := pyFindJoinTo(rels, capitalisedSingular(coll))
+		if j == nil {
+			t.Fatalf("expected JOINS_COLLECTION to %s; rels=%+v", coll, rels)
+		}
+		if j.FromID != "Class:"+capitalisedSingular("inspections") {
+			t.Errorf("join to %s FromID = %q, want Class:Inspection (const-resolved, NOT ext:get_collection)", coll, j.FromID)
+		}
+	}
+	got := pyStageSubtypesInOrder(ents)
+	want := []string{"$lookup", "$lookup", "$match"}
+	if len(got) != len(want) {
+		t.Fatalf("stage subtypes = %v, want %v", got, want)
+	}
+}
+
+// DIRECT get_collection(CONST) at the call site (#3866) — no intermediate
+// variable: `get_collection(INSPECTIONS).aggregate([...])`. CONST resolves to
+// the named collection node so the JOINS_COLLECTION FromID is Class:Inspection,
+// NOT a phantom Class:INSPECTIONS / shared ext:get_collection node.
+func TestMongoAggPy_DirectGetCollectionConst_Inline(t *testing.T) {
+	src := `
+import pymongo
+from core.helper.mongo_helper import MongoDBConnection
+
+INSPECTIONS = "inspections"
+
+def run():
+    return MongoDBConnection.get_collection(INSPECTIONS).aggregate([
+        {"$lookup": {"from": "inspection_groups", "localField": "_id", "foreignField": "gid", "as": "g"}},
+    ])
+`
+	_, rels := runMongoAggPy(t, src)
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 join edge, got %d: %+v", len(rels), rels)
+	}
+	if rels[0].FromID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("FromID = %q, want Class:Inspection (direct const-resolved receiver)", rels[0].FromID)
+	}
+	if rels[0].ToID != "Class:"+capitalisedSingular("inspection_groups") {
+		t.Errorf("ToID = %q, want Class:Inspection_group", rels[0].ToID)
+	}
+}
+
+// DIRECT get_collection(CONST) with a cross-module (no in-file value) UPPER_SNAKE
+// constant — resolves via the lowercase-name convention to Class:Inspection.
+func TestMongoAggPy_DirectGetCollectionConst_CrossModule(t *testing.T) {
+	src := `
+from core.helper.mongo_helper import MongoDBConnection
+from core.mongodb_collections import INSPECTIONS
+
+def run():
+    return MongoDBConnection.get_collection(INSPECTIONS).aggregate([
+        {"$lookup": {"from": "m_devices", "localField": "_id", "foreignField": "did", "as": "d"}},
+    ])
+`
+	_, rels := runMongoAggPy(t, src)
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 join edge, got %d: %+v", len(rels), rels)
+	}
+	if rels[0].FromID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("FromID = %q, want Class:Inspection (cross-module const via name convention)", rels[0].FromID)
+	}
+}
+
+// NEGATIVE (#3866): a DYNAMIC lowercase variable passed to get_collection
+// (`get_collection(coll_var)`) is NOT a constant and must stay unresolved — we
+// keep the bare receiver behavior, no Class:Inspection fabrication. The bare
+// lowercase token `coll_var` is the receiver fallback; it must not be lowercased
+// and treated as a collection-name constant.
+func TestMongoAggPy_DirectGetCollection_DynamicVar_Unresolved(t *testing.T) {
+	src := `
+import pymongo
+from core.helper.mongo_helper import MongoDBConnection
+
+def run(coll_var):
+    return MongoDBConnection.get_collection(coll_var).aggregate([
+        {"$lookup": {"from": "m_devices", "localField": "_id", "foreignField": "did", "as": "d"}},
+    ])
+`
+	_, rels := runMongoAggPy(t, src)
+	// Honest-partial: the join may still be emitted (from the inline literal) but
+	// its FromID must NOT be falsely resolved to Class:Inspection — it falls back
+	// to the bare token coll_var.
+	for _, r := range rels {
+		if r.FromID == "Class:"+capitalisedSingular("inspections") {
+			t.Fatalf("dynamic get_collection(coll_var) must NOT resolve to Class:Inspection: %+v", r)
+		}
+	}
+	// The bare-var fallback anchors on the variable token, not a phantom const.
+	if len(rels) == 1 && rels[0].FromID != "Class:"+capitalisedSingular("coll_var") {
+		t.Errorf("FromID = %q, want bare-var fallback Class:Coll_var", rels[0].FromID)
+	}
+}
+
+// NEGATIVE (#3866): builder defined in ANOTHER module (not in this file) → no
+// body to scan → honest unresolved, no fabricated join/stage.
+func TestMongoAggPy_Builder_CrossModule_Unresolved(t *testing.T) {
+	src := `
+import pymongo
+from other.module import build_remote_pipeline
+
+def run(db):
+    return db.inspections.aggregate(build_remote_pipeline())
+`
+	ents, rels := runMongoAggPy(t, src)
+	if len(rels) != 0 || len(ents) != 0 {
+		t.Fatalf("cross-module builder must emit nothing, got rels=%d ents=%d", len(rels), len(ents))
+	}
+}
+
+// NEGATIVE (#3866): builder whose return is itself a CALL / dynamic dispatch
+// (`return assemble(...)`, no same-function list literal) → unresolved.
+func TestMongoAggPy_Builder_NonLiteralReturn_Unresolved(t *testing.T) {
+	src := `
+import pymongo
+
+def build_pipe():
+    return assemble_stages(extra=True)
+
+def run(db):
+    return db.inspections.aggregate(build_pipe())
+`
+	ents, rels := runMongoAggPy(t, src)
+	if len(rels) != 0 || len(ents) != 0 {
+		t.Fatalf("non-literal builder return must emit nothing, got rels=%d ents=%d", len(rels), len(ents))
+	}
+}
+
 // Inline list-literal pipeline with $lookup + $graphLookup + $group + $facet,
 // receiver via db["collname"] subscript. Asserts both join kinds, the $group
 // _id/accumulators, and the $facet keys.
