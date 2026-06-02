@@ -69,7 +69,7 @@ categories:
   security:
     capabilities: [auth_policy, secret_detection, sql_injection]
   protocol:
-    capabilities: [service_extraction, method_attribution, cross_repo_linkage]
+    capabilities: [service_extraction, method_attribution, cross_repo_linkage, schema_extraction, field_extraction]
   ci_cd:
     capabilities: [file_parsing, env_resolution]
   validation:

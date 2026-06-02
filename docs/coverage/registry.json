@@ -59381,6 +59381,39 @@
       }
     },
     {
+      "id": "protocol.avro",
+      "category": "protocol",
+      "language": "multi",
+      "label": "Apache Avro (.avsc / .avpr)",
+      "capabilities": {
+        "cross_repo_linkage": {
+          "status": "missing",
+          "issue": "3690"
+        },
+        "field_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/avro/avro.go","internal/extractors/avro/avro_test.go"],
+          "notes": "#3690 — each field -\u003e SCOPE.Schema/field (Name=\u003cRecord\u003e.\u003cfield\u003e, Properties.type incl. array\u003cT\u003e/map\u003cT\u003e/union a|b) + record-\u003enamed-type REFERENCES edge (array items followed); primitives carry no edge",
+          "verified_at": "2026-06-02"
+        },
+        "method_attribution": {
+          "status": "missing",
+          "issue": "3690"
+        },
+        "schema_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/avro/avro.go","internal/extractors/avro/avro_test.go"],
+          "notes": "#3690 — record/enum/fixed -\u003e SCOPE.Schema; .avpr protocol envelope 'types' walked; namespaces stripped to local name",
+          "verified_at": "2026-06-02"
+        },
+        "service_extraction": {
+          "status": "missing",
+          "issue": "3690",
+          "notes": "Avro protocol (.avpr) messages not yet emitted as services; #3690 covers data-contract types only"
+        }
+      }
+    },
+    {
       "id": "protocol.c-asm",
       "category": "protocol",
       "language": "multi",
@@ -59479,6 +59512,39 @@
       }
     },
     {
+      "id": "protocol.json-schema",
+      "category": "protocol",
+      "language": "multi",
+      "label": "JSON Schema (*.schema.json)",
+      "capabilities": {
+        "cross_repo_linkage": {
+          "status": "missing",
+          "issue": "3690"
+        },
+        "field_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/jsonschema/jsonschema.go","internal/extractors/jsonschema/jsonschema_test.go"],
+          "notes": "#3690 — each property -\u003e SCOPE.Schema/field (Name=\u003cSchema\u003e.\u003cprop\u003e, Properties.type incl. array\u003cT\u003e) + $ref -\u003e REFERENCES edge (direct, array items, allOf/anyOf/oneOf branches)",
+          "verified_at": "2026-06-02"
+        },
+        "method_attribution": {
+          "status": "missing",
+          "issue": "3690"
+        },
+        "schema_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/jsonschema/jsonschema.go","internal/extractors/jsonschema/jsonschema_test.go"],
+          "notes": "#3690 — root object schema (named via title, basename fallback) + each $defs/definitions subschema -\u003e SCOPE.Schema/object; content-sniffed for $schema/properties/$defs/$ref so misrouted JSON is a no-op",
+          "verified_at": "2026-06-02"
+        },
+        "service_extraction": {
+          "status": "missing",
+          "issue": "3690",
+          "notes": "JSON Schema is a data-contract format with no service/RPC concept"
+        }
+      }
+    },
+    {
       "id": "protocol.jsonrpc",
       "category": "protocol",
       "language": "multi",
@@ -59529,10 +59595,22 @@
           "cites": ["internal/engine/grpc_edges.go"],
           "verified_at": "2026-05-28"
         },
+        "field_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/proto/fields_test.go","internal/extractors/proto/proto.go"],
+          "notes": "#3690 — each message field -\u003e SCOPE.Schema/field entity (Name=\u003cMsg\u003e.\u003cfield\u003e, Properties.type/label) + message-\u003etype REFERENCES edge for named (non-scalar) types incl. map\u003cK,V\u003e value; scalars carry no edge",
+          "verified_at": "2026-06-02"
+        },
         "method_attribution": {
           "status": "full",
           "cites": ["internal/extractors/proto"],
           "verified_at": "2026-05-28"
+        },
+        "schema_extraction": {
+          "status": "full",
+          "cites": ["internal/extractors/proto/proto.go","internal/extractors/proto/proto_test.go"],
+          "notes": "#3690 — message/enum -\u003e SCOPE.Schema with file CONTAINS edges; messages_and_enums covered by buildMessage/buildEnum",
+          "verified_at": "2026-06-02"
         },
         "service_extraction": {
           "status": "full",

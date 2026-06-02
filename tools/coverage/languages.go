@@ -30,6 +30,7 @@ var extractorUtilityDirs = map[string]bool{
 // represented in the coverage matrix's "multi" bucket rather than as
 // standalone language rows.
 var extractorNonLanguageFormats = map[string]bool{
+	"avro":       true,
 	"bazel":      true,
 	"css":        true,
 	"dockerfile": true,
@@ -37,6 +38,7 @@ var extractorNonLanguageFormats = map[string]bool{
 	"graphql":    true,
 	"hcl":        true,
 	"html":       true,
+	"jsonschema": true,
 	"just":       true,
 	"mage":       true,
 	"markdown":   true,
