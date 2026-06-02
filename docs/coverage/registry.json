@@ -57469,8 +57469,8 @@
       "capabilities": {
         "cross_repo_linkage": {
           "status": "partial",
-          "cites": ["internal/engine/http_endpoint_match.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/http_endpoint_graphql_client.go","internal/engine/http_endpoint_match.go"],
+          "verified_at": "2026-06-02"
         },
         "method_attribution": {
           "status": "full",
