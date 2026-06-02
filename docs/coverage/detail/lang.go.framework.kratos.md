@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/kratos.yaml` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/rules/go/frameworks/kratos.yaml` | — |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

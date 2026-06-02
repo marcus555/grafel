@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/framework_dsl.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | 3062 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go` | — |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/template_render.go`<br>`internal/extractors/javascript/template_render.go`<br>`internal/extractors/javascript/template_render_test.go` | ctx.render('view') -> RENDERS SCOPE.Template; dynamic names dropped (#3628) |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-06-02` | — | `internal/custom/java/patterns_dispatch.go`<br>`internal/custom/java/spring_graphql.go` | Each endpoint emits handler_name=<Fetcher>.<method> + resolver_method and a HANDLES edge endpoint to resolver SCOPE.Operation, preserved under field= rename (field=allUsers, resolver_method=users). Asserted in TestDGS_ShorthandOperations/_FieldOverrideAndDgsData. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | backfill:dictionary-completeness | `internal/custom/java/patterns_dispatch.go`<br>`internal/custom/java/spring_graphql.go` | Operation paths derived from @Dgs* annotations; @DgsData(parentType=non-root) field resolvers correctly skipped. PARTIAL: file-local annotation-driven; SDL-only fields and custom DGS servlet mapping not read. Asserted _FieldResolverSkipped. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

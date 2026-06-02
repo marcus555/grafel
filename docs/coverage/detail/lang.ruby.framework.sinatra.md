@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_ruby_producer.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/ruby/routes.go`<br>`internal/custom/ruby/routes_test.go`<br>`internal/custom/ruby/sinatra_deep.go`<br>`internal/custom/ruby/sinatra_deep_test.go` | Extracts all Sinatra verb blocks (get/post/put/patch/delete/head/options) with exact route path and HTTP method. Covers class-based Sinatra::Base/Sinatra::Application and standalone apps (require 'sinatra'). Named params /:id, splat /*path, regex routes all emitted. Full parity with TS/JS Express route_extraction. Closes #3344. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | Handler names extracted from RESTinio router calls; partial = regex |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | Paths from router->http_get/post/etc and add_handler; partial = regex heuristic |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

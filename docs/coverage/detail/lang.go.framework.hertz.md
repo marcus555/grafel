@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | Trailing-arg handler attribution on each verb route (skips inline middleware); fixture-proven. |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | — |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

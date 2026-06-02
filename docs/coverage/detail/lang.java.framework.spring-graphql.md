@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-06-02` | — | `internal/custom/java/patterns_dispatch.go`<br>`internal/custom/java/spring_graphql.go` | Each endpoint emits handler_name=<Controller>.<method> + resolver_method and a HANDLES edge endpoint to resolver SCOPE.Operation, preserved under name=/field= rename (field=allUsers, resolver_method=usersAlias). Asserted in TestSpringGraphQL_QueryMapping/_NameOverride. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | backfill:dictionary-completeness | `internal/custom/java/patterns_dispatch.go`<br>`internal/custom/java/spring_graphql.go` | Operation paths /graphql/<Operation>/<field> derived from annotation; @SchemaMapping(typeName=non-root) field resolvers correctly skipped. PARTIAL: file-local annotation-driven; SDL-only fields and custom spring.graphql.path mount not read. Asserted _SchemaMappingExplicitRoot. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

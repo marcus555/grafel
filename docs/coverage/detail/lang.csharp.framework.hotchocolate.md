@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-06-02` | 3617 | `internal/engine/http_endpoint_hotchocolate.go`<br>`internal/engine/http_endpoint_hotchocolate_test.go` | Each endpoint carries source_handler=SCOPE.Operation:<Class>.<Method> (same naming as the C# extractor buildOperation), which ResolveHTTPEndpointHandlers rebinds to the resolver method — HANDLES edge endpoint->method. Value-asserting tests assert source_handler=SCOPE.Operation:Query.GetUser / Mutation.CreateUser / UserQueries.GetUserByEmail. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3617 | `internal/engine/http_endpoint_hotchocolate.go`<br>`internal/engine/http_endpoint_hotchocolate_test.go` | Root-type registration recovered from marker attributes, [ExtendObjectType] extensions, or SAME-FILE fluent .AddQueryType<T>(). PARTIAL (honest): a resolver class registered fluently in a DIFFERENT file than its declaration, descriptor.Field() runtime fluent field definitions, and SDL schema-first .graphqls binding are not resolved. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

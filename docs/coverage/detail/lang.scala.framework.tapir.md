@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/tapir.go` | custom_scala_frameworks: tapir .serverLogic/.serverLogicSuccess/Pure(handler) bound to the endpoint, stamped as handler + handler_attribution prop. Value-asserting test asserts handler=handleGetUser/createUserHandler. File-local (handler def may live cross-file). |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/tapir.go` | custom_scala_frameworks: tapir endpoint-DSL. Each endpoint(.get/.post/.method(Method.X)).in("seg" / path[T]("name")).in(query[T]) chain parsed into one http_route with http_method + canonical http_path ({name} from path[T], query params separate). Value-asserting tests TestTapirEndpointRouteAndDTOs/PostRequestBodyDTO/MethodExplicitForm/NamedPathParam pin verb+path. File-local. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

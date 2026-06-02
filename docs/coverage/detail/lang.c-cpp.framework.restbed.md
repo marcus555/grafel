@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | Handler names from set_method_handler third arg; partial = regex |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

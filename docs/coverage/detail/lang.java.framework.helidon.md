@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | 🟢 `partial` | `2026-05-29` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | JAX-RS method-level handler attribution via SCOPE.Operation entity; same pass as Quarkus/Jakarta EE |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | JAX-RS @Path annotation route extraction; class+method composition; MicroProfile flavor same as Quarkus |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | — `not_applicable` | — | — | — | ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
 | Route extraction | — `not_applicable` | — | — | — | ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

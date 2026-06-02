@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | Handler names extracted from ENDPOINT macro third arg; partial = regex heuristic |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

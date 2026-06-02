@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/swift/vapor.go` | vapor.go emits RouteCollection controller entities (SCOPE.Component/controller) and links routes to file context; full handler-to-function attribution requires resolving trailing closures back to named handler functions which is not yet implemented. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/swift/vapor.go` | vapor.go custom extractor handles app.get/post/put/delete/patch/options route registrations, RouteCollection conformances, and .grouped prefix declarations; emits SCOPE.Operation/endpoint with http_method and route_path properties; proven by TestVaporRoute and TestVaporRouteCollection. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-31` | — | `internal/engine/http_endpoint_scala_client.go`<br>`internal/engine/http_endpoint_scala_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | FETCHES edge attributes each outbound sttp call to the enclosing def (nearest preceding def <name>). Value-asserted via requireFetches in http_endpoint_scala_client_test.go. |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

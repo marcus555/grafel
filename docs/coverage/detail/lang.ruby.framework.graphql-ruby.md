@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-06-02` | 3621 | `internal/engine/http_endpoint_graphql_ruby.go`<br>`internal/engine/http_endpoint_graphql_ruby_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Each `field :name` is attributed to its same-name resolver method `def name` on the type class via source_handler=SCOPE.Operation:<field> plus a same-file handler_file hint; the resolver post-pass rebinds it to a HANDLES edge against the extracted Ruby method entity. Value-asserted in the tests. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3621 | `internal/engine/http_endpoint_graphql_ruby.go`<br>`internal/engine/http_endpoint_graphql_ruby_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Operation endpoints synthesised from `field :name` declarations on the convention-named root type classes. Honest-partial: keys on the conventional QueryType/MutationType/SubscriptionType class names rather than the schema's query(...)/mutation(...) registration, and resolves the default same-name `def` resolver — does not yet follow `resolver: SomeResolver` / `method:` field overrides or dynamically generated fields. |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

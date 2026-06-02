@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_php_producer.go`<br>`internal/engine/http_endpoint_php_producer_lrroute_test.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/template_render.go`<br>`internal/extractors/php/template_render.go`<br>`internal/extractors/php/template_render_test.go` | view('users.list') / View::make() -> RENDERS SCOPE.Template; dot-notation normalized to slash; dynamic names dropped (#3628) |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/drogon_routes.go` | — |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/drogon_routes.go` | Path strings extracted from ADD_METHOD_TO/METHOD_ADD/registerHandler; partial = regex heuristic |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

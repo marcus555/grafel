@@ -21,6 +21,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/spring_routes.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_routes.go`<br>`internal/engine/spring_routes.go` | Annotation-driven route composition scanned (@RequestMapping/@GetMapping/etc.); path-variable expression resolution not implemented |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/template_render.go`<br>`internal/extractors/java/template_render.go`<br>`internal/extractors/java/template_render_test.go` | @Controller method String/ModelAndView view name -> RENDERS SCOPE.Template; @RestController/@ResponseBody skipped (REST not MVC); dynamic names dropped (#3628) |
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
