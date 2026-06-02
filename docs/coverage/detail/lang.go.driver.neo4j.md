@@ -25,7 +25,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Association extraction | — `not_applicable` | — | — | — | NoSQL/graph driver: no ORM association metadata. |
 | Foreign key extraction | — `not_applicable` | — | — | — | No foreign-key concept in this driver. |
 | Lazy loading recognition | — `not_applicable` | — | — | — | No lazy/eager loading; queries are explicit. |
-| Relationship extraction | 🟢 `partial` | `2026-05-29` | 3214 | `internal/custom/golang/neo4j.go`<br>`internal/custom/golang/nosql_drivers_test.go`<br>`internal/engine/rules/go/orms/neo4j.yaml` | — |
+| Relationship extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/golang/neo4j.go`<br>`internal/custom/golang/neo4j_test.go`<br>`internal/custom/golang/nosql_drivers_test.go`<br>`internal/engine/rules/go/orms/neo4j.yaml` | Cypher relationship patterns promoted to GRAPH_RELATES edges between node-label entities (reCypherTriple); statically-resolvable topology full, dynamic/untyped relations honest-partial. Completes Neo4j GRAPH_RELATES set java(#3663)+py/jsts(#3670)+go(#3612); reverses #3635 downgrade. |
 
 ### Queries
 
