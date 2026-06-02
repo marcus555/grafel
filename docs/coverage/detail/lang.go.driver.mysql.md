@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3644) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/extractors/cross/dbmap/extractor_test.go`<br>`internal/extractors/cross/dbmap/orms.go` | Raw db.Query/Exec("…") SQL resolves table topology: dbmap.detectGoSQLDriver (import-gated on github.com/go-sql-driver/mysql, lib/pq, go-sqlite3, jackc/pgx, jmoiron/sqlx) parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb. Value-asserting tests TestGoSQLDriverLibPQSelect + TestGoSQLDriverNoDoubleEmitWithDatabaseSQL (#3644). |
 
 ### Migrations
 

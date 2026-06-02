@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | 3214 | `internal/custom/golang/sql_drivers.go`<br>`internal/custom/golang/sql_drivers_test.go` | Exec/Query/QueryRow/Get/Select/NamedExec call sites + SQL literal content captured; cannot bind a call site to a specific model without data-flow analysis |
+| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/custom/golang/sql_drivers.go`<br>`internal/custom/golang/sql_drivers_test.go`<br>`internal/extractors/cross/dbmap/extractor_test.go`<br>`internal/extractors/cross/dbmap/orms.go` | Exec/Query/QueryRow/Get/Select/NamedExec call sites captured; raw SQL literal table topology now resolved by dbmap.detectGoSQLDriver (import-gated on github.com/jmoiron/sqlx) which parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb (#3644). |
 
 ### Migrations
 

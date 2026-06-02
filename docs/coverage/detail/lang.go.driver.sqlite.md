@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-30` | 3214 | `internal/custom/golang/sql_drivers.go`<br>`internal/custom/golang/sql_drivers_test.go`<br>`internal/engine/rules/go/orms/sqlite_go.yaml` | — |
+| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/custom/golang/sql_drivers.go`<br>`internal/custom/golang/sql_drivers_test.go`<br>`internal/engine/rules/go/orms/sqlite_go.yaml`<br>`internal/extractors/cross/dbmap/orms.go` | Raw db.Query/Exec("…") SQL resolves table topology: dbmap.detectGoSQLDriver (import-gated on github.com/mattn/go-sqlite3) parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb (#3644). |
 
 ### Migrations
 

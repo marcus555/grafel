@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/sqlite_py.yaml`<br>`internal/extractors/python/raw_sql_db_calls.go` | — |
+| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/rules/python/orms/sqlite_py.yaml`<br>`internal/extractors/cross/dbmap/orms.go`<br>`internal/extractors/python/raw_sql_db_calls.go` | Raw cursor.execute("…") SQL now resolves table topology: dbmap.detectPyDBAPI (import-gated on sqlite3/aiosqlite) parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb. Value-asserting tests TestPyDBAPISqlite3SelectReadsUsers + negative TestPyDBAPIDynamicSQLNoFabricatedTable (#3644). |
 
 ### Migrations
 

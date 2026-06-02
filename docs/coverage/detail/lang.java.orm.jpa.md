@@ -31,7 +31,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3096) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_other.go`<br>`internal/engine/orm_queries_test.go` | Engine pass scanJavaORM handles EntityManager.find/persist/remove/merge and Spring Data repository call patterns (findByX, save, etc.); emits QUERIES edges with orm=jpa or orm=spring_data; inline JPQL string content and @NamedQuery body text not parsed |
+| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3096) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_other.go`<br>`internal/engine/orm_queries_test.go`<br>`internal/extractors/cross/dbmap/extractor_test.go`<br>`internal/extractors/cross/dbmap/orms.go` | Engine pass scanJavaORM handles EntityManager.find/persist/remove/merge and Spring Data repository call patterns; emits QUERIES edges with orm=jpa or orm=spring_data. Plain JDBC raw SQL (Statement.executeQuery/executeUpdate("…")) table topology now resolved by dbmap.detectJDBC (import-gated on java.sql/javax.sql) which parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb; value-asserting tests TestJDBCExecuteQueryReadsTable + TestJDBCJoinYieldsBothTables (#3644). Inline JPQL string content still unparsed for engine QUERIES edges. |
 
 ### Migrations
 
