@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | — `not_applicable` | — | — | — | Javalin has no transaction management (see lang.java.framework.javalin). |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | — `not_applicable` | — | — | — | Javalin has no transaction propagation model. |
 | Transaction rollback rules | — `not_applicable` | — | — | — | Javalin has no transaction rollback rules. |
 

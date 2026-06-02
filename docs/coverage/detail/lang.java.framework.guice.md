@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | 🔴 `missing` | — | 3699 | — | — |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | 🔴 `missing` | — | 3699 | — | — |
 | Transaction rollback rules | 🔴 `missing` | — | 3699 | — | — |
 

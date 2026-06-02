@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | @Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) captured into propagation property; isolation + readOnly also captured |
 | Transaction rollback rules | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/transactional.go` | rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties |
 
