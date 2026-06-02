@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | 🔴 `missing` | — | — | — | — |
 | Metric extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/event_bus_edges.go` | — |
-| Trace extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/event_flow.go`<br>`internal/engine/process_flow.go` | — |
+| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3689) | `internal/extractors/golang/tracing.go`<br>`internal/extractors/java/tracing.go`<br>`internal/extractors/javascript/tracing.go`<br>`internal/extractors/python/tracing.go` | OpenTelemetry span-creation sites: emits INSTRUMENTS edges (enclosing op -> span:<name> stub) for the dominant span-start idioms in Python (start_as_current_span/start_span + decorator), Go (tracer.Start), JS/TS (startSpan/startActiveSpan), Java (@WithSpan + spanBuilder().startSpan()). Honest-partial: dynamic/variable span names emit traced=true without a fabricated name; non-OTel vendors and other langs not yet covered. |
 
 ## Provenance
 

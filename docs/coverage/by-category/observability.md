@@ -13,6 +13,6 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Grafana Loki](../detail/infra.observability.grafana-loki.md) | 🔴 | — | — | 🔴 | |
 | [multi](../by-language/multi.md) | [Honeycomb](../detail/infra.observability.honeycomb.md) | 🔴 | 🔴 | 🔴 | 🔴 | |
 | [multi](../by-language/multi.md) | [New Relic](../detail/infra.observability.newrelic.md) | 🔴 | 🔴 | 🔴 | 🔴 | |
-| [multi](../by-language/multi.md) | [OpenTelemetry (OTEL)](../detail/infra.observability.opentelemetry.md) | 🔴 | 🟢 | ✅ | 🔴 | |
+| [multi](../by-language/multi.md) | [OpenTelemetry (OTEL)](../detail/infra.observability.opentelemetry.md) | 🔴 | 🟢 | 🟢 | 🔴 | |
 | [multi](../by-language/multi.md) | [Prometheus](../detail/infra.observability.prometheus.md) | — | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [Sentry](../detail/infra.observability.sentry.md) | 🔴 | 🔴 | 🔴 | 🔴 | |
