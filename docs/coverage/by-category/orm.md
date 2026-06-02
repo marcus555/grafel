@@ -88,7 +88,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [JS/TS](../by-language/jsts.md) | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | ✅ 1/1 | |
-| [JS/TS](../by-language/jsts.md) | [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | ✅ 1/1 | |
+| [JS/TS](../by-language/jsts.md) | [neo4j-driver (JS) / neogma OGM](../detail/lang.jsts.driver.neo4j.md) | 🟢 4/4 | |
 | [JS/TS](../by-language/jsts.md) | [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ✅ 1/1 | |
 | [JS/TS](../by-language/jsts.md) | [supabase-js](../detail/lang.jsts.driver.supabase.md) | ✅ 1/1 | |
 | [kotlin](../by-language/kotlin.md) | [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟢 7/7 | |
@@ -125,7 +125,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [python](../by-language/python.md) | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🔴 0/1 | |
 | [python](../by-language/python.md) | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🔴 0/1 | |
 | [python](../by-language/python.md) | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🔴 0/1 | |
-| [python](../by-language/python.md) | [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | 🔴 0/1 | |
+| [python](../by-language/python.md) | [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/4 | |
 | [python](../by-language/python.md) | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
 | [python](../by-language/python.md) | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |

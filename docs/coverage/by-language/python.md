@@ -101,7 +101,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🔴 0/1 | |
 | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🔴 0/1 | |
 | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🔴 0/1 | |
-| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | 🔴 0/1 | |
+| [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/4 | |
 | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
 | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |

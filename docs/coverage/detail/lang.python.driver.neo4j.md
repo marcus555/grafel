@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.python.driver.neo4j` — neo4j (Python driver)
+# `lang.python.driver.neo4j` — neo4j (Python driver) / neomodel OGM
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | — `not_applicable` | — | — | — | NoSQL driver — no relational schema model |
+| Schema extraction | 🟢 `partial` | `2026-06-02` | 3609 | `internal/custom/python/neo4j_neomodel.go`<br>`internal/custom/python/neo4j_neomodel_test.go` | neomodel OGM (not just the raw driver): each StructuredNode subclass is extracted as a SCOPE.Schema/node (the graph node label) and each *Property() attribute as a SCOPE.Schema/property. Regex over class bodies; partial (no inheritance/mixin StructuredNode resolution). |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
-| Foreign key extraction | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
-| Lazy loading recognition | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
-| Relationship extraction | — `not_applicable` | — | — | — | raw driver — no ORM relationship model |
+| Association extraction | 🟢 `partial` | — | 3609 | `internal/custom/python/neo4j_neomodel.go` | neomodel RelationshipTo/RelationshipFrom attributes are extracted as SCOPE.Component/relationship entities carrying relation_type, direction, and target_node. |
+| Foreign key extraction | — `not_applicable` | — | — | — | graph DB — no foreign-key concept |
+| Lazy loading recognition | — `not_applicable` | — | — | — | graph DB — no lazy-loading concept |
+| Relationship extraction | ✅ `full` | `2026-06-02` | 3609 | `internal/custom/python/neo4j_neomodel.go`<br>`internal/custom/python/neo4j_neomodel_test.go` | neomodel RelationshipTo/RelationshipFrom('Target','REL_TYPE') fields are extracted AND emitted as traversable GRAPH_RELATES graph-schema edges owner-node -> target-node (mirrors the Java SDN template #3663 / JOINS_COLLECTION for graph DBs); the domain graph topology is a navigable subgraph rather than opaque string props. Full for same-file StructuredNode targets (value-asserting test TestNeomodelGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-> Movie; RelationshipFrom -> INCOMING). Cross-file target labels are honest-partial (kept as target_node props only). Reverses the #3635 datastore-pass downgrade for this OGM. |
 
 ### Queries
 

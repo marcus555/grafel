@@ -142,7 +142,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |
 | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ✅ 1/1 | |
 | [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | ✅ 1/1 | |
-| [neo4j-driver (JS)](../detail/lang.jsts.driver.neo4j.md) | ✅ 1/1 | |
+| [neo4j-driver (JS) / neogma OGM](../detail/lang.jsts.driver.neo4j.md) | 🟢 4/4 | |
 | [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ✅ 1/1 | |
 | [supabase-js](../detail/lang.jsts.driver.supabase.md) | ✅ 1/1 | |
 

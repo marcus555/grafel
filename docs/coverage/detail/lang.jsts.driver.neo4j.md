@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.jsts.driver.neo4j` — neo4j-driver (JS)
+# `lang.jsts.driver.neo4j` — neo4j-driver (JS) / neogma OGM
 
 Auto-generated. Back to [summary](../summary.md).
 
@@ -16,16 +16,16 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
+| Schema extraction | 🟢 `partial` | `2026-06-02` | 3610 | `internal/custom/javascript/neogma.go`<br>`internal/custom/javascript/neogma_test.go` | neogma OGM (not just the raw driver): each ModelFactory({ label, schema, relationships }) call is extracted as a SCOPE.Schema/node keyed on its Neo4j `label`. Regex over the balanced config object; partial (schema field types not individually emitted). |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
-| Foreign key extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
-| Lazy loading recognition | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
-| Relationship extraction | — `not_applicable` | — | 3069 | — | Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069. |
+| Association extraction | 🟢 `partial` | — | 3610 | `internal/custom/javascript/neogma.go` | neogma relationships.<key> entries are extracted as SCOPE.Component/relationship entities carrying relation_type, direction, and target_model/target_node. |
+| Foreign key extraction | — `not_applicable` | — | — | — | graph DB — no foreign-key concept |
+| Lazy loading recognition | — `not_applicable` | — | — | — | graph DB — no lazy-loading concept |
+| Relationship extraction | ✅ `full` | `2026-06-02` | 3610 | `internal/custom/javascript/neogma.go`<br>`internal/custom/javascript/neogma_test.go` | neogma ModelFactory relationships ({ model: Target, name: 'REL_TYPE', direction: 'out'|'in' }) are extracted AND emitted as traversable GRAPH_RELATES graph-schema edges owner-node -> target-node (mirrors the Java SDN template #3663 / JOINS_COLLECTION for graph DBs); the domain graph topology is a navigable subgraph rather than opaque string props. Full for same-file ModelFactory `model:` bindings (value-asserting test TestNeogmaGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-> Movie; direction 'in' -> INCOMING). Cross-file model references are honest-partial (kept as target_model props only). Reverses the #3635 datastore-pass downgrade for this OGM. |
 
 ### Queries
 
