@@ -230,6 +230,186 @@ def banner(self):
 	}
 }
 
+// Split.io: client.getTreatment("exp-pricing") → feature:exp-pricing,
+// attributed to the enclosing function, SDK subtype "split".
+func TestFeatureFlag_Split_getTreatment(t *testing.T) {
+	src := `
+function pricing() {
+  const t = client.getTreatment("exp-pricing");
+  return t === "on" ? newPrice() : oldPrice();
+}
+`
+	flags, edges := runFlagPass("javascript", "pricing.js", src)
+	flag, ok := findFlag(flags, "exp-pricing")
+	if !ok {
+		t.Fatalf("expected feature:exp-pricing entity, got %v", flags)
+	}
+	if flag.ID != "feature:exp-pricing" {
+		t.Errorf("flag ID = %q, want feature:exp-pricing", flag.ID)
+	}
+	if flag.Subtype != "split" {
+		t.Errorf("flag SDK = %q, want split", flag.Subtype)
+	}
+	g, ok := findGate(edges, "exp-pricing")
+	if !ok {
+		t.Fatalf("expected GATED_BY for exp-pricing, got %v", edges)
+	}
+	if g.From != "Function:pricing" || g.To != "feature:exp-pricing" {
+		t.Errorf("edge = %+v, want Function:pricing -> feature:exp-pricing", g)
+	}
+	if g.SDK != "split" {
+		t.Errorf("GATED_BY sdk = %q, want split", g.SDK)
+	}
+}
+
+// Split.io getTreatmentWithConfig is part of the same treatment family.
+func TestFeatureFlag_Split_getTreatmentWithConfig(t *testing.T) {
+	src := `
+function home() {
+  const r = splitClient.getTreatmentWithConfig('home-banner', attrs);
+  return r.treatment;
+}
+`
+	flags, edges := runFlagPass("typescript", "home.ts", src)
+	if _, ok := findFlag(flags, "home-banner"); !ok {
+		t.Fatalf("expected feature:home-banner entity, got %v", flags)
+	}
+	g, ok := findGate(edges, "home-banner")
+	if !ok || g.From != "Function:home" || g.To != "feature:home-banner" {
+		t.Fatalf("edge = %+v ok=%v, want Function:home -> feature:home-banner", g, ok)
+	}
+}
+
+// Unleash React proxy hook: useFlag("beta-ui") → feature:beta-ui, SDK subtype
+// "unleash-react".
+func TestFeatureFlag_UnleashReact_useFlag(t *testing.T) {
+	src := `
+function Nav() {
+  const beta = useFlag("beta-ui");
+  return beta ? <NewNav/> : <OldNav/>;
+}
+`
+	flags, edges := runFlagPass("typescript", "Nav.tsx", src)
+	flag, ok := findFlag(flags, "beta-ui")
+	if !ok {
+		t.Fatalf("expected feature:beta-ui entity, got %v", flags)
+	}
+	if flag.Subtype != "unleash-react" {
+		t.Errorf("flag SDK = %q, want unleash-react", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta-ui")
+	if !ok || g.From != "Function:Nav" || g.To != "feature:beta-ui" {
+		t.Fatalf("edge = %+v ok=%v, want Function:Nav -> feature:beta-ui", g, ok)
+	}
+}
+
+// Generic custom wrapper: getFlag("legacy-import") → feature:legacy-import,
+// SDK subtype "custom".
+func TestFeatureFlag_Custom_getFlag(t *testing.T) {
+	src := `
+function importer() {
+  if (flags.getFlag("legacy-import")) {
+    return legacyImport();
+  }
+}
+`
+	flags, edges := runFlagPass("javascript", "importer.js", src)
+	flag, ok := findFlag(flags, "legacy-import")
+	if !ok {
+		t.Fatalf("expected feature:legacy-import entity, got %v", flags)
+	}
+	if flag.Subtype != "custom" {
+		t.Errorf("flag SDK = %q, want custom", flag.Subtype)
+	}
+	if g, ok := findGate(edges, "legacy-import"); !ok || g.From != "Function:importer" {
+		t.Fatalf("edge = %+v ok=%v, want Function:importer", g, ok)
+	}
+}
+
+// Generic custom wrapper, snake_case Python: feature_enabled("new-report").
+func TestFeatureFlag_Custom_feature_enabled_python(t *testing.T) {
+	src := `
+def report(user):
+    if feature_enabled("new-report"):
+        return new_report(user)
+    return old_report(user)
+`
+	flags, edges := runFlagPass("python", "report.py", src)
+	if _, ok := findFlag(flags, "new-report"); !ok {
+		t.Fatalf("expected feature:new-report entity, got %v", flags)
+	}
+	g, ok := findGate(edges, "new-report")
+	if !ok || g.From != "Function:report" || g.To != "feature:new-report" {
+		t.Fatalf("edge = %+v ok=%v, want Function:report -> feature:new-report", g, ok)
+	}
+}
+
+// CONVERGENCE: Split.io and LaunchDarkly checking the SAME key string in two
+// functions converge on ONE flag node (cross-provider key identity), with two
+// distinct GATED_BY edges. The first provider to detect the key wins the
+// Subtype, but the node id `feature:<key>` is shared.
+func TestFeatureFlag_Convergence_CrossProvider_SameKey(t *testing.T) {
+	src := `
+function a() {
+  return client.variation("shared-key", user, false);
+}
+function b() {
+  return client.getTreatment("shared-key");
+}
+`
+	flags, edges := runFlagPass("javascript", "shared.js", src)
+	n := 0
+	for _, f := range flags {
+		if f.Name == "shared-key" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("expected exactly 1 shared-key node (cross-provider convergence), got %d", n)
+	}
+	froms := map[string]bool{}
+	for _, e := range edges {
+		if e.Flag == "shared-key" && e.To != "feature:shared-key" {
+			t.Errorf("convergence: edge To = %q, want feature:shared-key", e.To)
+		}
+		if e.Flag == "shared-key" {
+			froms[e.From] = true
+		}
+	}
+	if !froms["Function:a"] || !froms["Function:b"] {
+		t.Errorf("expected GATED_BY from both a and b, got %v", froms)
+	}
+}
+
+// NEGATIVE: Split.io getTreatment with a dynamic (non-literal) key must NOT
+// fabricate a flag entity or edge.
+func TestFeatureFlag_Split_DynamicKey_NoFabrication(t *testing.T) {
+	src := `
+function gate(splitName) {
+  return client.getTreatment(splitName);
+}
+`
+	flags, edges := runFlagPass("javascript", "gate.js", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("dynamic Split key should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// NEGATIVE: a bare `flags['x']` subscript on an unrelated object must NOT be
+// treated as a feature-flag check — it is too common in ordinary code and the
+// pass deliberately does not match subscript access.
+func TestFeatureFlag_Subscript_NotAFlag(t *testing.T) {
+	src := `
+function f(flags) {
+  return flags['enabled'] && flags['x-value'];
+}
+`
+	flags, edges := runFlagPass("javascript", "sub.js", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("bare subscript should yield no flag output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
 // NEGATIVE: a dynamic flag key (bare identifier argument) must NOT fabricate
 // a flag entity or edge.
 func TestFeatureFlag_DynamicKey_NoFabrication(t *testing.T) {
