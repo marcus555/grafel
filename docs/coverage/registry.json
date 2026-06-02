@@ -63940,6 +63940,20 @@
       }
     },
     {
+      "id": "msg.apscheduler",
+      "category": "message_broker",
+      "language": "python",
+      "label": "APScheduler (Python advanced scheduler)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "#3628 area: scheduler.add_job(fn, 'cron'/'interval', ...) and the @scheduler.scheduled_job('cron'|'interval', hour=.., minutes=..) decorator form both emit a SCOPE.ScheduledJob (apscheduler:\u003cpath\u003e:\u003chandler\u003e) carrying the trigger + cron/interval kwargs as schedule, with a TRIGGERS edge to the handler function. Honest-partial: dynamic handler refs and date-trigger args not fully normalized."
+        }
+      }
+    },
+    {
       "id": "msg.broker.amqp",
       "category": "message_broker",
       "language": "multi",
@@ -64401,6 +64415,20 @@
       }
     },
     {
+      "id": "msg.hangfire-recurring",
+      "category": "message_broker",
+      "language": "csharp",
+      "label": "Hangfire RecurringJob (.NET scheduled jobs)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "#3628 area: RecurringJob.AddOrUpdate(\"id\", () =\u003e Type.Method(), SCHEDULE) and the generic AddOrUpdate\u003cT\u003e(\"id\", x =\u003e x.Method(), SCHEDULE) form emit a SCOPE.ScheduledJob (hangfire_recurring:\u003cid\u003e) carrying the schedule (Cron.* factory or literal cron string) with a TRIGGERS edge to the handler method. Complements custom_csharp_hangfire which records a SCOPE.Pattern node but drops the schedule. Honest-partial: enqueue (BackgroundJob.Enqueue/Schedule) producer edges stay in the custom extractor; dynamic schedules not parsed."
+        }
+      }
+    },
+    {
       "id": "msg.kafka-streams",
       "category": "message_broker",
       "language": "multi",
@@ -64411,6 +64439,20 @@
         },
         "producer_extraction": {
           "status": "missing"
+        }
+      }
+    },
+    {
+      "id": "msg.node-schedule",
+      "category": "message_broker",
+      "language": "jsts",
+      "label": "node-schedule (Node scheduled jobs)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "#3628 area: schedule.scheduleJob('EXPR', handler) emits a SCOPE.ScheduledJob (node_schedule:\u003cpath\u003e:\u003cexpr\u003e) carrying the cron string as schedule, with a TRIGGERS edge to the named handler. Honest-partial: inline function literals and RecurrenceRule object rules yield the job node but no handler edge / no schedule string."
         }
       }
     },
@@ -64462,6 +64504,20 @@
           "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
           "issue": "3628",
           "notes": "epic #3628 jobs cross-link: producer ENQUEUES and consumer TRIGGERS both reference the same resque:\u003cJob\u003e SCOPE.ScheduledJob node, so a Resque.enqueue(Job) caller and the Job's self.perform join on one node (same shape as Sidekiq). Honest-partial: cross-file join requires the job class def to be indexed."
+        }
+      }
+    },
+    {
+      "id": "msg.rufus-scheduler",
+      "category": "message_broker",
+      "language": "ruby",
+      "label": "rufus-scheduler (Ruby in-process scheduler)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "#3628 area: scheduler.cron/every/interval/in/at 'EXPR' do ... end emits a SCOPE.ScheduledJob (rufus:\u003cpath\u003e:\u003cexpr\u003e) carrying '\u003ckind\u003e \u003cexpr\u003e' as schedule and a TRIGGERS edge to the first bare method call in the block body. Honest-partial: block-body handler is a heuristic first-call proxy; multi-statement blocks pick the first call."
         }
       }
     },
@@ -64574,6 +64630,20 @@
           "status": "partial",
           "cites": ["internal/engine/websocket_edges.go"],
           "verified_at": "2026-05-28"
+        }
+      }
+    },
+    {
+      "id": "msg.whenever",
+      "category": "message_broker",
+      "language": "ruby",
+      "label": "whenever (Ruby cron / config/schedule.rb)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "#3628 area: every \u003cinterval\u003e do runner/rake/command '...' end blocks in config/schedule.rb emit a SCOPE.ScheduledJob (whenever:\u003cpath\u003e:\u003cschedule\u003e) carrying the interval/cron as schedule and a TRIGGERS edge to the first runner/rake/command descriptor. Honest-partial: only config/schedule.rb files are scanned; multi-line job bodies use the first descriptor as handler proxy."
         }
       }
     },

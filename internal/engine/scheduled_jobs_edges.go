@@ -121,9 +121,16 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 		// Function:<callable> directly (mirroring Celery's TRIGGERS target
 		// convention). No synthetic queue node: the function is the rendezvous.
 		relationships = synthesizeRQEnqueueEdges(src, relationships)
+		// #3628 area: APScheduler decorator form
+		// `@scheduler.scheduled_job('cron', hour=2)` above a def. The add_job
+		// call form is handled by synthesizePyAPScheduler above; the decorator
+		// names the handler directly (the decorated def) and carries the trigger.
+		synthesizePyAPSchedulerDecorator(src, path, emitJob)
 	case "javascript", "typescript":
 		synthesizeNodeCron(src, path, emitJob)
 		synthesizeNodeBull(src, path, emitJob)
+		// #3628 area: node-schedule `schedule.scheduleJob('0 0 * * *', fn)`.
+		synthesizeNodeSchedule(src, path, emitJob)
 	case "java", "kotlin":
 		synthesizeJavaSpringScheduled(src, path, lang, emitJob)
 		synthesizeJavaQuartz(src, path, lang, emitJob)
@@ -145,6 +152,18 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 		// caller→job ENQUEUES edges. Same join shape as Sidekiq.
 		synthesizeRubyResque(src, path, emitJob)
 		relationships = synthesizeResqueEnqueueEdges(src, seenJob, relationships)
+		// #3628 area: whenever (config/schedule.rb `every 1.day do runner ... end`)
+		// and rufus-scheduler (`scheduler.cron '0 22 * * *' do ... end`).
+		synthesizeRubyWhenever(src, path, emitJob)
+		synthesizeRubyRufus(src, path, emitJob)
+	case "csharp":
+		// #3628 area: Hangfire recurring jobs
+		// `RecurringJob.AddOrUpdate("id", () => T.Method(), Cron.Daily)` and
+		// `RecurringJob.AddOrUpdate<T>("id", x => x.Method(), "0 2 * * *")`. The
+		// existing custom_csharp_hangfire extractor emits a SCOPE.Pattern node
+		// but drops the Cron schedule; here we emit the unified SCOPE.ScheduledJob
+		// node carrying the schedule + a TRIGGERS edge to the handler method.
+		synthesizeCSharpHangfireRecurring(src, path, emitJob)
 	}
 
 	// YAML-based detectors run regardless of `lang` because the language
@@ -1146,6 +1165,273 @@ func synthesizeGitHubActionsSchedule(
 		expr := strings.TrimSpace(m[1])
 		jobID := "gh_actions_schedule:" + path + ":" + expr
 		emitJob(jobID, jobName, expr, "github_actions_schedule", nil)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Python — APScheduler decorator form (#3628 area)
+// ---------------------------------------------------------------------------
+//
+// APScheduler also supports a decorator style that names the handler directly:
+//
+//	@scheduler.scheduled_job('cron', hour=2, minute=30)
+//	def nightly_cleanup():
+//	    ...
+//	@sched.scheduled_job('interval', minutes=5)
+//	def poll():
+//	    ...
+//
+// The decorated def IS the handler; the first positional arg is the trigger
+// type ('cron'/'interval'/'date') and the trailing kwargs refine the schedule.
+// This complements synthesizePyAPScheduler which handles the add_job(...) form.
+
+// pyAPSchedulerDecoratorRe matches `@<var>.scheduled_job('<trigger>', ...)`
+// immediately above a `def <name>(`. Group 1 = trigger type, group 2 = the
+// remainder of the decorator args (kwargs), group 3 = handler function name.
+var pyAPSchedulerDecoratorRe = regexp.MustCompile(`(?m)@\w+\.scheduled_job\s*\(\s*['"](\w+)['"]([^\n]*)\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+
+// pyAPSchedulerKwargRe captures both cron kwargs (singular: hour, minute) and
+// interval kwargs (plural: minutes, seconds, hours, weeks). Used by the
+// decorator form, whose 'interval' trigger uses the plural kwargs.
+var pyAPSchedulerKwargRe = regexp.MustCompile(`(?:hours?|minutes?|seconds?|days?|weeks?|day_of_week|month)\s*=\s*[^,)]+`)
+
+func synthesizePyAPSchedulerDecorator(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	if !strings.Contains(src, "scheduled_job") {
+		return
+	}
+	for _, m := range pyAPSchedulerDecoratorRe.FindAllStringSubmatch(src, -1) {
+		trigger := m[1]
+		argsTail := m[2]
+		handler := m[3]
+		schedule := trigger
+		// Collect cron/interval kwargs to form a human-readable schedule string.
+		var parts []string
+		for _, km := range pyAPSchedulerKwargRe.FindAllString(argsTail, -1) {
+			parts = append(parts, strings.TrimSpace(km))
+		}
+		if len(parts) > 0 {
+			schedule = trigger + "(" + strings.Join(parts, ", ") + ")"
+		}
+		jobID := "apscheduler:" + path + ":" + handler
+		emitJob(jobID, handler, schedule, "apscheduler", map[string]string{
+			"trigger_type": trigger,
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Node — node-schedule (#3628 area)
+// ---------------------------------------------------------------------------
+//
+//	schedule.scheduleJob('0 0 * * *', function() { ... });
+//	schedule.scheduleJob('0 2 * * *', cleanup);
+//	sched.scheduleJob({ hour: 0 }, fn);   // object rule — schedule unknown
+//
+// The first arg is a cron-string (or a RecurrenceRule object), the second the
+// handler. We capture the string-literal cron form with its handler; object-rule
+// forms are honest-partial (schedule omitted) but still yield a job node when a
+// named handler is present.
+
+// nodeScheduleJobStrRe matches `<var>.scheduleJob('EXPR', handler)` where EXPR
+// is a string literal. Group 1 = cron expression, group 2 = handler (optional /
+// empty for an inline function literal).
+var nodeScheduleJobStrRe = regexp.MustCompile(`\.scheduleJob\s*\(\s*['"\x60]([^'"\x60\n\r]+)['"\x60]\s*,\s*(\w+)?`)
+
+func synthesizeNodeSchedule(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	if !strings.Contains(src, "scheduleJob") {
+		return
+	}
+	for _, m := range nodeScheduleJobStrRe.FindAllStringSubmatch(src, -1) {
+		expr := m[1]
+		handler := m[2]
+		// `function`/`async` indicate an inline function literal — anonymous.
+		if handler == "function" || handler == "async" {
+			handler = ""
+		}
+		jobID := "node_schedule:" + path + ":" + expr
+		emitJob(jobID, handler, expr, "node_schedule", nil)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ruby — whenever (config/schedule.rb) (#3628 area)
+// ---------------------------------------------------------------------------
+//
+// The `whenever` gem declares cron jobs in config/schedule.rb:
+//
+//	every 1.day, at: '4:30 am' do
+//	  runner 'CleanupJob.perform'
+//	  rake 'db:cleanup'
+//	  command 'backup.sh'
+//	end
+//	every '0 0 * * *' do
+//	  runner 'Report.generate'
+//	end
+//
+// The `every <interval> do` header is the schedule; the body's runner/rake/
+// command line is the handler. We capture the first job-defining line in each
+// block as the handler proxy.
+
+// reRubyWheneverEvery matches an `every <interval> do` header. Group 1 = the
+// interval/cron expression (everything between `every ` and the trailing `do`,
+// trimmed). Handles `every 1.day, at: '4:30 am' do` and `every '0 0 * * *' do`.
+var reRubyWheneverEvery = regexp.MustCompile(`(?m)^\s*every\s+(.+?)\s+do\b`)
+
+// reRubyWheneverJob matches the first runner/rake/command/script line that
+// names the work. Group 1 = job descriptor (string literal contents).
+var reRubyWheneverJob = regexp.MustCompile(`(?m)^\s*(?:runner|rake|command|script)\s+['"]([^'"]+)['"]`)
+
+func synthesizeRubyWhenever(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	// whenever schedules live in schedule.rb; guard on filename + `every` keyword
+	// so a generic Enumerable `every` in app code does not fabricate jobs.
+	if !strings.HasSuffix(path, "schedule.rb") {
+		return
+	}
+	if !strings.Contains(src, "every") {
+		return
+	}
+	headers := reRubyWheneverEvery.FindAllStringSubmatchIndex(src, -1)
+	for i, h := range headers {
+		schedule := strings.TrimSpace(src[h[2]:h[3]])
+		// Scope the handler search to this block (up to the next `every` header).
+		blockEnd := len(src)
+		if i+1 < len(headers) {
+			blockEnd = headers[i+1][0]
+		}
+		handler := ""
+		if jm := reRubyWheneverJob.FindStringSubmatch(src[h[1]:blockEnd]); len(jm) >= 2 {
+			handler = jm[1]
+		}
+		jobID := "whenever:" + path + ":" + schedule
+		emitJob(jobID, handler, schedule, "whenever", map[string]string{
+			"task_descriptor": handler,
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ruby — rufus-scheduler (#3628 area)
+// ---------------------------------------------------------------------------
+//
+//	scheduler.cron '0 22 * * *' do
+//	  nightly_backup
+//	end
+//	scheduler.every '5m' do ... end
+//	scheduler.interval '10s' do ... end
+//	scheduler.in '10d' do ... end
+//
+// The first string-literal arg is the schedule; the block body's first bare
+// method call is the handler proxy.
+
+// reRubyRufusSchedule matches a rufus `scheduler.<kind> 'EXPR' do` header.
+// Group 1 = kind (cron/every/interval/in/at), group 2 = schedule expression.
+var reRubyRufusSchedule = regexp.MustCompile(`(?m)\bscheduler\.(cron|every|interval|in|at)\s+['"]([^'"]+)['"]\s*(?:,[^\n]*)?\s+do\b`)
+
+// reRubyRufusHandler matches the first bare identifier call on the line after a
+// rufus header. Group 1 = method name. Kept simple: a leading-word call.
+var reRubyRufusHandler = regexp.MustCompile(`(?m)^\s*([a-z_][\w]*)\s*(?:\(|$)`)
+
+func synthesizeRubyRufus(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	if !strings.Contains(src, "scheduler.") {
+		return
+	}
+	headers := reRubyRufusSchedule.FindAllStringSubmatchIndex(src, -1)
+	for i, h := range headers {
+		kind := src[h[2]:h[3]]
+		expr := src[h[4]:h[5]]
+		schedule := kind + " " + expr
+		// Look at the block body (up to the next rufus header) for a handler.
+		blockEnd := len(src)
+		if i+1 < len(headers) {
+			blockEnd = headers[i+1][0]
+		}
+		handler := ""
+		if hm := reRubyRufusHandler.FindStringSubmatch(src[h[1]:blockEnd]); len(hm) >= 2 {
+			cand := hm[1]
+			// Skip Ruby keywords that can start a block body.
+			if cand != "end" && cand != "do" && cand != "puts" {
+				handler = cand
+			}
+		}
+		jobID := "rufus:" + path + ":" + expr
+		emitJob(jobID, handler, schedule, "rufus_scheduler", map[string]string{
+			"trigger_type": kind,
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// .NET — Hangfire RecurringJob (#3628 area)
+// ---------------------------------------------------------------------------
+//
+//	RecurringJob.AddOrUpdate("daily-report", () => Reports.Generate(), Cron.Daily);
+//	RecurringJob.AddOrUpdate("purge", () => Jobs.Purge(), "0 2 * * *");
+//	RecurringJob.AddOrUpdate<IEmailSender>("welcome", x => x.Send(), Cron.Hourly);
+//
+// The unified SCOPE.ScheduledJob node carries the schedule (the `Cron.*` factory
+// call OR a literal cron string) and TRIGGERS the handler method. This augments
+// the custom_csharp_hangfire extractor, which records a SCOPE.Pattern node but
+// drops the schedule expression.
+
+// reCSharpHangfireRecurringStatic matches the static-lambda recurring form:
+//
+//	RecurringJob.AddOrUpdate("id", () => Type.Method(...), SCHEDULE)
+//
+// Group 1 = job id, group 2 = type, group 3 = method, group 4 = schedule (the
+// trailing arg up to the closing paren).
+var reCSharpHangfireRecurringStatic = regexp.MustCompile(
+	`RecurringJob\.AddOrUpdate\s*\(\s*["']([^"']+)["']\s*,\s*\(\s*\)\s*=>\s*\w+\.(\w+)\s*\([^)]*\)\s*,\s*([^)\n;]+)\)`,
+)
+
+// reCSharpHangfireRecurringTyped matches the typed-lambda recurring form:
+//
+//	RecurringJob.AddOrUpdate<IType>("id", x => x.Method(...), SCHEDULE)
+//
+// Group 1 = job id, group 2 = method, group 3 = schedule.
+var reCSharpHangfireRecurringTyped = regexp.MustCompile(
+	`RecurringJob\.AddOrUpdate\s*<\s*\w+\s*>\s*\(\s*["']([^"']+)["']\s*,\s*\w+\s*=>\s*\w+\.(\w+)\s*\([^)]*\)\s*,\s*([^)\n;]+)\)`,
+)
+
+// normalizeHangfireSchedule trims the trailing schedule arg. `Cron.Daily()` and
+// `Cron.Daily` are normalized identically (the trailing `()` is dropped).
+func normalizeHangfireSchedule(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimSuffix(s, "()")
+	return strings.TrimSpace(s)
+}
+
+func synthesizeCSharpHangfireRecurring(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	if !strings.Contains(src, "RecurringJob") {
+		return
+	}
+	for _, m := range reCSharpHangfireRecurringStatic.FindAllStringSubmatch(src, -1) {
+		jobName, method, schedule := m[1], m[2], normalizeHangfireSchedule(m[3])
+		jobID := "hangfire_recurring:" + jobName
+		emitJob(jobID, method, schedule, "hangfire", map[string]string{
+			"job_name": jobName,
+		})
+	}
+	for _, m := range reCSharpHangfireRecurringTyped.FindAllStringSubmatch(src, -1) {
+		jobName, method, schedule := m[1], m[2], normalizeHangfireSchedule(m[3])
+		jobID := "hangfire_recurring:" + jobName
+		emitJob(jobID, method, schedule, "hangfire", map[string]string{
+			"job_name": jobName,
+		})
 	}
 }
 

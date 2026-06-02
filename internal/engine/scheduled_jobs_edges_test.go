@@ -722,3 +722,240 @@ def dispatch(name):
 		t.Errorf("expected no rq ENQUEUES edge for dynamic callable, got %v", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #3628 area — breadth additions: node-schedule, APScheduler decorator,
+// whenever, rufus-scheduler, Hangfire RecurringJob.
+// ---------------------------------------------------------------------------
+
+// triggersEdgeFor returns the TRIGGERS edge whose FromID names jobID (suffix
+// match on the canonical "SCOPE.ScheduledJob:<jobID>" FromID), or nil.
+func triggersEdgeFor(rels []types.RelationshipRecord, jobID string) *types.RelationshipRecord {
+	want := scheduledJobKind + ":" + jobID
+	for i := range rels {
+		if rels[i].Kind == triggersEdgeKind && rels[i].FromID == want {
+			return &rels[i]
+		}
+	}
+	return nil
+}
+
+// jobWithSchedule returns the first ScheduledJob of framework whose schedule
+// property equals want, or nil.
+func jobWithSchedule(ents []types.EntityRecord, framework, want string) *types.EntityRecord {
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == scheduledJobKind && e.Properties["framework"] == framework &&
+			e.Properties["schedule"] == want {
+			return e
+		}
+	}
+	return nil
+}
+
+// Node — node-schedule: schedule.scheduleJob('0 2 * * *', cleanup) →
+// ScheduledJob(schedule='0 2 * * *') TRIGGERS cleanup.
+func TestScheduledJobs_NodeSchedule_StringCron(t *testing.T) {
+	src := `const schedule = require('node-schedule');
+schedule.scheduleJob('0 2 * * *', cleanup);
+`
+	ents, rels := runScheduledDetect(t, "javascript", "jobs.js", src)
+	job := jobWithSchedule(ents, "node_schedule", "0 2 * * *")
+	if job == nil {
+		t.Fatalf("expected node_schedule job with schedule='0 2 * * *', got %v",
+			scheduledJobsByFramework(ents, "node_schedule"))
+	}
+	if job.Properties["handler"] != "cleanup" {
+		t.Errorf("expected handler=cleanup, got %q", job.Properties["handler"])
+	}
+	if e := triggersEdgeFor(rels, "node_schedule:jobs.js:0 2 * * *"); e == nil {
+		t.Errorf("expected TRIGGERS edge to cleanup, got none in %v", triggersEdges(rels))
+	} else if e.ToID != "Function:cleanup" {
+		t.Errorf("expected TRIGGERS → Function:cleanup, got %q", e.ToID)
+	}
+}
+
+// Node — node-schedule inline function literal: handler is anonymous → job
+// node still emitted with the schedule, but no TRIGGERS edge.
+func TestScheduledJobs_NodeSchedule_InlineFunc(t *testing.T) {
+	src := `schedule.scheduleJob('30 1 * * *', function() { doWork(); });`
+	ents, rels := runScheduledDetect(t, "typescript", "cron.ts", src)
+	job := jobWithSchedule(ents, "node_schedule", "30 1 * * *")
+	if job == nil {
+		t.Fatalf("expected node_schedule job node even for inline fn")
+	}
+	if job.Properties["handler"] != "" {
+		t.Errorf("expected empty handler for inline fn, got %q", job.Properties["handler"])
+	}
+	if len(triggersEdges(rels)) != 0 {
+		t.Errorf("expected no TRIGGERS edge for anonymous handler, got %v", triggersEdges(rels))
+	}
+}
+
+// Python — APScheduler decorator: @scheduler.scheduled_job('cron', hour=2) on
+// nightly() → schedule carries cron kwargs, TRIGGERS nightly.
+func TestScheduledJobs_PyAPScheduler_Decorator(t *testing.T) {
+	src := `from apscheduler.schedulers.background import BackgroundScheduler
+scheduler = BackgroundScheduler()
+
+@scheduler.scheduled_job('cron', hour=2, minute=30)
+def nightly():
+    pass
+`
+	ents, rels := runScheduledDetect(t, "python", "sched.py", src)
+	jobs := scheduledJobsByFramework(ents, "apscheduler")
+	var job *types.EntityRecord
+	for i := range jobs {
+		if jobs[i].Properties["handler"] == "nightly" {
+			job = &jobs[i]
+		}
+	}
+	if job == nil {
+		t.Fatalf("expected apscheduler job for handler=nightly, got %v", jobs)
+	}
+	if !strings.Contains(job.Properties["schedule"], "hour=2") ||
+		!strings.HasPrefix(job.Properties["schedule"], "cron(") {
+		t.Errorf("expected schedule like cron(hour=2, minute=30), got %q", job.Properties["schedule"])
+	}
+	if job.Properties["trigger_type"] != "cron" {
+		t.Errorf("expected trigger_type=cron, got %q", job.Properties["trigger_type"])
+	}
+	if e := triggersEdgeFor(rels, "apscheduler:sched.py:nightly"); e == nil || e.ToID != "Function:nightly" {
+		t.Errorf("expected TRIGGERS → Function:nightly, got %v", e)
+	}
+}
+
+// Python — APScheduler interval decorator: schedule='interval(minutes=5)'.
+func TestScheduledJobs_PyAPScheduler_DecoratorInterval(t *testing.T) {
+	src := `@sched.scheduled_job('interval', minutes=5)
+def poll():
+    pass
+`
+	ents, _ := runScheduledDetect(t, "python", "poll.py", src)
+	jobs := scheduledJobsByFramework(ents, "apscheduler")
+	if len(jobs) == 0 {
+		t.Fatalf("expected an apscheduler interval job, got none")
+	}
+	got := jobs[0].Properties["schedule"]
+	if !strings.Contains(got, "interval") || !strings.Contains(got, "minutes=5") {
+		t.Errorf("expected interval(minutes=5) schedule, got %q", got)
+	}
+}
+
+// Ruby — whenever: every '0 0 * * *' do; runner 'Report.generate'; end →
+// schedule='0 0 * * *' TRIGGERS Report.generate.
+func TestScheduledJobs_RubyWhenever_Cron(t *testing.T) {
+	src := `every '0 0 * * *' do
+  runner 'Report.generate'
+end
+
+every 1.day, at: '4:30 am' do
+  rake 'db:cleanup'
+end
+`
+	ents, _ := runScheduledDetect(t, "ruby", "config/schedule.rb", src)
+	job := jobWithSchedule(ents, "whenever", "'0 0 * * *'")
+	if job == nil {
+		t.Fatalf("expected whenever job schedule='0 0 * * *', got %v",
+			scheduledJobsByFramework(ents, "whenever"))
+	}
+	if job.Properties["handler"] != "Report.generate" {
+		t.Errorf("expected handler=Report.generate, got %q", job.Properties["handler"])
+	}
+	// Second block: interval schedule + rake handler.
+	jobs := scheduledJobsByFramework(ents, "whenever")
+	foundCleanup := false
+	for _, j := range jobs {
+		if j.Properties["handler"] == "db:cleanup" {
+			foundCleanup = true
+		}
+	}
+	if !foundCleanup {
+		t.Errorf("expected a whenever job with handler=db:cleanup, got %v", jobs)
+	}
+}
+
+// Negative: a generic `every` outside config/schedule.rb must not fabricate a
+// whenever job (e.g. Enumerable#every in app code).
+func TestScheduledJobs_RubyWhenever_NonScheduleFile_NoJob(t *testing.T) {
+	src := `every 3.times do
+  puts "hi"
+end
+`
+	ents, _ := runScheduledDetect(t, "ruby", "app/models/widget.rb", src)
+	if got := scheduledJobsByFramework(ents, "whenever"); len(got) != 0 {
+		t.Errorf("expected no whenever jobs outside schedule.rb, got %v", got)
+	}
+}
+
+// Ruby — rufus-scheduler: scheduler.cron '0 22 * * *' do nightly_backup end →
+// schedule='cron 0 22 * * *' TRIGGERS nightly_backup.
+func TestScheduledJobs_RubyRufus_Cron(t *testing.T) {
+	src := `require 'rufus-scheduler'
+scheduler = Rufus::Scheduler.new
+scheduler.cron '0 22 * * *' do
+  nightly_backup
+end
+`
+	ents, rels := runScheduledDetect(t, "ruby", "jobs.rb", src)
+	jobs := scheduledJobsByFramework(ents, "rufus_scheduler")
+	if len(jobs) == 0 {
+		t.Fatalf("expected a rufus job, got none")
+	}
+	job := jobs[0]
+	if job.Properties["schedule"] != "cron 0 22 * * *" {
+		t.Errorf("expected schedule='cron 0 22 * * *', got %q", job.Properties["schedule"])
+	}
+	if job.Properties["handler"] != "nightly_backup" {
+		t.Errorf("expected handler=nightly_backup, got %q", job.Properties["handler"])
+	}
+	if e := triggersEdgeFor(rels, "rufus:jobs.rb:0 22 * * *"); e == nil || e.ToID != "Function:nightly_backup" {
+		t.Errorf("expected TRIGGERS → Function:nightly_backup, got %v", e)
+	}
+}
+
+// .NET — Hangfire RecurringJob static lambda with Cron.* factory:
+// RecurringJob.AddOrUpdate("daily", () => Reports.Generate(), Cron.Daily) →
+// schedule='Cron.Daily' TRIGGERS Generate.
+func TestScheduledJobs_CSharpHangfire_RecurringCronFactory(t *testing.T) {
+	src := `using Hangfire;
+public class Startup {
+  public void Configure() {
+    RecurringJob.AddOrUpdate("daily-report", () => Reports.Generate(), Cron.Daily);
+  }
+}
+`
+	ents, rels := runScheduledDetect(t, "csharp", "Startup.cs", src)
+	job := jobWithSchedule(ents, "hangfire", "Cron.Daily")
+	if job == nil {
+		t.Fatalf("expected hangfire job schedule='Cron.Daily', got %v",
+			scheduledJobsByFramework(ents, "hangfire"))
+	}
+	if job.Properties["handler"] != "Generate" {
+		t.Errorf("expected handler=Generate, got %q", job.Properties["handler"])
+	}
+	if job.Properties["job_name"] != "daily-report" {
+		t.Errorf("expected job_name=daily-report, got %q", job.Properties["job_name"])
+	}
+	if e := triggersEdgeFor(rels, "hangfire_recurring:daily-report"); e == nil || e.ToID != "Function:Generate" {
+		t.Errorf("expected TRIGGERS → Function:Generate, got %v", e)
+	}
+}
+
+// .NET — Hangfire RecurringJob with literal cron string + typed lambda:
+// RecurringJob.AddOrUpdate<IPurger>("purge", x => x.Run(), "0 2 * * *").
+func TestScheduledJobs_CSharpHangfire_RecurringLiteralCronTyped(t *testing.T) {
+	src := `RecurringJob.AddOrUpdate<IPurger>("purge", x => x.Run(), "0 2 * * *");`
+	ents, rels := runScheduledDetect(t, "csharp", "Jobs.cs", src)
+	job := jobWithSchedule(ents, "hangfire", "\"0 2 * * *\"")
+	if job == nil {
+		t.Fatalf("expected hangfire job with literal cron schedule, got %v",
+			scheduledJobsByFramework(ents, "hangfire"))
+	}
+	if job.Properties["handler"] != "Run" {
+		t.Errorf("expected handler=Run, got %q", job.Properties["handler"])
+	}
+	if e := triggersEdgeFor(rels, "hangfire_recurring:purge"); e == nil || e.ToID != "Function:Run" {
+		t.Errorf("expected TRIGGERS → Function:Run, got %v", e)
+	}
+}
