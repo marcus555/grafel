@@ -29,11 +29,22 @@
 //     getStringValue / getNumberValue / getObjectValue
 //   - Flipper      : Flipper.enabled?(:key) / :key.to_sym (Ruby)
 //   - Flagsmith    : flagsmith.has_feature("key") / is_feature_enabled("key")
+//   - Split.io     : client.getTreatment("split-name") /
+//     getTreatmentWithConfig / getTreatments (the treatment family is
+//     Split-specific)
+//   - Unleash-React: useFlag("key") / useFlagsStatus — the @unleash/proxy-client
+//     React hook
+//   - Generic/custom : getFlag("key") / feature_enabled("key") /
+//     featureEnabled("key") / isFeatureEnabled("key") — FF-specific custom
+//     wrappers, distinct enough from arbitrary code to attribute
 //
 // Honest-partial: only LITERAL string/symbol flag keys are emitted. A dynamic
-// key (`variation(k, ...)`, `isEnabled(flagName)`) yields NO edge and NO
-// fabricated flag entity — the same disposition config-read uses for dynamic
-// settings.
+// key (`variation(k, ...)`, `isEnabled(flagName)`, `getTreatment(name)`) yields
+// NO edge and NO fabricated flag entity — the same disposition config-read uses
+// for dynamic settings. Bare subscript access (`flags['x']`) is deliberately
+// NOT matched: a `flags[...]` map index is far too common in ordinary code to
+// attribute to a feature flag without import context, so it is skipped rather
+// than risk false positives.
 //
 // Append-only — never modifies existing entities or edges, so this pass
 // cannot regress the surrounding pipeline on files that contain no flag
@@ -62,7 +73,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | unleash | openfeature | flipper | flagsmith
+	sdk    string // detecting SDK: launchdarkly | unleash | unleash-react | openfeature | flipper | flagsmith | split | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -151,6 +162,50 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "flagsmith",
 		method: "has_feature",
+	},
+
+	// Split.io. client.getTreatment("split-name") /
+	// getTreatmentWithConfig("split-name") / getTreatments(...) (plural takes
+	// a list, not a single literal — excluded). The `getTreatment` family is
+	// Split-specific, so the method name alone is a reliable signal without a
+	// receiver constraint. Split keys are conventionally called "splits"; we
+	// store the literal as the flag key so a split shares the converged node
+	// identity with any other provider checking the same key string.
+	{
+		re: regexp.MustCompile(
+			`(?i)\bgetTreatment(?:WithConfig)?\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "split",
+		method: "getTreatment",
+	},
+
+	// Unleash React proxy client hook: useFlag("beta-ui") /
+	// useFlag('beta-ui'). useFlagsStatus()/useVariant("x") are related; only
+	// the single-literal-key shape is attributed. Distinct from the server
+	// isEnabled matcher above (different call name) so both can fire in a
+	// codebase mixing client+server SDKs.
+	{
+		re: regexp.MustCompile(
+			`(?i)\buseFlag\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "unleash-react",
+		method: "useFlag",
+	},
+
+	// Generic / custom feature-flag wrappers. getFlag("key") /
+	// feature_enabled("key") / featureEnabled("key"). These method names are
+	// FF-specific enough to attribute. isFeatureEnabled / isEnabled are
+	// already handled by the Unleash matcher above (first-match-wins), so this
+	// matcher targets the getFlag + feature_enabled shapes it does not cover.
+	{
+		re: regexp.MustCompile(
+			`(?i)\b(?:getFlag|feature_?enabled)\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "custom",
+		method: "getFlag",
 	},
 }
 

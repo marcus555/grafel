@@ -17059,7 +17059,7 @@
             "status": "full",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "3706",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
             "verified_at": "2026-06-02"
           },
           "fs_effect": {
@@ -24562,7 +24562,7 @@
             "status": "full",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "3706",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
             "verified_at": "2026-06-02"
           },
           "fs_effect": {
@@ -28832,7 +28832,7 @@
             "status": "missing",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "feature_flag_gating:#3706-not-yet-extracted",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
             "verified_at": "2026-06-02"
           },
           "fs_effect": {
@@ -31910,7 +31910,7 @@
             "status": "full",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "3706",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
             "verified_at": "2026-06-02"
           },
           "fs_effect": {
@@ -47572,7 +47572,7 @@
             "status": "full",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "3706",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
             "verified_at": "2026-06-02"
           },
           "fs_effect": {
@@ -54285,7 +54285,7 @@
             "status": "full",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "3706",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
             "verified_at": "2026-06-02"
           },
           "fs_effect": {
