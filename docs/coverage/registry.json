@@ -2356,6 +2356,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -2578,6 +2592,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -2798,6 +2826,20 @@
             "cites": ["internal/extractors/cpp/extractor.go"],
             "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -3031,6 +3073,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -3262,6 +3318,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -3491,6 +3561,20 @@
             "cites": ["internal/extractors/cpp/extractor.go"],
             "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -3863,6 +3947,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -4083,6 +4181,20 @@
             "cites": ["internal/extractors/cpp/extractor.go"],
             "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -4331,6 +4443,20 @@
             "cites": ["internal/extractors/cpp/extractor.go"],
             "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -4640,6 +4766,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -4871,6 +5011,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -5100,6 +5254,20 @@
             "cites": ["internal/extractors/cpp/extractor.go"],
             "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -5677,6 +5845,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -5906,6 +6088,20 @@
             "cites": ["internal/extractors/cpp/extractor.go"],
             "notes": "class/struct/union with data members (name/type/access), base-class inheritance, abstract detection",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -7227,6 +7423,26 @@
             "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record_declaration added this PR"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3699: ExtractDotnetDI (custom_csharp_dotnet_di) emits the DI binding GRAPH for Microsoft.Extensions.DependencyInjection: services.AddSingleton/AddScoped/AddTransient\u003cIFoo,Foo\u003e() (and Try/Keyed + typeof(IFoo),typeof(Foo) forms) emit IFoo BINDS Foo with lifetime=Singleton|Scoped|Transient; single-type-arg AddScoped\u003cFoo\u003e() emits a self-BINDS (binding_kind=self). Value-asserted in dotnet_di_test.go (IRepo BINDS Repo lifetime=Scoped; IClock/IMailer Singleton/Transient; typeof form; self-registration).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3699: constructor params of a class emit INJECTED_INTO (service type -\u003e consumer class, via=dotnet_constructor); IConfiguration/IServiceProvider/IOptions\u003c\u003e/ILogger\u003c\u003e infrastructure types + primitives rejected. Value-asserted in dotnet_di_test.go (IOrderService INJECTED_INTO OrderController; negative: ILogger\u003c\u003e + string yield no edge). PARTIAL: the registered-as-DI gate is structural (any class ctor), and the impl/provider class resolves cross-file only via the resolver pass; factory-lambda registrations not linked.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3699: BINDS edges carry the service lifetime (Singleton/Scoped/Transient) parsed from the AddXxx registration verb. Value-asserted in dotnet_di_test.go.",
+            "verified_at": "2026-06-02"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -7376,28 +7592,6 @@
             "verified_at": "2026-05-28"
           }
         }
-      },
-      "framework_specific": {
-        "Dependency Injection": {
-          "di_binding_extraction": {
-            "status": "full",
-            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
-            "notes": "#3699: ExtractDotnetDI (custom_csharp_dotnet_di) emits the DI binding GRAPH for Microsoft.Extensions.DependencyInjection: services.AddSingleton/AddScoped/AddTransient\u003cIFoo,Foo\u003e() (and Try/Keyed + typeof(IFoo),typeof(Foo) forms) emit IFoo BINDS Foo with lifetime=Singleton|Scoped|Transient; single-type-arg AddScoped\u003cFoo\u003e() emits a self-BINDS (binding_kind=self). Value-asserted in dotnet_di_test.go (IRepo BINDS Repo lifetime=Scoped; IClock/IMailer Singleton/Transient; typeof form; self-registration).",
-            "verified_at": "2026-06-02"
-          },
-          "di_injection_point": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
-            "notes": "#3699: constructor params of a class emit INJECTED_INTO (service type -\u003e consumer class, via=dotnet_constructor); IConfiguration/IServiceProvider/IOptions\u003c\u003e/ILogger\u003c\u003e infrastructure types + primitives rejected. Value-asserted in dotnet_di_test.go (IOrderService INJECTED_INTO OrderController; negative: ILogger\u003c\u003e + string yield no edge). PARTIAL: the registered-as-DI gate is structural (any class ctor), and the impl/provider class resolves cross-file only via the resolver pass; factory-lambda registrations not linked.",
-            "verified_at": "2026-06-02"
-          },
-          "di_scope_resolution": {
-            "status": "full",
-            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_test.go"],
-            "notes": "#3699: BINDS edges carry the service lifetime (Singleton/Scoped/Transient) parsed from the AddXxx registration verb. Value-asserted in dotnet_di_test.go.",
-            "verified_at": "2026-06-02"
-          }
-        }
       }
     },
     {
@@ -7469,6 +7663,20 @@
             "status": "full",
             "cites": ["internal/extractors/csharp/csharp.go"],
             "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -8295,6 +8503,20 @@
             "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -8524,6 +8746,20 @@
             "status": "full",
             "cites": ["internal/extractors/csharp/csharp.go"],
             "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -8907,6 +9143,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -9106,6 +9356,20 @@
             "status": "full",
             "cites": ["internal/extractors/csharp/csharp.go"],
             "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -9544,6 +9808,20 @@
             "status": "full",
             "cites": ["internal/extractors/csharp/csharp.go"],
             "notes": "tree-sitter CST class/struct/record_declaration → SCOPE.Component; record added this PR"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -11125,6 +11403,20 @@
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -11360,6 +11652,20 @@
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -11586,6 +11892,20 @@
             "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -11846,6 +12166,20 @@
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -12066,6 +12400,20 @@
           "type_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -12407,6 +12755,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -12593,6 +12955,20 @@
             "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -12816,6 +13192,20 @@
             "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -13053,6 +13443,20 @@
             "status": "full",
             "cites": ["internal/custom/elixir/typespec.go"],
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -13507,6 +13911,20 @@
             "notes": "@type/@typep/@opaque declarations + defstruct fields (with @enforce_keys required-key subset) extracted as SCOPE.Schema/struct carrying literal struct_fields/field_count props; @spec annotations captured. defstruct field sets are fully static and value-asserted (TestTypespecDefStructFields)."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -13729,6 +14147,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -13920,6 +14352,20 @@
           "type_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -14685,6 +15131,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -14911,6 +15371,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -15144,6 +15618,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -15381,6 +15869,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -15606,6 +16108,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -15851,6 +16367,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -16002,6 +16532,210 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
             "verified_at": "2026-05-29"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.go.framework.fx",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "go",
+      "label": "uber/fx (DI)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "handler_attribution": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "route_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/golang/di_graph.go","internal/custom/golang/di_graph_test.go"],
+            "issue": "3628",
+            "notes": "uber/fx: constructors in fx.Provide(...) emit BINDS(constructor -\u003e produced-type) via the shared Go provider pass (func NewService(...) *Service =\u003e BINDS NewService-\u003eService). Value-asserted TestGoDI_FxProvide (NewService-\u003eService). Negatives shared with wire (unresolved/unregistered/error-only). PARTIAL: fx.Annotate/ParamTags/ResultTags + value groups not modeled; cross-file return types unresolved (honest-partial).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/golang/di_graph.go","internal/custom/golang/di_graph_test.go"],
+            "issue": "3628",
+            "notes": "uber/fx: an fx-provided constructors parameter types are injected into the produced type: func NewService(cfg *Config) *Service emits INJECTED_INTO(Config-\u003eService). Value-asserted TestGoDI_FxProvide (Config-\u003eService). PARTIAL: fx.Invoke target params + fx.In/fx.Out struct-tag injection not yet modeled.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "not_applicable",
+            "notes": "uber/fx provides singletons within an App by construction; there are no per-binding scope annotations to resolve. Not_applicable.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3628"
           }
         }
       }
@@ -16177,6 +16911,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -16406,6 +17154,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -16855,6 +17617,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -17081,6 +17857,20 @@
             "issue": "3613"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -17278,6 +18068,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -17509,6 +18313,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -17735,6 +18553,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -17964,6 +18796,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -18191,6 +19037,20 @@
             "status": "full",
             "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/extractor_test.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -18434,6 +19294,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -18583,6 +19457,210 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
             "verified_at": "2026-05-29"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.go.framework.wire",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "go",
+      "label": "google/wire (DI)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "handler_attribution": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "route_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/golang/di_graph.go","internal/custom/golang/di_graph_test.go"],
+            "issue": "3628",
+            "notes": "google/wire: providers enumerated in wire.Build(...) / wire.NewSet(...) emit BINDS(provider-func -\u003e produced-type), resolving the constructor return type (e.g. func NewService(...) *Service =\u003e BINDS NewService-\u003eService). Value-asserted TestGoDI_WireBuild (NewService-\u003eService, NewRepo-\u003eRepo) and TestGoDI_WireNewSet (NewMailer-\u003eMailer, (*Mailer,error) return). Negatives: TestGoDI_UnresolvedProviderNoEdge (provider defined in another file), TestGoDI_UnregisteredFuncNoEdge (bare NewX not in a wire/fx site), TestGoDI_ErrorOnlyReturnNoBinds. PARTIAL: cross-file provider return types unresolved (honest-partial); wire.Bind interface-binding + wire.Value not yet modeled.",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/golang/di_graph.go","internal/custom/golang/di_graph_test.go"],
+            "issue": "3628",
+            "notes": "google/wire: a providers parameter types are injected into the produced type: func NewService(repo *Repo) *Service emits INJECTED_INTO(Repo-\u003eService). Value-asserted TestGoDI_WireBuild (Repo-\u003eService). Built-in/context/error param types rejected. PARTIAL: only providers registered in a wire site are processed; cross-file return types unresolved.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "not_applicable",
+            "notes": "google/wire is a compile-time DI codegen tool with no runtime scopes/lifetimes to resolve (a singleton-per-graph by construction). Scope resolution is not_applicable.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3628"
           }
         }
       }
@@ -26434,6 +27512,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -27586,6 +28678,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -27851,6 +28957,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -28112,6 +29232,20 @@
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
             "issue": "3050",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -28800,6 +29934,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -29056,6 +30204,20 @@
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
             "issue": "3050",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -29538,6 +30700,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -29838,6 +31014,20 @@
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
             "issue": "3050",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -30314,6 +31504,29 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/javascript/nestjs.go","internal/custom/javascript/nestjs_di.go","internal/custom/javascript/nestjs_di_test.go"],
+            "issue": "3647",
+            "notes": "NestJS-unique DI/IoC graph (recorded under framework_specific because most http_backend frameworks have no DI container). @Module wiring → BINDS (module→provider/controller/import with an exported flag) and object-form provider tokens {provide, useClass/useValue/useFactory/useExisting} → token BINDS impl; class- and method-level @UseGuards/@UseInterceptors/@UsePipes → USES (controller/handler→guard/interceptor/pipe). Value-asserting tests prove specific edges: UsersModule BINDS UsersService; token CONFIG BINDS ConfigService; AdminController USES JwtAuthGuard; GET getSecret USES RolesGuard. Partial: token→impl BINDS resolves cross-file only when an entity with the matching token/class name exists in another file (regex single-file pass).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/javascript/nestjs_di.go","internal/custom/javascript/nestjs_di_test.go"],
+            "issue": "3647",
+            "notes": "Constructor injection → INJECTED_INTO (provider→injecting class), including @Inject(TOKEN) string-literal and identifier custom tokens. Value-asserting tests prove UsersService INJECTED_INTO UsersController, @Inject('CONFIG_TOKEN') normalisation, and reject primitive params / cross-class leakage. Partial: the edge carries the bare type/token name; cross-file binding of that name to its declaring provider entity is the resolver's job and is not proven for cross-file fixtures here.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "full",
+            "cites": ["internal/custom/javascript/nestjs.go","internal/custom/javascript/nestjs_di.go","internal/custom/javascript/nestjs_di_test.go"],
+            "issue": "3647",
+            "notes": "@Injectable({ scope: Scope.REQUEST }) → di_scope property on the provider entity; @Injectable() classes tagged di_provider=true. Value-asserted by TestNestDIInjectableScope.",
+            "verified_at": "2026-06-02"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -30492,31 +31705,6 @@
             "issue": "3163",
             "notes": "Framework-blind taint_flow.go propagates source-to-sink paths. Decorator-injected sources (@Body/@Query/@Param/@Headers/@Req) now detected (full, #3163); sink detection covers SQL/command/path/XSS/ReDoS but NestJS @Res() response sink not in set. Chain is now source-complete for NestJS; partial on sinks.",
             "verified_at": "2026-05-29"
-          }
-        }
-      },
-      "framework_specific": {
-        "DI": {
-          "di_binding_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/javascript/nestjs.go","internal/custom/javascript/nestjs_di.go","internal/custom/javascript/nestjs_di_test.go"],
-            "issue": "3647",
-            "notes": "NestJS-unique DI/IoC graph (recorded under framework_specific because most http_backend frameworks have no DI container). @Module wiring → BINDS (module→provider/controller/import with an exported flag) and object-form provider tokens {provide, useClass/useValue/useFactory/useExisting} → token BINDS impl; class- and method-level @UseGuards/@UseInterceptors/@UsePipes → USES (controller/handler→guard/interceptor/pipe). Value-asserting tests prove specific edges: UsersModule BINDS UsersService; token CONFIG BINDS ConfigService; AdminController USES JwtAuthGuard; GET getSecret USES RolesGuard. Partial: token→impl BINDS resolves cross-file only when an entity with the matching token/class name exists in another file (regex single-file pass).",
-            "verified_at": "2026-06-02"
-          },
-          "di_injection_point": {
-            "status": "partial",
-            "cites": ["internal/custom/javascript/nestjs_di.go","internal/custom/javascript/nestjs_di_test.go"],
-            "issue": "3647",
-            "notes": "Constructor injection → INJECTED_INTO (provider→injecting class), including @Inject(TOKEN) string-literal and identifier custom tokens. Value-asserting tests prove UsersService INJECTED_INTO UsersController, @Inject('CONFIG_TOKEN') normalisation, and reject primitive params / cross-class leakage. Partial: the edge carries the bare type/token name; cross-file binding of that name to its declaring provider entity is the resolver's job and is not proven for cross-file fixtures here.",
-            "verified_at": "2026-06-02"
-          },
-          "di_scope_resolution": {
-            "status": "full",
-            "cites": ["internal/custom/javascript/nestjs.go","internal/custom/javascript/nestjs_di.go","internal/custom/javascript/nestjs_di_test.go"],
-            "issue": "3647",
-            "notes": "@Injectable({ scope: Scope.REQUEST }) → di_scope property on the provider entity; @Injectable() classes tagged di_provider=true. Value-asserted by TestNestDIInjectableScope.",
-            "verified_at": "2026-06-02"
           }
         }
       }
@@ -31113,6 +32301,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -31346,6 +32548,20 @@
           "type_extraction": {
             "status": "missing",
             "issue": "3619"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -32396,6 +33612,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -32642,6 +33872,20 @@
             "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
             "issue": "3050",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -33605,6 +34849,20 @@
           "type_extraction": {
             "status": "missing",
             "issue": "3619"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -38905,6 +40163,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -39095,6 +40367,20 @@
           "type_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -39290,6 +40576,20 @@
             "status": "not_applicable",
             "cites": ["internal/extractors/lua/lua.go"],
             "notes": "Lua is dynamically typed; no static type_extraction. LuaLS/EmmyLua annotations (---@type, ---@class) are optional and not common in Lapis/OpenResty codebases."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -39522,6 +40822,20 @@
             "status": "not_applicable",
             "cites": ["internal/extractors/lua/lua.go"],
             "notes": "Lua is dynamically typed; no static type_extraction. LuaLS/EmmyLua annotations are not common in OpenResty codebases."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -40204,6 +41518,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -40399,6 +41727,20 @@
             "status": "full",
             "cites": ["internal/extractors/php/php.go"],
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -40633,6 +41975,20 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -40865,6 +42221,20 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -41087,6 +42457,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -41282,6 +42666,20 @@
             "status": "full",
             "cites": ["internal/extractors/php/php.go"],
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -41514,6 +42912,26 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Laravel service-container bindings $this-\u003eapp-\u003ebind/singleton/scoped(Interface::class, Impl::class) (and app()/App/$app receiver forms) emit BINDS(Interface-\u003eImpl). Value-asserted TestPhpDI_LaravelBind (PaymentInterface-\u003eStripePayment, CacheInterface-\u003eRedisCache namespaced). Negative TestPhpDI_LaravelClosureBindNoEdge (closure-form bind =\u003e no edge). PARTIAL: closure/dynamic bindings + string-keyed abstracts skipped (honest-partial).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Constructor type-hint autowiring: a class __construct(PaymentInterface $p, ...) emits INJECTED_INTO(PaymentInterface-\u003eClassName) per class-typed param. Value-asserted TestPhpDI_ConstructorInjection (PaymentInterface-\u003eOrderController, LoggerInterface-\u003eOrderController). Negative TestPhpDI_ScalarParamNoEdge (string/int/array hints =\u003e no edge). PARTIAL: method/property injection + contextual bindings not linked; impl resolves cross-file via resolver.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Binding lifetime captured as bind_kind (bind|singleton|scoped) property on the Laravel BINDS edge. PARTIAL: no separate scope-resolution graph; contextual/tagged bindings not modeled.",
+            "verified_at": "2026-06-02"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -41738,6 +43156,20 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -41933,6 +43365,20 @@
             "status": "full",
             "cites": ["internal/extractors/php/php.go"],
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -42167,6 +43613,20 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -42399,6 +43859,20 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -42629,6 +44103,20 @@
             "status": "full",
             "cites": ["internal/extractors/php/php.go"],
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -42865,6 +44353,24 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Symfony services.yaml service aliases (Foo: \\\"@Bar\\\") emit BINDS(Foo-\u003eBar). Value-asserted TestPhpDI_SymfonyServicesYAML (TransportInterface-\u003eSmtpTransport). PARTIAL: only YAML alias/@ref form; XML/PHP config + factory/decorator services not parsed (honest-partial).",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Symfony autowiring via constructor type-hints emits INJECTED_INTO(type-\u003eclass) (shared php_constructor pass with Laravel). Value-asserted TestPhpDI_ConstructorInjection; negative TestPhpDI_ScalarParamNoEdge. PARTIAL: #[Required] setter / property injection + #[Autowire] attribute targets not linked.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -43099,6 +44605,20 @@
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -43329,6 +44849,20 @@
             "status": "full",
             "cites": ["internal/extractors/php/php.go"],
             "notes": "class_declaration → SCOPE.Component/class and trait_declaration → SCOPE.Component/trait, both with CONTAINS edges to methods. Framework-independent language-level extraction via tree-sitter."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -44336,6 +45870,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -44574,6 +46122,20 @@
             "issue": "3620"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -44788,6 +46350,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -45261,6 +46837,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -45509,6 +47099,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -45768,6 +47372,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -46268,6 +47886,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -46515,6 +48147,25 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/python/di_graph.go","internal/custom/python/di_graph_test.go"],
+            "notes": "dependency-injector DeclarativeContainer providers (providers.Factory/Singleton(Impl)) emit BINDS(token-\u003eimpl), token=container attribute name. Value-asserted TestPyDI_ContainerProviderBinds (service-\u003eService, repo-\u003eRepository); negative TestPyDI_ConfigurationProviderNoBinds. PARTIAL: cross-file token resolution + dynamic providers skipped; FastAPI itself has no token-binding container.",
+            "verified_at": "2026-06-02"
+          },
+          "di_injection_point": {
+            "status": "partial",
+            "cites": ["internal/custom/python/di_graph.go","internal/custom/python/di_graph_test.go"],
+            "notes": "FastAPI Depends() and dependency-injector @inject/Provide[...] emit INJECTED_INTO(provider-\u003econsumer). Value-asserted: TestPyDI_FastAPIDependsCallable (get_service-\u003ehandler), TestPyDI_FastAPIDependsClass (SvcClass-\u003ehandler), TestPyDI_FastAPIDependsBareType (type annotation), TestPyDI_InjectProvideInjectedInto (service-\u003emain). Negatives: TestPyDI_FastAPIDynamicNoEdge (Depends(getattr(...))), TestPyDI_ProvideWithoutInjectNoEdge. PARTIAL: dynamic/unresolved deps skipped (honest-partial); cross-file provider binding via resolver.",
+            "verified_at": "2026-06-02"
+          },
+          "di_scope_resolution": {
+            "status": "not_applicable",
+            "notes": "FastAPI Depends has no container-managed lifetime/scope annotations to resolve (use_cache aside); dependency-injector scope is encoded in the provider kind (Factory vs Singleton), already captured as provider_kind on the BINDS edge in di_binding_extraction. No separate scope-resolution pass.",
+            "verified_at": "2026-06-02"
           }
         },
         "Testing": {
@@ -46773,6 +48424,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -47027,6 +48692,20 @@
             "issue": "3620"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -47233,6 +48912,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -47523,6 +49216,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -47772,6 +49479,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -48027,6 +49748,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -48275,6 +50010,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -48733,6 +50482,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -48981,6 +50744,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -49236,6 +51013,20 @@
             "verified_at": "2026-05-29"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "full",
@@ -49484,6 +51275,20 @@
             "cites": ["internal/extractors/python/types.go"],
             "issue": "3049",
             "verified_at": "2026-05-29"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -50889,6 +52694,20 @@
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -51105,6 +52924,20 @@
             "cites": ["internal/custom/ruby/dry_types.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "dry-types Types::*, dry-struct attribute schemas, dry-schema/dry-validation contracts. Part of #3282."
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -51324,6 +53157,20 @@
           "type_extraction": {
             "status": "not_applicable",
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -51547,6 +53394,20 @@
             "issue": "3621"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -51738,6 +53599,20 @@
           "type_extraction": {
             "status": "not_applicable",
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -51962,6 +53837,20 @@
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -52182,6 +54071,20 @@
           "type_extraction": {
             "status": "not_applicable",
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -52423,6 +54326,20 @@
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -52646,6 +54563,20 @@
           "type_extraction": {
             "status": "not_applicable",
             "notes": "Ruby dynamically typed; framework exposes no static type DSL"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -53633,6 +55564,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -53858,6 +55803,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -54061,6 +56020,20 @@
             "status": "full",
             "cites": ["internal/extractors/rust/rust.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -54294,6 +56267,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -54524,6 +56511,20 @@
             "status": "full",
             "cites": ["internal/extractors/rust/rust.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -54786,6 +56787,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -55044,6 +57059,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -55273,6 +57302,20 @@
             "status": "full",
             "cites": ["internal/extractors/rust/rust.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -55653,6 +57696,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "partial",
@@ -55879,6 +57936,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -56086,6 +58157,20 @@
             "status": "full",
             "cites": ["internal/extractors/rust/rust.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -56311,6 +58396,20 @@
             "verified_at": "2026-05-30"
           }
         },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
+          }
+        },
         "Testing": {
           "tests_linkage": {
             "status": "missing",
@@ -56514,6 +58613,20 @@
             "status": "full",
             "cites": ["internal/extractors/rust/rust.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
@@ -61532,6 +63645,20 @@
             "cites": ["internal/extractors/swift/swift.go"],
             "notes": "swift.go (tree-sitter extractor) handles class_declaration nodes for class and struct subtypes, emitting SCOPE.Component/subtype=class|struct; Fluent @Model classes additionally handled by vapor.go custom extractor; proven by existing test corpus.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "3628"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "3628"
           }
         },
         "Testing": {
