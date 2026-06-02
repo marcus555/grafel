@@ -758,6 +758,13 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// GitHub Actions schedule triggers (path-driven, not language-gated).
 	// Append-only — cannot regress surrounding passes.
 	applyPass(applyScheduledJobEdges)
+	// #3628 area: ORM model lifecycle-hook / signal → handler TRIGGERS.
+	// Emits SCOPE.ModelEvent:<Model>.<event> nodes + TRIGGERS edges to the
+	// handler for Django signals, SQLAlchemy events, ActiveRecord callbacks,
+	// TypeORM entity listeners, Sequelize hooks, and Mongoose middleware.
+	// Answers "what runs after a User is saved?". Append-only — cannot regress
+	// surrounding passes.
+	applyPass(applyORMLifecycleHookEdges)
 	// #728: Webhook endpoint detection. Tags HTTP endpoints that verify
 	// inbound callbacks from external providers (Stripe, GitHub, Twilio,
 	// Slack, Mailgun, Svix, generic) with is_webhook=true +

@@ -64471,6 +64471,75 @@
       }
     },
     {
+      "id": "msg.orm-lifecycle-hooks-jsts",
+      "category": "message_broker",
+      "language": "jsts",
+      "label": "ORM model lifecycle-hook → handler TRIGGERS (TypeORM, Sequelize, Mongoose)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        },
+        "producer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        },
+        "topic_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "msg.orm-lifecycle-hooks-py",
+      "category": "message_broker",
+      "language": "python",
+      "label": "ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        },
+        "producer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        },
+        "topic_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "msg.orm-lifecycle-hooks-ruby",
+      "category": "message_broker",
+      "language": "ruby",
+      "label": "ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        },
+        "producer_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        },
+        "topic_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/orm_lifecycle_hook_edges_test.go"],
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "msg.phoenix-channels",
       "category": "message_broker",
       "language": "elixir",
