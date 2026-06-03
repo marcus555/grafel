@@ -24985,8 +24985,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -25735,8 +25738,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "missing",
@@ -26057,8 +26063,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -27156,8 +27165,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -27500,8 +27512,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -27841,8 +27856,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -28193,8 +28211,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -28582,8 +28603,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -28933,8 +28957,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -29528,8 +29555,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -29888,8 +29918,8 @@
             "status": "full",
             "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
             "issue": "3706",
-            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic)",
-            "verified_at": "2026-06-02"
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/FF4j/Flipper/Flagsmith/Split.io/generic). Java-canonical idioms verified: LD camelCase ldClient.boolVariation/stringVariation(\"key\",...), Unleash unleash.isEnabled(\"key\"), OpenFeature client.getBooleanValue(\"key\",false), FF4j ff4j.check(\"key\") all fire \u0026 attribute to the enclosing @GetMapping handler. Honest-partial: Togglz enum keys (Features.FLAG.isActive(), no string literal) and dynamic keys emit nothing.",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -30212,8 +30242,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "missing",
@@ -30552,8 +30585,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -30902,8 +30938,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -31442,8 +31481,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic Java engine pass, fires regardless of framework). Java idioms attribute to the enclosing method: LD camelCase boolVariation/stringVariation, Unleash isEnabled, OpenFeature getBooleanValue, FF4j ff4j.check. Honest-partial: Togglz enum keys + dynamic keys miss (no literal).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",

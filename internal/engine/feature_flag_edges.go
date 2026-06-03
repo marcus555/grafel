@@ -29,6 +29,7 @@
 //     getStringValue / getNumberValue / getObjectValue
 //   - Flipper      : Flipper.enabled?(:key) / :key.to_sym (Ruby)
 //   - Flagsmith    : flagsmith.has_feature("key") / is_feature_enabled("key")
+//   - FF4j (Java)  : ff4j.check("key")
 //   - Split.io     : client.getTreatment("split-name") /
 //     getTreatmentWithConfig / getTreatments (the treatment family is
 //     Split-specific)
@@ -73,7 +74,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | unleash | unleash-react | openfeature | flipper | flagsmith | split | custom
+	sdk    string // detecting SDK: launchdarkly | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -103,12 +104,16 @@ var flagSDKMatchers = []flagSDKMatcher{
 	// LaunchDarkly. Server + client SDKs across languages expose a
 	// `variation` family: variation / boolVariation / bool_variation /
 	// stringVariation / intVariation / jsonVariation / variationDetail.
-	// The receiver is an LD client; we don't require a specific receiver
-	// name (it varies: client, ldclient, ld, etc.) but DO require the
+	// Both snake_case (python/ruby: bool_variation) and camelCase (Java/JS:
+	// boolVariation) typed prefixes are accepted — the camelCase form has no
+	// word boundary between the prefix and `Variation`, so the prefix is part
+	// of the same matched token rather than relying on `\bvariation`. The
+	// receiver is an LD client; we don't require a specific receiver name (it
+	// varies: client, ldclient, ldClient, ld, etc.) but DO require the
 	// variation method name, which is LD-specific enough to avoid noise.
 	{
 		re: regexp.MustCompile(
-			`(?i)\b(?:bool_|string_|int_|number_|json_|double_)?variation(?:_detail|detail)?\s*\(\s*` +
+			`(?i)\b(?:bool|string|int|number|json|double|migration)?_?variation(?:_?detail)?\s*\(\s*` +
 				`(?:"([^"\\]+)"|'([^'\\]+)')`,
 		),
 		sdk:    "launchdarkly",
@@ -192,6 +197,19 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "unleash-react",
 		method: "useFlag",
+	},
+
+	// FF4j (Java). ff4j.check("flag") — the bare `check` method name is too
+	// generic to attribute on its own, so an `ff4j` receiver is required (the
+	// canonical FF4j instance/bean name). This keeps the matcher Java-specific
+	// and avoids false-positiving on arbitrary `.check("...")` calls.
+	{
+		re: regexp.MustCompile(
+			`(?i)\bff4j\s*\.\s*check\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "ff4j",
+		method: "ff4j.check",
 	},
 
 	// Generic / custom feature-flag wrappers. getFlag("key") /

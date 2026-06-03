@@ -499,3 +499,202 @@ function profile() {
 		t.Errorf("expected GATED_BY from both checkout and profile, got froms=%v", froms)
 	}
 }
+
+// JAVA — LaunchDarkly camelCase boolVariation in a Spring handler. The Java
+// SDK uses camelCase typed-variation methods (boolVariation / stringVariation
+// / intVariation) with no underscore, distinct from the python snake_case
+// bool_variation. Asserts the SPECIFIC key + SDK on the SPECIFIC handler.
+func TestFeatureFlag_Java_LaunchDarkly_boolVariation(t *testing.T) {
+	src := `
+public class CheckoutController {
+    @GetMapping("/checkout")
+    public String checkout(User user) {
+        if (ldClient.boolVariation("new-checkout", user, false)) {
+            return newFlow();
+        }
+        return legacyFlow();
+    }
+}
+`
+	flags, edges := runFlagPass("java", "CheckoutController.java", src)
+
+	flag, ok := findFlag(flags, "new-checkout")
+	if !ok {
+		t.Fatalf("expected feature:new-checkout entity, got flags=%v", flags)
+	}
+	if flag.ID != "feature:new-checkout" {
+		t.Errorf("flag ID = %q, want feature:new-checkout", flag.ID)
+	}
+	if flag.Subtype != "launchdarkly" {
+		t.Errorf("flag SDK subtype = %q, want launchdarkly", flag.Subtype)
+	}
+	g, ok := findGate(edges, "new-checkout")
+	if !ok {
+		t.Fatalf("expected GATED_BY for new-checkout, got %v", edges)
+	}
+	if g.From != "Function:checkout" {
+		t.Errorf("GATED_BY FromID = %q, want Function:checkout", g.From)
+	}
+	if g.To != "feature:new-checkout" {
+		t.Errorf("GATED_BY ToID = %q, want feature:new-checkout", g.To)
+	}
+	if g.SDK != "launchdarkly" {
+		t.Errorf("GATED_BY sdk = %q, want launchdarkly", g.SDK)
+	}
+}
+
+// JAVA — LaunchDarkly camelCase stringVariation (typed variant) also fires.
+func TestFeatureFlag_Java_LaunchDarkly_stringVariation(t *testing.T) {
+	src := `
+public class ThemeService {
+    public String theme(User user) {
+        return ldClient.stringVariation("theme-flag", user, "dark");
+    }
+}
+`
+	flags, edges := runFlagPass("java", "ThemeService.java", src)
+	flag, ok := findFlag(flags, "theme-flag")
+	if !ok {
+		t.Fatalf("expected feature:theme-flag entity, got %v", flags)
+	}
+	if flag.Subtype != "launchdarkly" {
+		t.Errorf("flag SDK = %q, want launchdarkly", flag.Subtype)
+	}
+	g, ok := findGate(edges, "theme-flag")
+	if !ok || g.From != "Function:theme" || g.To != "feature:theme-flag" {
+		t.Fatalf("edge = %+v ok=%v, want Function:theme -> feature:theme-flag", g, ok)
+	}
+}
+
+// JAVA — Unleash isEnabled (camelCase) attributed to the enclosing Java method.
+func TestFeatureFlag_Java_Unleash_isEnabled(t *testing.T) {
+	src := `
+public class NavController {
+    public String nav() {
+        if (unleash.isEnabled("beta")) {
+            return betaNav();
+        }
+        return lightNav();
+    }
+}
+`
+	flags, edges := runFlagPass("java", "NavController.java", src)
+	flag, ok := findFlag(flags, "beta")
+	if !ok {
+		t.Fatalf("expected feature:beta entity, got %v", flags)
+	}
+	if flag.Subtype != "unleash" {
+		t.Errorf("flag SDK = %q, want unleash", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta")
+	if !ok || g.From != "Function:nav" || g.To != "feature:beta" {
+		t.Fatalf("edge = %+v ok=%v, want Function:nav -> feature:beta", g, ok)
+	}
+}
+
+// JAVA — OpenFeature getBooleanValue (camelCase) attributed to the Java method.
+func TestFeatureFlag_Java_OpenFeature_getBooleanValue(t *testing.T) {
+	src := `
+public class UiService {
+    public String render() {
+        boolean on = client.getBooleanValue("dark-mode", false);
+        return on ? darkUi() : lightUi();
+    }
+}
+`
+	flags, edges := runFlagPass("java", "UiService.java", src)
+	flag, ok := findFlag(flags, "dark-mode")
+	if !ok {
+		t.Fatalf("expected feature:dark-mode entity, got %v", flags)
+	}
+	if flag.Subtype != "openfeature" {
+		t.Errorf("flag SDK = %q, want openfeature", flag.Subtype)
+	}
+	g, ok := findGate(edges, "dark-mode")
+	if !ok || g.From != "Function:render" || g.To != "feature:dark-mode" {
+		t.Fatalf("edge = %+v ok=%v, want Function:render -> feature:dark-mode", g, ok)
+	}
+}
+
+// JAVA — FF4j ff4j.check("flag") fires via the ff4j-receiver matcher.
+func TestFeatureFlag_Java_FF4j_check(t *testing.T) {
+	src := `
+public class ImportService {
+    public void run() {
+        if (ff4j.check("legacy-import")) {
+            legacyImport();
+        }
+    }
+}
+`
+	flags, edges := runFlagPass("java", "ImportService.java", src)
+	flag, ok := findFlag(flags, "legacy-import")
+	if !ok {
+		t.Fatalf("expected feature:legacy-import entity, got %v", flags)
+	}
+	if flag.ID != "feature:legacy-import" {
+		t.Errorf("flag ID = %q, want feature:legacy-import", flag.ID)
+	}
+	if flag.Subtype != "ff4j" {
+		t.Errorf("flag SDK = %q, want ff4j", flag.Subtype)
+	}
+	g, ok := findGate(edges, "legacy-import")
+	if !ok {
+		t.Fatalf("expected GATED_BY for legacy-import, got %v", edges)
+	}
+	if g.From != "Function:run" || g.To != "feature:legacy-import" {
+		t.Errorf("edge = %+v, want Function:run -> feature:legacy-import", g)
+	}
+	if g.SDK != "ff4j" {
+		t.Errorf("GATED_BY sdk = %q, want ff4j", g.SDK)
+	}
+}
+
+// JAVA NEGATIVE — Togglz uses enum-based keys (Features.NEW_UI.isActive()) with
+// NO string literal, so the pass correctly attributes nothing (honest-partial:
+// only literal keys are emitted; an enum key is not a literal string argument).
+func TestFeatureFlag_Java_Togglz_EnumKey_NoFabrication(t *testing.T) {
+	src := `
+public class FeatureGate {
+    public boolean newUi() {
+        return Features.NEW_UI.isActive();
+    }
+}
+`
+	flags, edges := runFlagPass("java", "FeatureGate.java", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("Togglz enum key should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// JAVA NEGATIVE — a non-flag boolean helper with a string arg that is NOT an FF
+// SDK call must NOT fabricate a flag.
+func TestFeatureFlag_Java_NonFlagBool_NoFabrication(t *testing.T) {
+	src := `
+public class Validator {
+    public boolean ok(String name) {
+        return validate("input") && check(name);
+    }
+}
+`
+	flags, edges := runFlagPass("java", "Validator.java", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("non-flag bool should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// JAVA NEGATIVE — LaunchDarkly boolVariation with a dynamic (non-literal) key
+// must NOT fabricate a flag entity or edge (honest-partial, mirrors python).
+func TestFeatureFlag_Java_LaunchDarkly_DynamicKey_NoFabrication(t *testing.T) {
+	src := `
+public class Gate {
+    public boolean gate(String flagKey, User user) {
+        return ldClient.boolVariation(flagKey, user, false);
+    }
+}
+`
+	flags, edges := runFlagPass("java", "Gate.java", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("dynamic Java key should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
