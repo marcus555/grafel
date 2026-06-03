@@ -239,6 +239,88 @@ export class Order {
 }
 
 // ---------------------------------------------------------------------------
+// MikroORM entity lifecycle hooks
+// ---------------------------------------------------------------------------
+
+// MikroORM-exclusive decorators (@BeforeCreate/@AfterCreate/@BeforeDelete/
+// @AfterDelete/@OnInit/@OnLoad/@BeforeUpsert/@AfterUpsert) on an @Entity class
+// each become a SCOPE.ModelEvent node + TRIGGERS edge to the named method.
+func TestORMHook_MikroORM_LifecycleDecorators(t *testing.T) {
+	src := `import { Entity, BeforeCreate, AfterCreate, BeforeDelete, OnLoad } from '@mikro-orm/core';
+
+@Entity()
+export class User {
+  @BeforeCreate()
+  async hashPassword() {}
+
+  @AfterCreate()
+  sendWelcome() {}
+
+  @BeforeDelete()
+  cleanup() {}
+
+  @OnLoad()
+  decorate() {}
+}
+`
+	ents, rels := runORMHookDetect(t, "typescript", "user.entity.ts", src)
+	const bc = "SCOPE.ModelEvent:User.beforeCreate"
+	const ac = "SCOPE.ModelEvent:User.afterCreate"
+	const bd = "SCOPE.ModelEvent:User.beforeDelete"
+	const ol = "SCOPE.ModelEvent:User.onLoad"
+	if !hasModelEvent(ents, bc, "User.beforeCreate") {
+		t.Fatalf("missing %s; ents=%+v", bc, ents)
+	}
+	if !hasTriggers(rels, bc, "hashPassword") {
+		t.Fatalf("missing TRIGGERS %s -> hashPassword", bc)
+	}
+	if !hasTriggers(rels, ac, "sendWelcome") {
+		t.Fatalf("missing TRIGGERS %s -> sendWelcome", ac)
+	}
+	if !hasTriggers(rels, bd, "cleanup") {
+		t.Fatalf("missing TRIGGERS %s -> cleanup", bd)
+	}
+	if !hasTriggers(rels, ol, "decorate") {
+		t.Fatalf("missing TRIGGERS %s -> decorate", ol)
+	}
+	// framework prop must be mikro-orm (not mislabeled typeorm).
+	for _, e := range ents {
+		if e.ID == bc && e.Properties["framework"] != "mikro-orm" {
+			t.Fatalf("framework for %s = %q, want mikro-orm", bc, e.Properties["framework"])
+		}
+	}
+}
+
+// Negative: a plain @Property() (non-lifecycle decorator) on a method-like
+// member produces no lifecycle event.
+func TestORMHook_MikroORM_NonLifecycleDecorator_NoEvent(t *testing.T) {
+	src := `@Entity()
+export class User {
+  @Property()
+  fullName() {}
+}
+`
+	ents, _ := runORMHookDetect(t, "typescript", "user.entity.ts", src)
+	if countModelEvents(ents) != 0 {
+		t.Fatalf("non-lifecycle decorator produced events: %+v", ents)
+	}
+}
+
+// Negative: MikroORM lifecycle decorator on a class with NO @Entity is not an
+// entity → out of scope (the @Entity gate is what scopes hook attribution).
+func TestORMHook_MikroORM_NoEntity_Skipped(t *testing.T) {
+	src := `export class Helper {
+  @BeforeCreate()
+  hashPassword() {}
+}
+`
+	ents, rels := runORMHookDetect(t, "typescript", "helper.ts", src)
+	if countModelEvents(ents) != 0 || len(rels) != 0 {
+		t.Fatalf("non-entity class produced output: ents=%+v rels=%+v", ents, rels)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Sequelize hooks
 // ---------------------------------------------------------------------------
 
