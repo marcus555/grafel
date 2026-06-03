@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/custom/ruby/middleware.go`<br>`internal/custom/ruby/middleware_test.go` | — |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | ✅ `full` | `2026-06-03` | — | `internal/custom/ruby/rate_limit_endpoint.go`<br>`internal/custom/ruby/rate_limit_endpoint_test.go` | Rails 8 ActionController 'rate_limit to: N, within: T' stamped per controller action (rate_limited/rate_limit/rate_limit_scope=route/rate_limit_source=rate_limit), honouring only:/except:; literal window (1.minute->60) resolved to '<N>/<secs>s', config-driven window honest-partial (rate omitted). Plus app-wide rack-attack 'Rack::Attack.throttle(name, limit:, period:)' markers carrying limit/period/rate_limit_name. #4072 |
 
 ### Schema
 
