@@ -23,6 +23,7 @@
 //	TypeORM (jsts)               @AfterInsert() method  /  @EventSubscriber afterInsert
 //	Sequelize (jsts)             User.afterCreate((user)=>{...})  /  hooks:{afterCreate}
 //	Mongoose (jsts)              schema.post('save', fn)  /  schema.pre('save', fn)
+//	MikroORM (jsts)              @BeforeCreate() method  /  @OnLoad() method
 //
 // Honest-partial discipline: a dynamic / missing model (e.g. @receiver with no
 // sender, an all-models signal), a dynamic event name, or an anonymous /
@@ -138,6 +139,28 @@ var tsEntityClassRe = regexp.MustCompile(
 // method. Group 1 = decorator name (e.g. AfterInsert); Group 2 = method name.
 var tsLifecycleMethodRe = regexp.MustCompile(
 	`(?m)@(BeforeInsert|AfterInsert|BeforeUpdate|AfterUpdate|BeforeRemove|AfterRemove|BeforeSoftRemove|AfterSoftRemove|BeforeRecover|AfterRecover|AfterLoad)\s*\(\s*\)(?:\s*\n\s*@[^\n]*)*\s*\n\s*(?:async\s+)?(\w+)\s*\(`,
+)
+
+// mikroORMDecoratorEvents maps a MikroORM lifecycle hook decorator to its
+// event name. These are the MikroORM-EXCLUSIVE decorators: @BeforeUpdate /
+// @AfterUpdate / @AfterLoad share their decorator name with TypeORM and are
+// already handled (with the same event name) by tsLifecycleMethodRe, so
+// including them here would double-emit. Restricting this set to the
+// MikroORM-only decorators keeps emissions disjoint from the TypeORM branch.
+// Ref: MikroORM lifecycle hooks (@BeforeCreate/@AfterCreate/@BeforeUpsert/
+// @AfterUpsert/@BeforeDelete/@AfterDelete/@OnInit/@OnLoad).
+var mikroORMDecoratorEvents = map[string]string{
+	"BeforeCreate": "beforeCreate", "AfterCreate": "afterCreate",
+	"BeforeUpsert": "beforeUpsert", "AfterUpsert": "afterUpsert",
+	"BeforeDelete": "beforeDelete", "AfterDelete": "afterDelete",
+	"OnInit": "onInit", "OnLoad": "onLoad",
+}
+
+// mikroLifecycleMethodRe matches a MikroORM-exclusive lifecycle decorator
+// directly above a method. Group 1 = decorator name; Group 2 = method name.
+// Scoped, like the TypeORM matcher, to @Entity class bodies by the caller.
+var mikroLifecycleMethodRe = regexp.MustCompile(
+	`(?m)@(BeforeCreate|AfterCreate|BeforeUpsert|AfterUpsert|BeforeDelete|AfterDelete|OnInit|OnLoad)\s*\(\s*\)(?:\s*\n\s*@[^\n]*)*\s*\n\s*(?:async\s+)?(\w+)\s*\(`,
 )
 
 // sequelizeHookEvents is the set of Sequelize hook method / option names.
@@ -337,7 +360,8 @@ func synthesizeRubyARCallbacks(src string, emit func(model, event, handler, fram
 }
 
 // synthesizeJSTSORMHooks handles TypeORM entity lifecycle decorators,
-// Sequelize hook registrations, and Mongoose pre/post middleware.
+// MikroORM entity lifecycle decorators, Sequelize hook registrations, and
+// Mongoose pre/post middleware.
 func synthesizeJSTSORMHooks(src string, emit func(model, event, handler, framework string, line int), lineAt func(int) int) {
 	// --- TypeORM: @AfterInsert() etc. methods inside an @Entity class -------
 	if strings.Contains(src, "@Entity") {
@@ -369,6 +393,16 @@ func synthesizeJSTSORMHooks(src string, emit func(model, event, handler, framewo
 				method := body[lm[4]:lm[5]]
 				event := typeormDecoratorEvents[decorator]
 				emit(sp.name, event, method, "typeorm", lineAt(sp.bodyStart+lm[0]))
+			}
+			// MikroORM-exclusive lifecycle decorators on the same @Entity
+			// classes (@BeforeCreate/@AfterCreate/@BeforeUpsert/@AfterUpsert/
+			// @BeforeDelete/@AfterDelete/@OnInit/@OnLoad). Disjoint from the
+			// TypeORM decorator set above, so no double-emit.
+			for _, lm := range mikroLifecycleMethodRe.FindAllStringSubmatchIndex(body, -1) {
+				decorator := body[lm[2]:lm[3]]
+				method := body[lm[4]:lm[5]]
+				event := mikroORMDecoratorEvents[decorator]
+				emit(sp.name, event, method, "mikro-orm", lineAt(sp.bodyStart+lm[0]))
 			}
 		}
 	}
