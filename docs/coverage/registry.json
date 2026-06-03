@@ -13813,8 +13813,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -14098,8 +14100,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -14376,8 +14380,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -14684,8 +14690,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -14958,8 +14966,10 @@
             "verified_at": "2026-05-30"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -15250,8 +15260,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -15515,8 +15527,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -15776,8 +15790,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -16055,8 +16071,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -16342,8 +16360,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -16565,8 +16585,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -16848,8 +16870,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -17121,8 +17145,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -17385,8 +17411,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/elixir/exception_flow.go","internal/extractors/elixir/exception_flow_test.go"],
+            "notes": "raise X / raise mod.X -\u003e THROWS; rescue e in [A,B] / unbound typed rescue -\u003e CATCHES; bare rescue + string raise + reraise + catch :throw + {:error,_} tuple dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
