@@ -115,15 +115,15 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/13 | |
 | [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
 | [python](../by-language/python.md) | [aiohttp](../detail/lang.python.framework.aiohttp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/12 | |
-| [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 23/25 | 🟡 7/11 | |
-| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
-| [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 23/25 | 🟡 7/11 | |
-| [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 23/25 | 🟡 7/11 | |
-| [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 23/25 | 🟡 7/11 | |
+| [ruby](../by-language/ruby.md) | [Cuba](../detail/lang.ruby.framework.cuba.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
+| [ruby](../by-language/ruby.md) | [Grape](../detail/lang.ruby.framework.grape.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟢 25/25 | 🟡 7/11 | |
+| [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
+| [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
+| [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
 | [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟡 5/6 | ✅ 1/1 | 🟢 1/1 | ✅ 1/1 | 🟢 25/25 | 🟡 9/12 | |
-| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟡 4/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 24/25 | 🟡 8/12 | |
-| [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟡 2/5 | — | 🟢 1/1 | 🟢 1/1 | 🟡 23/25 | 🟡 6/10 | |
-| [ruby](../by-language/ruby.md) | [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 10/24 | 🟡 2/13 | |
+| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟡 4/6 | 🟢 1/1 | — | 🟢 1/1 | 🟢 25/25 | 🟡 8/12 | |
+| [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟡 2/5 | — | 🟢 1/1 | 🟢 1/1 | 🟡 24/25 | 🟡 6/10 | |
+| [ruby](../by-language/ruby.md) | [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 11/24 | 🟡 2/13 | |
 | [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
@@ -164,17 +164,17 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 3/19 | |
 | [kotlin](../by-language/kotlin.md) | [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 5/9 | |
 | [kotlin](../by-language/kotlin.md) | [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 3/19 | |
-| [kotlin](../by-language/kotlin.md) | [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 13/15 | |
+| [kotlin](../by-language/kotlin.md) | [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 13/15 | |
 | [kotlin](../by-language/kotlin.md) | [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 13/18 | |
 | [kotlin](../by-language/kotlin.md) | [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 13/18 | |
 | [kotlin](../by-language/kotlin.md) | [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | 🟡 2/6 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 3/24 | 🔴 0/19 | |
-| [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 8/18 | |
+| [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 8/18 | |
 | [kotlin](../by-language/kotlin.md) | [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/19 | |
 | [kotlin](../by-language/kotlin.md) | [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/9 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/6 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/19 | |
-| [scala](../by-language/scala.md) | [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/9 | |
-| [scala](../by-language/scala.md) | [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 8/19 | |
+| [scala](../by-language/scala.md) | [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/9 | |
+| [scala](../by-language/scala.md) | [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 8/19 | |
 | [scala](../by-language/scala.md) | [Caliban](../detail/lang.scala.framework.caliban.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 5/19 | |
 | [scala](../by-language/scala.md) | [Cask](../detail/lang.scala.framework.cask.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/9 | |
 | [scala](../by-language/scala.md) | [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/6 | |
@@ -182,7 +182,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [scala](../by-language/scala.md) | [Lagom](../detail/lang.scala.framework.lagom.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 9/12 | |
 | [scala](../by-language/scala.md) | [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/9 | |
 | [scala](../by-language/scala.md) | [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 9/12 | |
-| [scala](../by-language/scala.md) | [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/9 | |
+| [scala](../by-language/scala.md) | [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/9 | |
 | [scala](../by-language/scala.md) | [sttp (HTTP client)](../detail/lang.scala.framework.sttp.md) | 🟡 2/6 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 4/19 | |
 | [scala](../by-language/scala.md) | [tapir (endpoint DSL)](../detail/lang.scala.framework.tapir.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 6/19 | |
 

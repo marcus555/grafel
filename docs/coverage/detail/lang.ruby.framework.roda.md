@@ -102,7 +102,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Def use chain extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_ruby.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/ruby.go`<br>`internal/substrate/substrate.go` | — |
 | Error flow | ✅ `full` | `2026-06-03` | — | `internal/extractor/exception_flow.go`<br>`internal/extractors/ruby/exception_flow.go`<br>`internal/extractors/ruby/exception_flow_test.go` | raise X / raise Mod::X -> THROWS; rescue A, B => e / method-level rescue / Rails rescue_from A, B, with: -> CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628) |
-| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
+| Feature flag gating | ✅ `full` | `2026-06-03` | 4140 | `internal/engine/feature_flag_edges.go`<br>`internal/engine/feature_flag_edges_test.go`<br>`internal/engine/orm_queries.go` | Ruby flag-check call sites -> feature:<key> + GATED_BY (Flipper symbol/subscript/feature() + Unleash is_enabled? + Rollout active? + LaunchDarkly variation); framework-agnostic engine pass, value-asserted Ruby unit tests |
 | Fs effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | — |
 | Import resolution quality | 🟢 `partial` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/ruby.go`<br>`internal/substrate/substrate.go` | — |
