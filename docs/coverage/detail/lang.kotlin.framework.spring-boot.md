@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/custom/kotlin/spring_middleware.go` | @Bean SecurityFilterChain + OncePerRequestFilter/HandlerInterceptor/WebMvcConfigurer.addInterceptors/WebFilter captured by name — value-asserted, file-local; cross-file filter chain order is honest gap |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | 4095 | `internal/custom/kotlin/rate_limit_endpoint.go`<br>`internal/custom/kotlin/rate_limit_endpoint_test.go` | Resilience4j @RateLimiter(name="orders") on a @GetMapping/@PostMapping/... handler inside a @RestController/@Controller stamps the composed endpoint (class @RequestMapping prefix + method path) with rate_limited/rate_limit_scope=route/rate_limit_source=@RateLimiter(<name>)/rate_limit_name. This is the KOTLIN-native .kt path (custom_java_patterns hard-skips .kt per #3584). Value-asserted in rate_limit_endpoint_test.go. Negatives: an un-annotated handler and @RateLimiter on a non-controller @Service method are not stamped. Partial (honest): the numeric limit lives in resilience4j.ratelimiter.<name> config, so the rate is omitted; bucket4j and Spring Cloud Gateway surfaces are not yet covered for Kotlin. |
 
 ### Testing
 

@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/custom/kotlin/ktor_auth_middleware.go` | ordered install(Plugin) pipeline (CORS/CallLogging/ContentNegotiation/...) + custom intercept(ApplicationCallPipeline.Phase) interceptors — value-asserted names+order, file-local |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | 4095 | `internal/custom/kotlin/rate_limit_endpoint.go`<br>`internal/custom/kotlin/rate_limit_endpoint_test.go` | Ktor RateLimit plugin: install(RateLimit){ register(RateLimitName("api")){ rateLimiter(limit=100, refillPeriod=60.seconds) } } resolves the named limiter; the rateLimit(RateLimitName("api")){...} guard (and the no-arg rateLimit{...} default guard) stamps every nested get/post/... handler with rate_limited/rate_limit_scope=route/rate_limit_source=ktor/rate_limit_name, composing enclosing route("/prefix") prefixes, and resolves rate="100/60s" when limit+refillPeriod are inline literals (N.seconds/.minutes/.hours/.days or bare int). Value-asserted in rate_limit_endpoint_test.go. Negatives: an unguarded route and a non-rate-limit plugin (install(CORS)) are not stamped. Partial: a config-/variable-driven limit/refillPeriod is honest-partial (rate omitted); cross-file limiter registration (register in a separate module file from the rateLimit guard) is not joined. |
 
 ### Testing
 

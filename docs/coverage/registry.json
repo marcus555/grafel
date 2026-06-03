@@ -46043,8 +46043,11 @@
             "notes": "ordered install(Plugin) pipeline (CORS/CallLogging/ContentNegotiation/...) + custom intercept(ApplicationCallPipeline.Phase) interceptors — value-asserted names+order, file-local"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/rate_limit_endpoint.go","internal/custom/kotlin/rate_limit_endpoint_test.go"],
+            "issue": "4095",
+            "notes": "Ktor RateLimit plugin: install(RateLimit){ register(RateLimitName(\"api\")){ rateLimiter(limit=100, refillPeriod=60.seconds) } } resolves the named limiter; the rateLimit(RateLimitName(\"api\")){...} guard (and the no-arg rateLimit{...} default guard) stamps every nested get/post/... handler with rate_limited/rate_limit_scope=route/rate_limit_source=ktor/rate_limit_name, composing enclosing route(\"/prefix\") prefixes, and resolves rate=\"100/60s\" when limit+refillPeriod are inline literals (N.seconds/.minutes/.hours/.days or bare int). Value-asserted in rate_limit_endpoint_test.go. Negatives: an unguarded route and a non-rate-limit plugin (install(CORS)) are not stamped. Partial: a config-/variable-driven limit/refillPeriod is honest-partial (rate omitted); cross-file limiter registration (register in a separate module file from the rateLimit guard) is not joined.",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
@@ -47283,8 +47286,11 @@
             "notes": "@Bean SecurityFilterChain + OncePerRequestFilter/HandlerInterceptor/WebMvcConfigurer.addInterceptors/WebFilter captured by name — value-asserted, file-local; cross-file filter chain order is honest gap"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/rate_limit_endpoint.go","internal/custom/kotlin/rate_limit_endpoint_test.go"],
+            "issue": "4095",
+            "notes": "Resilience4j @RateLimiter(name=\"orders\") on a @GetMapping/@PostMapping/... handler inside a @RestController/@Controller stamps the composed endpoint (class @RequestMapping prefix + method path) with rate_limited/rate_limit_scope=route/rate_limit_source=@RateLimiter(\u003cname\u003e)/rate_limit_name. This is the KOTLIN-native .kt path (custom_java_patterns hard-skips .kt per #3584). Value-asserted in rate_limit_endpoint_test.go. Negatives: an un-annotated handler and @RateLimiter on a non-controller @Service method are not stamped. Partial (honest): the numeric limit lives in resilience4j.ratelimiter.\u003cname\u003e config, so the rate is omitted; bucket4j and Spring Cloud Gateway surfaces are not yet covered for Kotlin.",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
