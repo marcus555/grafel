@@ -61806,9 +61806,10 @@
           },
           "request_shape_extraction": {
             "status": "partial",
-            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go","internal/substrate/payload_shapes_t2_test.go"],
+            "issue": "3951",
+            "notes": "GENUINE-PARTIAL (#3951, was aspirational off #2771): the framework-agnostic Ruby payload-shape sniffer now binds Grape handlers via DSL anchors (scanRubyShapeHeaders) instead of dropping them at module scope (Grape uses no `def`). Request shape = Grape `params do; requires :name / optional :age end` (each leading symbol is a field, bound to the `params`/API-class header); also bare `params[:x]` reads inside route blocks. Test TestPayloadShapesRuby_GrapeRequiresAndExpose asserts requires/optional {name,age}. PARTIAL vs Rails full: no type→field-type mapping, no nested/group params, no shared `params` reuse across routes. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-03"
           },
           "request_sink_dataflow": {
             "status": "partial",
@@ -61819,9 +61820,10 @@
           },
           "response_shape_extraction": {
             "status": "partial",
-            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go","internal/substrate/payload_shapes_t2_test.go"],
+            "issue": "3951",
+            "notes": "GENUINE-PARTIAL (#3951, was aspirational off #2771): Grape response shape = `expose :id / :name` declarations inside a `class X \u003c Grape::Entity` body (bound to the Entity-class header via scanRubyShapeHeaders) + `json({...})` route-block helper. Test TestPayloadShapesRuby_GrapeRequiresAndExpose asserts expose {id,name}. PARTIAL vs Rails full: present/expose pairing is per-enclosing-block (no cross-file Entity resolution), no nested `expose … do` blocks, no conditional/if-exposed fields. DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -61831,8 +61833,9 @@
           "schema_drift_detection": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "issue": "3951",
+            "notes": "Drift detection (internal/links/payload_drift.go) is framework-agnostic and now has genuine Grape request (requires/optional) + response (expose) shapes to compare (#3951) — previously the cell was credited but the Grape shapes never surfaced. PARTIAL: no Grape-specific drift fixture asserted end-to-end yet.",
+            "verified_at": "2026-06-03"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -62357,9 +62360,10 @@
           },
           "request_shape_extraction": {
             "status": "partial",
-            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go","internal/substrate/payload_shapes_t2_test.go"],
+            "issue": "3951",
+            "notes": "GENUINE-PARTIAL (#3951): Hanami action request = bare `params[:x]` reads inside `def call(params)`, bound to the `call` header (Hanami uses `def call`, so the stock def-header path already fires). Test TestPayloadShapesRuby_HanamiAction asserts {email,name}. PARTIAL: dry-validation schema blocks not parsed. DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "request_sink_dataflow": {
             "status": "missing",
@@ -62367,9 +62371,10 @@
           },
           "response_shape_extraction": {
             "status": "partial",
-            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go","internal/substrate/payload_shapes_t2_test.go"],
+            "issue": "3951",
+            "notes": "GENUINE-PARTIAL (#3951): Hanami action response = inline `JSON.generate({...})` / `JSON.dump({...})` body (commonly `self.body = JSON.generate({...})`), bound to the `def call` header. Test TestPayloadShapesRuby_HanamiAction asserts {id,email}. PARTIAL: view-rendered bodies (no inline hash) and to_json on a var remain unresolved. DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -62379,8 +62384,9 @@
           "schema_drift_detection": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "issue": "3951",
+            "notes": "Framework-agnostic drift pass now has genuine Hanami request + response shapes to compare (#3951).",
+            "verified_at": "2026-06-03"
           },
           "taint_sink_detection": {
             "status": "partial",
@@ -63487,9 +63493,10 @@
           },
           "request_shape_extraction": {
             "status": "partial",
-            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go","internal/substrate/payload_shapes_t2_test.go"],
+            "issue": "3951",
+            "notes": "GENUINE-PARTIAL (#3951, was aspirational off #2771): Sinatra request = bare `params[:x]` / `params['x']` reads inside a `verb '/path' do` route block, now bound to a `VERB /path` header via scanRubyShapeHeaders (Sinatra uses no `def`, so the shape was previously dropped). Test TestPayloadShapesRuby_SinatraRoute asserts request {email,name}. PARTIAL: no type info, no Sinatra-Contrib/JSON-schema validation block parsing. DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "request_sink_dataflow": {
             "status": "partial",
@@ -63500,9 +63507,10 @@
           },
           "response_shape_extraction": {
             "status": "partial",
-            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go","internal/substrate/payload_shapes_t2_test.go"],
+            "issue": "3951",
+            "notes": "GENUINE-PARTIAL (#3951, was aspirational off #2771): Sinatra route handlers use a `verb '/path' do` DSL block (no `def`), so shapes previously dropped at module scope. scanRubyShapeHeaders now anchors them to a `VERB /path` header. Response = `json({...})` helper. Test TestPayloadShapesRuby_SinatraRoute asserts response {id,name}. PARTIAL: erb/haml view bodies and content_type-only responses unresolved. DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "sanitizer_recognition": {
             "status": "partial",
@@ -63512,8 +63520,9 @@
           "schema_drift_detection": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
-            "verified_at": "2026-05-28"
+            "issue": "3951",
+            "notes": "Framework-agnostic drift pass now has genuine Sinatra request + response shapes to compare (#3951); previously the Sinatra route-block handler bound to no header so no shape surfaced. PARTIAL: no Sinatra-specific drift fixture asserted end-to-end yet.",
+            "verified_at": "2026-06-03"
           },
           "taint_sink_detection": {
             "status": "partial",
