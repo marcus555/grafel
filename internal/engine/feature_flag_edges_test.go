@@ -801,3 +801,233 @@ public class Gate {
 		t.Errorf("dynamic Java key should yield no output, got flags=%v edges=%v", flags, edges)
 	}
 }
+
+// C# — Microsoft.FeatureManagement: an ASP.NET Core controller action calling
+// `await _featureManager.IsEnabledAsync("new-checkout")`. The Task-returning
+// `Async` suffix breaks the Unleash `enabled\s*\(` matcher, so the dedicated
+// FeatureManagement matcher (receiver-gated) attributes it to the enclosing
+// async action with SDK subtype "featuremanagement". This is the canonical
+// .NET SDK idiom the task requires.
+func TestFeatureFlag_CSharp_FeatureManagement_IsEnabledAsync(t *testing.T) {
+	src := `
+public class CheckoutController : Controller
+{
+    private readonly IFeatureManager _featureManager;
+
+    public async Task<IActionResult> Index()
+    {
+        if (await _featureManager.IsEnabledAsync("new-checkout"))
+        {
+            return NewCheckout();
+        }
+        return LegacyCheckout();
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "CheckoutController.cs", src)
+
+	flag, ok := findFlag(flags, "new-checkout")
+	if !ok {
+		t.Fatalf("expected feature:new-checkout entity, got flags=%v", flags)
+	}
+	if flag.ID != "feature:new-checkout" {
+		t.Errorf("flag ID = %q, want feature:new-checkout", flag.ID)
+	}
+	if flag.Subtype != "featuremanagement" {
+		t.Errorf("flag SDK subtype = %q, want featuremanagement", flag.Subtype)
+	}
+	g, ok := findGate(edges, "new-checkout")
+	if !ok {
+		t.Fatalf("expected GATED_BY for new-checkout, got %v", edges)
+	}
+	if g.From != "Function:Index" {
+		t.Errorf("GATED_BY FromID = %q, want Function:Index", g.From)
+	}
+	if g.To != "feature:new-checkout" {
+		t.Errorf("GATED_BY ToID = %q, want feature:new-checkout", g.To)
+	}
+	if g.SDK != "featuremanagement" {
+		t.Errorf("GATED_BY sdk = %q, want featuremanagement", g.SDK)
+	}
+}
+
+// C# — Microsoft.FeatureManagement synchronous IsEnabled (no Async suffix) on a
+// FeatureManager receiver also attributes to FeatureManagement, NOT Unleash:
+// the receiver-gated FeatureManagement matcher runs before the generic Unleash
+// matcher (first-match-wins), so `_featureManager.IsEnabled(...)` is correctly
+// credited to the .NET SDK.
+func TestFeatureFlag_CSharp_FeatureManagement_IsEnabled_Sync(t *testing.T) {
+	src := `
+public class NavService
+{
+    private readonly IFeatureManager _featureManager;
+
+    public string Nav()
+    {
+        return _featureManager.IsEnabled("dark-mode") ? DarkNav() : LightNav();
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "NavService.cs", src)
+	flag, ok := findFlag(flags, "dark-mode")
+	if !ok {
+		t.Fatalf("expected feature:dark-mode entity, got %v", flags)
+	}
+	if flag.Subtype != "featuremanagement" {
+		t.Errorf("flag SDK = %q, want featuremanagement (not unleash)", flag.Subtype)
+	}
+	g, ok := findGate(edges, "dark-mode")
+	if !ok || g.From != "Function:Nav" || g.To != "feature:dark-mode" {
+		t.Fatalf("edge = %+v ok=%v, want Function:Nav -> feature:dark-mode", g, ok)
+	}
+	if g.SDK != "featuremanagement" {
+		t.Errorf("GATED_BY sdk = %q, want featuremanagement", g.SDK)
+	}
+}
+
+// C# — Microsoft.FeatureManagement `[FeatureGate("admin-panel")]` attribute
+// declaratively gating an ASP.NET Core action. The attribute sits between the
+// Login() and Dashboard() method headers; the nearest preceding header is
+// Login, so it attributes to Function:Login. The value invariant asserted is
+// the SPECIFIC flag key + SDK on the SPECIFIC declarative attribute and a real
+// enclosing-function FromID.
+func TestFeatureFlag_CSharp_FeatureManagement_FeatureGateAttribute(t *testing.T) {
+	src := `
+public class AdminController : Controller
+{
+    public IActionResult Login()
+    {
+        return View();
+    }
+
+    [FeatureGate("admin-panel")]
+    public IActionResult Dashboard()
+    {
+        return View();
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "AdminController.cs", src)
+	flag, ok := findFlag(flags, "admin-panel")
+	if !ok {
+		t.Fatalf("expected feature:admin-panel entity, got %v", flags)
+	}
+	if flag.ID != "feature:admin-panel" {
+		t.Errorf("flag ID = %q, want feature:admin-panel", flag.ID)
+	}
+	if flag.Subtype != "featuremanagement" {
+		t.Errorf("flag SDK = %q, want featuremanagement", flag.Subtype)
+	}
+	g, ok := findGate(edges, "admin-panel")
+	if !ok {
+		t.Fatalf("expected GATED_BY for admin-panel, got %v", edges)
+	}
+	if g.From != "Function:Login" {
+		t.Errorf("GATED_BY FromID = %q, want Function:Login (nearest preceding method header)", g.From)
+	}
+	if g.To != "feature:admin-panel" {
+		t.Errorf("GATED_BY ToID = %q, want feature:admin-panel", g.To)
+	}
+	if g.SDK != "featuremanagement" {
+		t.Errorf("GATED_BY sdk = %q, want featuremanagement", g.SDK)
+	}
+}
+
+// C# — LaunchDarkly PascalCase BoolVariation (.NET server SDK) attributes to
+// the enclosing action with SDK subtype "launchdarkly". Confirms the existing
+// case-insensitive LD matcher already catches the .NET PascalCase form (no new
+// matcher needed for LD).
+func TestFeatureFlag_CSharp_LaunchDarkly_BoolVariation_Pascal(t *testing.T) {
+	src := `
+public class BetaController : Controller
+{
+    public IActionResult Index(LdUser user)
+    {
+        if (_ldClient.BoolVariation("beta", user, false))
+        {
+            return BetaView();
+        }
+        return StableView();
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "BetaController.cs", src)
+	flag, ok := findFlag(flags, "beta")
+	if !ok {
+		t.Fatalf("expected feature:beta entity, got %v", flags)
+	}
+	if flag.Subtype != "launchdarkly" {
+		t.Errorf("flag SDK = %q, want launchdarkly", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta")
+	if !ok || g.From != "Function:Index" || g.To != "feature:beta" {
+		t.Fatalf("edge = %+v ok=%v, want Function:Index -> feature:beta", g, ok)
+	}
+	if g.SDK != "launchdarkly" {
+		t.Errorf("GATED_BY sdk = %q, want launchdarkly", g.SDK)
+	}
+}
+
+// C# — OpenFeature .NET PascalCase GetBooleanValue attributes to the enclosing
+// method (case-insensitive OpenFeature matcher already catches it).
+func TestFeatureFlag_CSharp_OpenFeature_GetBooleanValue_Pascal(t *testing.T) {
+	src := `
+public class UiService
+{
+    public bool Render()
+    {
+        return _client.GetBooleanValue("new-ui", false);
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "UiService.cs", src)
+	flag, ok := findFlag(flags, "new-ui")
+	if !ok {
+		t.Fatalf("expected feature:new-ui entity, got %v", flags)
+	}
+	if flag.Subtype != "openfeature" {
+		t.Errorf("flag SDK = %q, want openfeature", flag.Subtype)
+	}
+	g, ok := findGate(edges, "new-ui")
+	if !ok || g.From != "Function:Render" || g.To != "feature:new-ui" {
+		t.Fatalf("edge = %+v ok=%v, want Function:Render -> feature:new-ui", g, ok)
+	}
+}
+
+// C# NEGATIVE — FeatureManagement with a dynamic (non-literal) key must NOT
+// fabricate a flag entity or edge (honest-partial, mirrors java/python).
+func TestFeatureFlag_CSharp_FeatureManagement_DynamicKey_NoFabrication(t *testing.T) {
+	src := `
+public class Gate
+{
+    public async Task<bool> Check(string flagName)
+    {
+        return await _featureManager.IsEnabledAsync(flagName);
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "Gate.cs", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("dynamic .NET key should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// C# NEGATIVE — a `.IsEnabled` property access on a NON-FeatureManager receiver
+// (a UI control) is NOT attributed: the FeatureManagement matcher requires a
+// `featureManager` receiver, and there is no `enabled(` call form for the
+// Unleash matcher to catch either, so nothing is emitted.
+func TestFeatureFlag_CSharp_NonFeatureManagerIsEnabled_NoFabrication(t *testing.T) {
+	src := `
+public class Widget
+{
+    public bool CanClick(Button button)
+    {
+        return button.IsEnabled;
+    }
+}
+`
+	flags, edges := runFlagPass("csharp", "Widget.cs", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("non-FeatureManager IsEnabled property should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}

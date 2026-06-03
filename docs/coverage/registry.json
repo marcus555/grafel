@@ -8987,8 +8987,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (Microsoft.FeatureManagement/LaunchDarkly/Unleash/OpenFeature/Split.io/generic). .NET-canonical idioms verified: Microsoft.FeatureManagement await _featureManager.IsEnabledAsync(\"key\") + sync IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase _ldClient.BoolVariation(\"key\",...), OpenFeature client.GetBooleanValue(\"key\",false) all fire \u0026 attribute to the enclosing controller action. Honest-partial: dynamic keys (IsEnabledAsync(flagName)) and non-FeatureManager .IsEnabled property emit nothing.",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -9279,8 +9282,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -9496,8 +9502,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -9704,8 +9713,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -9912,8 +9924,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -10204,8 +10219,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -10503,8 +10521,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -10814,8 +10835,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -11085,8 +11109,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "missing",
@@ -11360,8 +11387,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -11581,8 +11611,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -11864,8 +11897,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -12019,8 +12055,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -12118,8 +12157,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -12217,8 +12259,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -12382,8 +12427,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic C# engine pass, fires regardless of framework). .NET idioms attribute to the enclosing method: Microsoft.FeatureManagement _featureManager.IsEnabledAsync/IsEnabled(\"key\") + [FeatureGate(\"key\")] attribute, LaunchDarkly PascalCase BoolVariation/Variation, Unleash IsEnabled, OpenFeature GetBooleanValue. Honest-partial: dynamic keys + non-FeatureManager .IsEnabled miss (no literal / wrong receiver).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
