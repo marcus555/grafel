@@ -32,18 +32,18 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [HotChocolate (GraphQL)](../detail/lang.csharp.framework.hotchocolate.md) | 🟡 3/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 3/24 | 🔴 0/13 | |
 | [C#](../by-language/csharp.md) | [NancyFX](../detail/lang.csharp.framework.nancyfx.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [C#](../by-language/csharp.md) | [ServiceStack](../detail/lang.csharp.framework.servicestack.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [elixir](../by-language/elixir.md) | [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟡 3/6 | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/12 | |
+| [elixir](../by-language/elixir.md) | [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟡 3/6 | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 7/12 | |
 | [elixir](../by-language/elixir.md) | [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟡 3/6 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
 | [elixir](../by-language/elixir.md) | [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
 | [elixir](../by-language/elixir.md) | [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟡 3/6 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 4/9 | |
-| [elixir](../by-language/elixir.md) | [Finch](../detail/lang.elixir.framework.finch.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 10/24 | 🔴 0/12 | |
-| [elixir](../by-language/elixir.md) | [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 11/25 | 🔴 0/11 | |
+| [elixir](../by-language/elixir.md) | [Finch](../detail/lang.elixir.framework.finch.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 10/24 | 🟡 3/12 | |
+| [elixir](../by-language/elixir.md) | [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/6 | ✅ 1/1 | 🔴 0/4 | ✅ 1/1 | 🟡 11/25 | 🟡 3/11 | |
 | [elixir](../by-language/elixir.md) | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 1/6 | |
 | [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
 | [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [elixir](../by-language/elixir.md) | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 9/24 | 🔴 0/12 | |
-| [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 10/24 | 🟡 1/12 | |
+| [elixir](../by-language/elixir.md) | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 9/24 | 🟡 3/12 | |
+| [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 10/24 | 🟡 4/12 | |
 | [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 24/24 | 🟡 8/12 | |
@@ -100,7 +100,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/12 | |
-| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 12/17 | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 13/17 | |
 | [python](../by-language/python.md) | [Falcon](../detail/lang.python.framework.falcon.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 10/11 | |
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 10/13 | |
@@ -162,7 +162,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟡 5/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 5/12 | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/6 | |
 | [kotlin](../by-language/kotlin.md) | [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/19 | |
-| [kotlin](../by-language/kotlin.md) | [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/9 | |
+| [kotlin](../by-language/kotlin.md) | [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/9 | |
 | [kotlin](../by-language/kotlin.md) | [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/19 | |
 | [kotlin](../by-language/kotlin.md) | [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 12/15 | |
 | [kotlin](../by-language/kotlin.md) | [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/18 | |
@@ -195,14 +195,14 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ✅ 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ✅ 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ✅ 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 8/8 | |
-| [dart](../by-language/dart.md) | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🟡 4/8 | |
+| [dart](../by-language/dart.md) | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🟢 1/1 | 🟡 9/24 | 🟡 5/8 | |
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🔴 0/1 | 🟡 21/22 | 🔴 0/3 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🔴 0/1 | 🟡 21/22 | 🔴 0/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 21/21 | |
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 19/19 | |
-| [swift](../by-language/swift.md) | [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/24 | 🟡 3/8 | |
+| [swift](../by-language/swift.md) | [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | ✅ 1/1 | 🟡 18/24 | 🟡 3/8 | |
 
 
 ## Meta Framework
@@ -259,8 +259,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [C/C++](../by-language/c-cpp.md) | [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/25 | 🟡 3/15 | |
-| [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | — | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 2/24 | 🟡 7/10 | |
+| [C/C++](../by-language/c-cpp.md) | [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 7/25 | 🟡 3/15 | |
+| [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | — | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 7/24 | 🟡 7/10 | |
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | — | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟢 10/10 | |
 | [elixir](../by-language/elixir.md) | [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | — | 🔴 0/1 | 🟢 4/4 | ✅ 1/1 | 🟡 11/24 | 🟡 6/10 | |
 | [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/25 | 🟡 6/17 | |
