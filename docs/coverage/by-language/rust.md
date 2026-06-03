@@ -85,10 +85,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | |
+| [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | |
+
 
 ### Validation
 

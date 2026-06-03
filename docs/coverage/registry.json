@@ -5174,6 +5174,7 @@
     {
       "id": "lang.c-cpp.framework.librdkafka",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "c-cpp",
       "label": "librdkafka (C/C++ Kafka client)",
       "capabilities": {
@@ -5475,6 +5476,7 @@
     {
       "id": "lang.c-cpp.framework.mqtt",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "c-cpp",
       "label": "MQTT (Paho C/C++ / Mosquitto)",
       "capabilities": {
@@ -7658,6 +7660,7 @@
     {
       "id": "lang.c-cpp.framework.zeromq",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "c-cpp",
       "label": "ZeroMQ (libzmq/cppzmq)",
       "capabilities": {
@@ -14592,6 +14595,7 @@
     {
       "id": "lang.elixir.framework.broadway",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "elixir",
       "label": "Broadway (Elixir data pipelines)",
       "capabilities": {
@@ -68310,6 +68314,7 @@
     {
       "id": "lang.rust.framework.lapin",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "rust",
       "label": "lapin (AMQP/RabbitMQ)",
       "capabilities": {
@@ -68625,6 +68630,7 @@
     {
       "id": "lang.rust.framework.rdkafka",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "rust",
       "label": "rdkafka (Kafka)",
       "capabilities": {
@@ -77093,6 +77099,7 @@
     {
       "id": "msg.actioncable",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "ruby",
       "label": "Rails ActionCable",
       "capabilities": {
@@ -77108,6 +77115,7 @@
     {
       "id": "msg.apscheduler",
       "category": "message_broker",
+      "subcategory": "schedulers",
       "language": "python",
       "label": "APScheduler (Python advanced scheduler)",
       "capabilities": {
@@ -77122,6 +77130,7 @@
     {
       "id": "msg.broker.amqp",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "AMQP (generic)",
       "capabilities": {
@@ -77145,6 +77154,7 @@
     {
       "id": "msg.broker.azure-service-bus",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Azure Service Bus / Event Hubs",
       "capabilities": {
@@ -77168,6 +77178,7 @@
     {
       "id": "msg.broker.cloudevents",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "CloudEvents",
       "capabilities": {
@@ -77191,6 +77202,7 @@
     {
       "id": "msg.broker.debezium",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Debezium (CDC)",
       "capabilities": {
@@ -77214,6 +77226,7 @@
     {
       "id": "msg.broker.eventbridge",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "AWS EventBridge",
       "capabilities": {
@@ -77237,6 +77250,7 @@
     {
       "id": "msg.broker.eventgrid",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Azure Event Grid",
       "capabilities": {
@@ -77260,6 +77274,7 @@
     {
       "id": "msg.broker.gcp-pubsub",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "GCP Pub/Sub",
       "capabilities": {
@@ -77283,6 +77298,7 @@
     {
       "id": "msg.broker.kafka",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Apache Kafka",
       "capabilities": {
@@ -77306,6 +77322,7 @@
     {
       "id": "msg.broker.mqtt",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "MQTT",
       "capabilities": {
@@ -77329,6 +77346,7 @@
     {
       "id": "msg.broker.nats",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "NATS",
       "capabilities": {
@@ -77352,6 +77370,7 @@
     {
       "id": "msg.broker.pulsar",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Apache Pulsar",
       "capabilities": {
@@ -77376,6 +77395,7 @@
     {
       "id": "msg.broker.rabbitmq",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "RabbitMQ",
       "capabilities": {
@@ -77400,6 +77420,7 @@
     {
       "id": "msg.broker.redis",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Redis pub/sub \u0026 streams",
       "capabilities": {
@@ -77423,6 +77444,7 @@
     {
       "id": "msg.broker.sns",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "AWS SNS",
       "capabilities": {
@@ -77446,6 +77468,7 @@
     {
       "id": "msg.broker.sqs",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "AWS SQS",
       "capabilities": {
@@ -77469,6 +77492,7 @@
     {
       "id": "msg.bullmq",
       "category": "message_broker",
+      "subcategory": "task_queues",
       "language": "jsts",
       "label": "BullMQ / bull (Node task queue)",
       "capabilities": {
@@ -77493,6 +77517,7 @@
     {
       "id": "msg.celery",
       "category": "message_broker",
+      "subcategory": "task_queues",
       "language": "python",
       "label": "Celery (Python task queue)",
       "capabilities": {
@@ -77516,6 +77541,7 @@
     {
       "id": "msg.django-channels",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "python",
       "label": "Django Channels",
       "capabilities": {
@@ -77531,6 +77557,7 @@
     {
       "id": "msg.django-signals",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "python",
       "label": "Django signals (intra-repo pub/sub)",
       "capabilities": {
@@ -77555,6 +77582,7 @@
     {
       "id": "msg.dramatiq",
       "category": "message_broker",
+      "subcategory": "task_queues",
       "language": "python",
       "label": "Dramatiq (Python task queue)",
       "capabilities": {
@@ -77575,6 +77603,7 @@
     {
       "id": "msg.graphql-subscriptions",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "multi",
       "label": "GraphQL subscriptions",
       "capabilities": {
@@ -77598,6 +77627,7 @@
     {
       "id": "msg.hangfire-recurring",
       "category": "message_broker",
+      "subcategory": "schedulers",
       "language": "csharp",
       "label": "Hangfire RecurringJob (.NET scheduled jobs)",
       "capabilities": {
@@ -77612,6 +77642,7 @@
     {
       "id": "msg.kafka-streams",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "multi",
       "label": "Kafka Streams / Faust",
       "capabilities": {
@@ -77630,6 +77661,7 @@
     {
       "id": "msg.node-schedule",
       "category": "message_broker",
+      "subcategory": "schedulers",
       "language": "jsts",
       "label": "node-schedule (Node scheduled jobs)",
       "capabilities": {
@@ -77644,6 +77676,7 @@
     {
       "id": "msg.orm-lifecycle-hooks-jsts",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "jsts",
       "label": "ORM model lifecycle-hook → handler TRIGGERS (TypeORM, Sequelize, Mongoose)",
       "capabilities": {
@@ -77667,6 +77700,7 @@
     {
       "id": "msg.orm-lifecycle-hooks-py",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "python",
       "label": "ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)",
       "capabilities": {
@@ -77690,6 +77724,7 @@
     {
       "id": "msg.orm-lifecycle-hooks-ruby",
       "category": "message_broker",
+      "subcategory": "brokers",
       "language": "ruby",
       "label": "ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)",
       "capabilities": {
@@ -77713,6 +77748,7 @@
     {
       "id": "msg.phoenix-channels",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "elixir",
       "label": "Phoenix Channels",
       "capabilities": {
@@ -77745,6 +77781,7 @@
     {
       "id": "msg.resque",
       "category": "message_broker",
+      "subcategory": "task_queues",
       "language": "ruby",
       "label": "Resque (Ruby task queue)",
       "capabilities": {
@@ -77771,6 +77808,7 @@
     {
       "id": "msg.rufus-scheduler",
       "category": "message_broker",
+      "subcategory": "schedulers",
       "language": "ruby",
       "label": "rufus-scheduler (Ruby in-process scheduler)",
       "capabilities": {
@@ -77785,6 +77823,7 @@
     {
       "id": "msg.sidekiq",
       "category": "message_broker",
+      "subcategory": "task_queues",
       "language": "ruby",
       "label": "Sidekiq (Ruby task queue)",
       "capabilities": {
@@ -77805,6 +77844,7 @@
     {
       "id": "msg.signalr",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "multi",
       "label": "SignalR",
       "capabilities": {
@@ -77827,6 +77867,7 @@
     {
       "id": "msg.sse",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "multi",
       "label": "Server-Sent Events",
       "capabilities": {
@@ -77849,6 +77890,7 @@
     {
       "id": "msg.webhook",
       "category": "message_broker",
+      "subcategory": "webhooks",
       "language": "multi",
       "label": "Webhooks",
       "capabilities": {
@@ -77878,6 +77920,7 @@
     {
       "id": "msg.websocket",
       "category": "message_broker",
+      "subcategory": "realtime_channels",
       "language": "multi",
       "label": "WebSocket",
       "capabilities": {
@@ -77910,6 +77953,7 @@
     {
       "id": "msg.whenever",
       "category": "message_broker",
+      "subcategory": "schedulers",
       "language": "ruby",
       "label": "whenever (Ruby cron / config/schedule.rb)",
       "capabilities": {

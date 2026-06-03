@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
+- **Subcategory:** Brokers
 - **Capability cells:** 3
 
 ## Capabilities

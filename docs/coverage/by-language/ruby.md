@@ -73,14 +73,36 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [Rails ActionCable](../detail/msg.actioncable.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [Resque (Ruby task queue)](../detail/msg.resque.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [rufus-scheduler (Ruby in-process scheduler)](../detail/msg.rufus-scheduler.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [whenever (Ruby cron / config/schedule.rb)](../detail/msg.whenever.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+
+### Schedulers
+
+| Name | Consumer extraction | Notes |
+|---|---|---|
+| [rufus-scheduler (Ruby in-process scheduler)](../detail/msg.rufus-scheduler.md) | 🟢 | |
+| [whenever (Ruby cron / config/schedule.rb)](../detail/msg.whenever.md) | 🟢 | |
+
+
+### Task Queues
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [Resque (Ruby task queue)](../detail/msg.resque.md) | 🟢 | 🟢 | 🟢 | |
+| [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🟢 | 🟢 | — | |
+
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | ✅ | ✅ | ✅ | |
+
+
+### Realtime Channels
+
+| Name | Consumer extraction | Producer extraction | Room channel grouping | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [Rails ActionCable](../detail/msg.actioncable.md) | — | — | ✅ | — | |
+
 
 ### Workflow / DAG & State Machines
 

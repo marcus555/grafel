@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
+- **Subcategory:** Realtime Channels
 - **Capability cells:** 1
 
 ## Capabilities

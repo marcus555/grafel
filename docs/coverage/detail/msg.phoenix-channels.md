@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
+- **Subcategory:** Realtime Channels
 - **Capability cells:** 4
 
 ## Capabilities

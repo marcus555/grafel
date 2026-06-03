@@ -104,11 +104,15 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🟢 | 🟢 | 🟢 | |
+| [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | |
+| [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | |
+
 
 ### Validation
 
