@@ -24,6 +24,9 @@
 //   - LaunchDarkly : client.variation("key", user, false) /
 //     ldclient.bool_variation("key", ...) /
 //     *Variation / variationDetail family
+//   - FeatureManagement (.NET) : _featureManager.IsEnabledAsync("key") /
+//     IsEnabled("key") / the [FeatureGate("key")] attribute on an MVC
+//     controller/action (Microsoft.FeatureManagement)
 //   - Unleash      : unleash.isEnabled("key") / isFeatureEnabled("key")
 //   - OpenFeature  : client.getBooleanValue("key", false) /
 //     getStringValue / getNumberValue / getObjectValue
@@ -74,7 +77,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | custom
+	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -118,6 +121,41 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "launchdarkly",
 		method: "variation",
+	},
+
+	// Microsoft.FeatureManagement (.NET). The canonical runtime check is
+	// `_featureManager.IsEnabledAsync("flag")` (Task-returning, hence the
+	// `Async` suffix) — also the synchronous `IsEnabled("flag")` on a
+	// FeatureManager. The Unleash matcher below requires `enabled\s*\(`, which
+	// the `Async` suffix breaks, so this dedicated matcher must run FIRST to
+	// attribute the .NET FeatureManagement idiom (and to claim the `Async`
+	// form Unleash structurally cannot). A `featureManager`/`_featureManager`
+	// receiver is required so the `IsEnabled[Async]` method name — generic on
+	// its own — is only attributed when it is the FeatureManagement API,
+	// matching the receiver-gated discipline used for FF4j.
+	{
+		re: regexp.MustCompile(
+			`(?i)\b_?featureManager\s*\.\s*IsEnabled(?:Async)?\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "featuremanagement",
+		method: "IsEnabledAsync",
+	},
+
+	// Microsoft.FeatureManagement attribute gate (.NET). The
+	// `[FeatureGate("admin-panel")]` attribute decorates an MVC controller or
+	// action so the whole endpoint is feature-gated declaratively (no call
+	// site). The `FeatureGate` attribute name is FeatureManagement-specific, so
+	// the literal first argument is a reliable flag key. The enclosing-function
+	// attribution still applies (the attribute precedes the method it gates);
+	// when it decorates a class it attributes to file scope.
+	{
+		re: regexp.MustCompile(
+			`(?i)\bFeatureGate\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "featuremanagement",
+		method: "FeatureGate",
 	},
 
 	// Unleash. isEnabled("flag") / isFeatureEnabled("flag") /
