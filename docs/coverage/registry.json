@@ -49768,8 +49768,11 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_php.go","internal/engine/http_endpoint_deprecation_php_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3628",
+            "notes": "#3628 PHP port: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on synthesised Laravel http_endpoint_definition endpoints. phpDeprecationVerdict recognises a `@deprecated \u003cmsg\u003e` PHPDoc tag and a `deprecated: true` route-attribute flag in the decorator region above `Route::get('/x', ...)`; the cross-language Sunset/Deprecation response header and `// DEPRECATED` banner also fire. api_version is path-derived from a `Route::group(['prefix' =\u003e 'api/v1'], ...)` group prefix the Laravel synthesizer folds into the canonical path. Honest-partial: a controller-action @deprecated PHPDoc in a separate Controller file is not credited (per-file pass); api_version still pins.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",
@@ -51734,8 +51737,11 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/php/deprecation_test.go","internal/custom/php/helpers.go","internal/custom/php/symfony.go","internal/engine/http_endpoint_deprecation.go"],
+            "issue": "3628",
+            "notes": "#3628 PHP port: deprecated/deprecation_source(+deprecated_since/deprecated_replacement) stamped at the source on Symfony #[Route] SCOPE.Operation endpoints (symDeprecationNear), since they are custom-extractor entities the engine pass cannot reach. A `#[Route(..., deprecated: true)]` flag and a `@deprecated \u003cmsg\u003e` PHPDoc above the action both fire, with the shared message parser pulling since/replacement. api_version is path-derived from a `/api/vN` route literal. Identical property contract to the flagship.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",
@@ -53467,8 +53473,11 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/php/apiplatform.go","internal/custom/php/deprecation_test.go","internal/custom/php/helpers.go","internal/engine/http_endpoint_deprecation.go"],
+            "issue": "3628",
+            "notes": "#3628 PHP port: deprecation is FULL — API Platform `#[ApiResource(deprecationReason: '...')]` (resource-wide, applies to every generated CRUD op) and per-operation `new Get(deprecationReason: '...')` stamp deprecated/deprecation_source(+deprecated_replacement) on the SCOPE.Operation endpoints at the source (operations-list scoping prevents a per-op reason leaking resource-wide). api_version is honest-partial: default resource paths (/books, /books/{id}) carry no /vN segment, so api_version only lights up when an operation's uriTemplate names one. Identical property contract to the flagship.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",

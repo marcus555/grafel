@@ -96,6 +96,10 @@ var (
 	// `#[ApiFilter(SearchFilter::class, ...)]` — a query filter. Group 1 is the
 	// filter class short name.
 	reAPFilter = regexp.MustCompile(`#\[ApiFilter\s*\(\s*([A-Za-z_]\w*)`)
+	// `deprecationReason: 'Use /books/v2 instead'` — the API Platform deprecation
+	// marker, valid on #[ApiResource] (resource-wide) and on a single operation
+	// (new Get(deprecationReason: '...')). Group 1 is the message (epic #3628).
+	reAPDeprecationReason = regexp.MustCompile(`(?i)deprecationReason\s*:\s*['"]([^'"]{0,200})['"]`)
 )
 
 // apOperation describes one generated REST operation: its HTTP method and
@@ -153,6 +157,36 @@ func apResourcePath(className string) string {
 		s += "s"
 	}
 	return "/" + s
+}
+
+// apStripOperationsList removes an `operations: [ ... ]` argument sub-list from a
+// resource attribute body so a per-operation `deprecationReason` inside the list
+// is not mis-read as a resource-wide one. The bracket scan is balanced so nested
+// `[]` (e.g. uriVariables) inside an operation constructor are handled.
+func apStripOperationsList(body string) string {
+	idx := strings.Index(body, "operations")
+	if idx < 0 {
+		return body
+	}
+	open := strings.IndexByte(body[idx:], '[')
+	if open < 0 {
+		return body
+	}
+	open += idx
+	depth := 0
+	for i := open; i < len(body); i++ {
+		switch body[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return body[:idx] + body[i+1:]
+			}
+		}
+	}
+	// Unbalanced — drop everything from `operations` onward to stay honest.
+	return body[:idx]
 }
 
 // endsInVowelBeforeY reports whether the char before a trailing 'y' is a vowel
@@ -224,6 +258,7 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 		var explicit []struct {
 			op  apOperation
 			uri string
+			dep string // per-operation deprecationReason message, "" when none
 		}
 		addOp := func(name, body string) {
 			meta, ok := apOperationMeta(name)
@@ -234,10 +269,15 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 			if um := reAPUriTemplate.FindStringSubmatch(body); um != nil {
 				uri = um[1]
 			}
+			dep := ""
+			if dm := reAPDeprecationReason.FindStringSubmatch(body); dm != nil {
+				dep = dm[1]
+			}
 			explicit = append(explicit, struct {
 				op  apOperation
 				uri string
-			}{meta, uri})
+				dep string
+			}{meta, uri, dep})
 		}
 		// operations: [ new Get(), new GetCollection() ] inside the resource body.
 		if strings.Contains(resBody, "operations") {
@@ -252,7 +292,17 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 		}
 
 		ops := explicit
-		emit := func(opName, method, path string, collection bool) {
+		// #3628 — resource-wide deprecationReason on #[ApiResource(...)] itself
+		// deprecates every operation it generates (honest-partial: a per-operation
+		// reason overrides it; absent → no `deprecated` stamped). Scan only the
+		// resource-level arguments, with any `operations: [...]` sub-list removed,
+		// so a per-operation deprecationReason inside the list is NOT mistaken for
+		// a resource-wide one.
+		resDep := ""
+		if dm := reAPDeprecationReason.FindStringSubmatch(apStripOperationsList(resBody)); dm != nil {
+			resDep = dm[1]
+		}
+		emit := func(opName, method, path string, collection bool, depReason string) {
 			name := method + " " + path
 			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, line)
 			setProps(&ent, "framework", "api-platform",
@@ -266,17 +316,22 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 			} else {
 				setProps(&ent, "api_platform_target", "item")
 			}
+			if depReason != "" {
+				since, repl := parseDeprecationMessage(depReason)
+				stampDeprecation(&ent, "deprecationReason", since, repl)
+			}
 			add(ent)
 		}
 
 		if len(ops) == 0 {
-			// Bare #[ApiResource] → default CRUD set.
+			// Bare #[ApiResource] → default CRUD set. A resource-wide
+			// deprecationReason marks the whole CRUD set deprecated.
 			for _, op := range apDefaultOperations {
 				path := basePath
 				if !op.collection {
 					path = basePath + "/{id}"
 				}
-				emit(op.name, op.method, path, op.collection)
+				emit(op.name, op.method, path, op.collection, resDep)
 			}
 		} else {
 			for _, x := range ops {
@@ -287,7 +342,12 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 						path = basePath + "/{id}"
 					}
 				}
-				emit(x.op.name, x.op.method, path, x.op.collection)
+				// Per-operation reason wins; otherwise inherit the resource-wide one.
+				dep := x.dep
+				if dep == "" {
+					dep = resDep
+				}
+				emit(x.op.name, x.op.method, path, x.op.collection, dep)
 			}
 		}
 

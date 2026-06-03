@@ -242,6 +242,16 @@ func resolveEndpointDeprecation(lang, content string, e *types.EntityRecord) dep
 		if v, ok := csharpDeprecationVerdict(region); ok {
 			return v
 		}
+	case "php":
+		// PHP (Laravel) marks a deprecated route with a `@deprecated` PHPDoc tag
+		// or a `deprecated: true` route-attribute flag in the decorator region
+		// above the `Route::get('/x', ...)` line. Symfony `#[Route]` and API
+		// Platform `#[ApiResource]` endpoints are SCOPE.Operation custom-extractor
+		// entities stamped at their own source — honest-partial here (#3628 PHP
+		// port).
+		if v, ok := phpDeprecationVerdict(region); ok {
+			return v
+		}
 	default:
 		// Generic cross-language fallback: a leading-comment DEPRECATED marker
 		// is recognisable in every language's decorator/comment region.
