@@ -75,7 +75,9 @@ func (e *observabilityExtractor) Language() string { return "custom_go_observabi
 // the Go HTTP framework family (issue #3215). The markers are reused verbatim
 // from the middleware/auth extender (middleware_auth_extend.go) so a file is
 // attributed to the same framework across every framework-agnostic pass.
-// net-http is placed last because its `http.*` markers are the broadest.
+// net-http is placed near-last because its `http.*` markers are the broadest;
+// gqlgen (GraphQL resolver modules, issue #3613) is appended after net-http so
+// that any concrete HTTP-server framework still wins attribution.
 var obsFrameworkMarkers = []struct {
 	name string
 	re   *regexp.Regexp
@@ -92,12 +94,24 @@ var obsFrameworkMarkers = []struct {
 	{"revel", regexp.MustCompile(`\brevel\.(?:Result|Controller|Intercept(?:Func|Method)|BEFORE|AFTER)\b`)},
 	{"fasthttp", regexp.MustCompile(`\bfasthttp\.(?:RequestCtx|RequestHandler|ListenAndServe)\b`)},
 	{"net-http", regexp.MustCompile(`\bhttp\.(?:NewServeMux|HandleFunc|ListenAndServe|ListenAndServeTLS)\b`)},
+	// gqlgen (GraphQL) — issue #3613 / observability-attribution-sweep. gqlgen
+	// resolver modules emit the same framework-agnostic observability signals
+	// (zap/slog/zerolog setup, prometheus collectors, otel tracer/span) detected
+	// by obsSignals, but carry no gin/echo/fiber/chi/net-http request-context
+	// marker, so they previously attributed to framework="" and were dropped
+	// (leaving gqlgen's log/metric/trace cells stale-missing while the HTTP
+	// siblings are partial/full). The marker is the canonical gqlgen import plus
+	// the generated resolver receiver types (mirrors the http_endpoint_synthesis
+	// gqlgen signal). Placed LAST — after net-http — so a file that ALSO uses a
+	// concrete HTTP-server framework still attributes to that server (the
+	// server marker wins in declaration order), exactly like the rust utoipa fix.
+	{"gqlgen", regexp.MustCompile(`github\.com/99designs/gqlgen\b|\b(?:query|mutation|subscription)Resolver\b`)},
 }
 
 // detectObsFramework returns the framework the file belongs to, or "" when no
 // recognised framework marker is present. First match wins in declaration
 // order (gin→echo→fiber→chi→beego→iris→hertz→buffalo→gorilla-mux→revel→
-// fasthttp→net-http).
+// fasthttp→net-http→gqlgen).
 func detectObsFramework(src string) string {
 	for _, m := range obsFrameworkMarkers {
 		if m.re.MatchString(src) {
