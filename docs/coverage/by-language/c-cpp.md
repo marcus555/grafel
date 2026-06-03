@@ -34,7 +34,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟡 3/6 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
