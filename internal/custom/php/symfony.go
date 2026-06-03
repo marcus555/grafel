@@ -48,6 +48,15 @@ var (
 		`(?i)name\s*:\s*['"]([^'"]+)['"]`,
 	)
 
+	// deprecated: true — the Symfony #[Route(..., deprecated: true)] sunset flag
+	// inside a route attribute body (epic #3628).
+	reSymRouteDeprecatedFlag = regexp.MustCompile(`(?i)\bdeprecated\s*:\s*true\b`)
+
+	// `@deprecated <message>` PHPDoc tag above a #[Route] controller action — the
+	// canonical PHP deprecation marker, with its optional trailing message
+	// captured for since/replacement parsing (epic #3628).
+	reSymDeprecatedPHPDoc = regexp.MustCompile(`@[dD]eprecated\b([^\n*]{0,200})`)
+
 	// Class-level #[Route('/prefix')] or #[Route(prefix: '/prefix')]
 	// Captured body is full so we can re-use reSymRouteMethods / reSymRouteName.
 	reSymClassRouteAttr = regexp.MustCompile(
@@ -355,6 +364,45 @@ func symStampRateLimit(ent *types.EntityRecord, limiter string) {
 		"rate_limit_source", "#[RateLimiter:"+limiter+"]")
 }
 
+// symDeprecationNear resolves the Symfony deprecation contract for a route at
+// byte offset routeStart whose attribute body is `body`. Two idioms (epic #3628):
+//
+//   - `#[Route(..., deprecated: true)]` — the in-attribute sunset flag (in body);
+//   - a `@deprecated <message>` PHPDoc tag immediately above the route attribute
+//     (the contiguous comment / attribute block preceding routeStart), whose
+//     free-text message yields an optional since / replacement.
+//
+// Returns (source, since, replacement); ("", "", "") when no marker applies so the
+// caller leaves the endpoint un-stamped (honest-partial — never fabricated).
+func symDeprecationNear(src, body string, routeStart int) (source, since, replacement string) {
+	// PHPDoc `@deprecated` above the attribute block carries the richest message;
+	// scan the contiguous comment/attribute lines immediately preceding the route.
+	lo := lineStartOffset(src, routeStart)
+	for lo > 0 {
+		prevEnd := lo - 1 // newline of the previous line
+		prevStart := lineStartOffset(src, prevEnd)
+		line := strings.TrimSpace(src[prevStart:prevEnd])
+		if line == "" ||
+			strings.HasPrefix(line, "#[") ||
+			strings.HasPrefix(line, "*") ||
+			strings.HasPrefix(line, "/*") ||
+			strings.HasPrefix(line, "//") {
+			lo = prevStart
+			continue
+		}
+		break
+	}
+	if m := reSymDeprecatedPHPDoc.FindStringSubmatch(src[lo:routeStart]); m != nil {
+		s, r := parseDeprecationMessage(m[1])
+		return "@deprecated", s, r
+	}
+	// In-attribute `deprecated: true` flag.
+	if reSymRouteDeprecatedFlag.MatchString(body) {
+		return "deprecated: true", "", ""
+	}
+	return "", "", ""
+}
+
 // symSplitMethodList splits a raw comma-separated list of HTTP methods (which
 // may be bare or quoted) into a slice of uppercase method names.
 // Example inputs: "GET", "'GET', 'POST'", "GET, HEAD"
@@ -485,6 +533,8 @@ func (e *symfonyExtractor) Extract(ctx context.Context, file extractor.FileInput
 		// config/packages/rate_limiter.yaml, so only rate_limited + source +
 		// scope are stamped (the numeric rate is never fabricated here).
 		limiter := symRateLimiterNear(src, m[0])
+		// #3628 — deprecation contract from `deprecated: true` / `@deprecated` PHPDoc.
+		depSource, depSince, depRepl := symDeprecationNear(src, body, m[0])
 
 		if len(methods) == 0 {
 			// Emit one endpoint without method prefix (matches existing tests)
@@ -495,6 +545,7 @@ func (e *symfonyExtractor) Extract(ctx context.Context, file extractor.FileInput
 				setProps(&ent, "route_name", routeName)
 			}
 			symStampRateLimit(&ent, limiter)
+			stampDeprecation(&ent, depSource, depSince, depRepl)
 			add(ent)
 		} else {
 			for _, method := range methods {
@@ -506,6 +557,7 @@ func (e *symfonyExtractor) Extract(ctx context.Context, file extractor.FileInput
 					setProps(&ent, "route_name", routeName)
 				}
 				symStampRateLimit(&ent, limiter)
+				stampDeprecation(&ent, depSource, depSince, depRepl)
 				add(ent)
 			}
 			// Also emit a bare path entity for backward-compat deduplication
@@ -516,6 +568,7 @@ func (e *symfonyExtractor) Extract(ctx context.Context, file extractor.FileInput
 				setProps(&bareEnt, "route_name", routeName)
 			}
 			symStampRateLimit(&bareEnt, limiter)
+			stampDeprecation(&bareEnt, depSource, depSince, depRepl)
 			add(bareEnt)
 		}
 	}
