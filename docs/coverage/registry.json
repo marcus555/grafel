@@ -63129,9 +63129,10 @@
             "notes": "Rack use and Cuba before/after blocks. Part of #3282."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -63398,9 +63399,10 @@
             "status": "not_applicable"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -63672,9 +63674,10 @@
             "notes": "Rack use, Rails before/after_action, Grape before/after hooks, Sinatra before/after blocks, Roda plugins, Cuba before/after. Part of #3282."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -63952,9 +63955,10 @@
             "issue": "3621"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -64226,9 +64230,10 @@
             "notes": "Rack use via Hanami::Application, config.middleware.use. Part of #3282."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -64504,9 +64509,10 @@
             "notes": "Rack use, config.middleware.use, Padrino before/after blocks. Part of #3282."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -64785,9 +64791,10 @@
             "cites": ["internal/custom/ruby/middleware.go","internal/custom/ruby/middleware_test.go"]
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "full",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "Rails 8 ActionController 'rate_limit to: N, within: T' stamped per controller action (rate_limited/rate_limit/rate_limit_scope=route/rate_limit_source=rate_limit), honouring only:/except:; literal window (1.minute-\u003e60) resolved to '\u003cN\u003e/\u003csecs\u003es', config-driven window honest-partial (rate omitted). Plus app-wide rack-attack 'Rack::Attack.throttle(name, limit:, period:)' markers carrying limit/period/rate_limit_name. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -65082,9 +65089,10 @@
             "notes": "Roda plugin :name declarations and Rack use. Part of #3282."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -65360,9 +65368,10 @@
             "verified_at": "2026-05-30"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/ruby/rate_limit_endpoint.go","internal/custom/ruby/rate_limit_endpoint_test.go"],
+            "notes": "rack-attack 'Rack::Attack.throttle(name, limit: N, period: T)' detected and stamped as a SCOPE.Pattern/rate_limit marker (rate_limited/limit/period/rate_limit_name/rate_limit_source=rack-attack; literal period 1.minute-\u003e60 -\u003e rate_limit '\u003cN\u003e/\u003csecs\u003es'). Rack middleware applies to this Rack-based framework. PARTIAL: rack-attack throttles bind to a request discriminator (the block), not a named route, so the per-route binding is heuristic (rate_limit_scope=request); blocklist/safelist are not stamped as limits. Framework-native limiter idioms are future work. #4072",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
