@@ -22,6 +22,26 @@ var (
 	// (`request.args.get(key)`) has no string literal and does not match.
 	pyRequestQueryGetRe = regexp.MustCompile(`\.\s*(?:args|query_params|GET)\s*(?:\.\s*get\s*\(|\[)\s*["']([A-Za-z_][A-Za-z0-9_]*)["']`)
 
+	// pyBottleQueryRe matches Bottle's request-query reads:
+	//
+	//   request.query.limit               (FormsDict attribute access)
+	//   request.query.get("limit")        (.get with string literal)
+	//   request.query["limit"]            (bracket index)
+	//
+	// Group 1 is the attribute name, group 2 the .get/bracket literal name
+	// (exactly one of the two is non-empty per match). HONEST-PARTIAL: a
+	// dynamically-named read (`request.query.get(key)`) has no literal and does
+	// not match.
+	pyBottleQueryRe = regexp.MustCompile(`\.\s*query\s*(?:\.\s*get\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']|\.\s*([A-Za-z_][A-Za-z0-9_]*))`)
+
+	// pyFalconGetParamRe matches Falcon's `req.get_param("limit")` /
+	// `req.get_param_as_int("offset")` request-query reads. Group 1 is the name.
+	pyFalconGetParamRe = regexp.MustCompile(`\.\s*get_param(?:_as_\w+)?\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']`)
+
+	// pyTornadoArgRe matches Tornado's `self.get_query_argument("limit")` /
+	// `self.get_argument("offset")` request-query reads. Group 1 is the name.
+	pyTornadoArgRe = regexp.MustCompile(`\.\s*get_(?:query_)?argument\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']`)
+
 	// djangoPaginatorRe matches `Paginator(<qs>, <n>)` — the canonical Django
 	// core paginator constructor.
 	djangoPaginatorRe = regexp.MustCompile(`\bPaginator\s*\(`)
@@ -49,6 +69,18 @@ var (
 	// jsQueryDestructureRe matches `const { a, b } = req.query`. Group 1 is the
 	// brace contents.
 	jsQueryDestructureRe = regexp.MustCompile(`\{\s*([^}]*?)\s*\}\s*=\s*(?:req|request|ctx)\.query\b`)
+
+	// jsHonoQueryRe matches Hono's request-query reads:
+	//   c.req.query("limit") / c.req.query('offset')
+	// Group 1 is the param name. A bare `c.req.query()` (all params, no literal)
+	// has no name and does not match — honest-partial.
+	jsHonoQueryRe = regexp.MustCompile(`\.\s*req\s*\.\s*query\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']`)
+
+	// jsAdonisInputRe matches AdonisJS's request reads:
+	//   request.input("limit") / request.qs().limit / request.qs()["offset"]
+	// Group 1 is the input() literal, group 2 the qs() attribute name, group 3
+	// the qs() bracket literal (exactly one non-empty per match).
+	jsAdonisInputRe = regexp.MustCompile(`\.\s*(?:input\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']|qs\s*\(\s*\)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']))`)
 
 	// sequelizeOrPrismaTakeRe / sequelizeOrPrismaSkipRe match Prisma `take:` /
 	// `skip:` keys (also used by some query builders).
