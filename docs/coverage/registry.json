@@ -67088,8 +67088,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -67368,8 +67371,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -67635,8 +67641,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -67918,8 +67927,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -68200,8 +68212,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -68512,8 +68527,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -68820,8 +68838,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -69103,8 +69124,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -69325,8 +69349,11 @@
             "cites": ["internal/substrate/rust.go"]
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -69551,8 +69578,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -69830,8 +69860,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -70101,8 +70134,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -70371,8 +70407,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -70640,8 +70679,11 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/rust/exception_flow.go","internal/extractors/rust/exception_flow_test.go"],
+            "issue": "3628",
+            "notes": "Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -\u003e THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -\u003e CATCHES; bare ? propagation, Box\u003cdyn Error\u003e, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
