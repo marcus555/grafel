@@ -27,7 +27,7 @@ one is a separate detail page.
 | [`lang.dart.framework.graphql-flutter`](./lang.dart.framework.graphql-flutter.md) | dart | framework | 1 full, 36 missing |
 | [`lang.elixir.framework.absinthe`](./lang.elixir.framework.absinthe.md) | elixir | framework | 7 full, 31 partial, 11 missing |
 | [`lang.go.framework.gqlgen`](./lang.go.framework.gqlgen.md) | go | framework | 4 full, 8 partial, 37 missing |
-| [`lang.java.framework.spring-graphql`](./lang.java.framework.spring-graphql.md) | java | framework | 8 full, 5 partial, 42 missing |
+| [`lang.java.framework.spring-graphql`](./lang.java.framework.spring-graphql.md) | java | framework | 8 full, 6 partial, 41 missing |
 | [`lang.jsts.framework.graphql-client`](./lang.jsts.framework.graphql-client.md) | JS/TS | framework | 2 full, 34 missing |
 | [`lang.jsts.framework.graphql-resolvers`](./lang.jsts.framework.graphql-resolvers.md) | JS/TS | framework | 10 full, 19 partial, 25 missing, 1 n/a |
 | [`lang.jsts.framework.type-graphql`](./lang.jsts.framework.type-graphql.md) | JS/TS | framework | 4 full, 5 partial, 40 missing |
