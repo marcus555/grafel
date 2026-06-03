@@ -56,6 +56,7 @@ categories:
     subcategory_order: [orm_mapper]
   message_broker:
     capabilities: [producer_extraction, consumer_extraction, topic_attribution, room_channel_grouping, signature_verification]
+    subcategory_order: [schedulers, task_queues, brokers, realtime_channels, webhooks]
   observability:
     capabilities: [trace_extraction, metric_extraction, log_extraction]
   build_system:
@@ -772,4 +773,61 @@ subcategories:
     capabilities:
       - resource_extraction
       - dependency_attribution
+    groups: []
+
+  # message_broker subcategories (#4008, B5 epic #3871). The 44 records mix
+  # five behaviourally distinct mechanisms, so the flat by-category pivot was
+  # a 7-wide union in which room_channel_grouping (carried by 4 records) and
+  # signature_verification (carried by 1) were near-empty columns — 104 "—"
+  # cells the #4007 column-strand guard could not touch (every column carries
+  # ≥1 real cell category-wide). These lanes carve the category into coherent
+  # subgroups, each declaring only the capability columns its records actually
+  # carry, so every per-subgroup pivot is dense (no group taxonomy: per-
+  # capability columns; the don't-strand guard is N/A within each lane). The
+  # registry subcategory field on each record routes it here; cells still
+  # validate against the message_broker category-level allow-list (status
+  # fields unchanged — presentation/taxonomy only).
+  schedulers:
+    display: "Schedulers"
+    parent_category: message_broker
+    capabilities:
+      - consumer_extraction
+    groups: []
+
+  task_queues:
+    display: "Task Queues"
+    parent_category: message_broker
+    capabilities:
+      - consumer_extraction
+      - producer_extraction
+      - topic_attribution
+    groups: []
+
+  brokers:
+    display: "Brokers"
+    parent_category: message_broker
+    capabilities:
+      - consumer_extraction
+      - producer_extraction
+      - topic_attribution
+    groups: []
+
+  realtime_channels:
+    display: "Realtime Channels"
+    parent_category: message_broker
+    capabilities:
+      - consumer_extraction
+      - producer_extraction
+      - room_channel_grouping
+      - topic_attribution
+    groups: []
+
+  webhooks:
+    display: "Webhooks"
+    parent_category: message_broker
+    capabilities:
+      - consumer_extraction
+      - producer_extraction
+      - signature_verification
+      - topic_attribution
     groups: []

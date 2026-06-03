@@ -105,6 +105,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+
+### Schedulers
+
+| Name | Consumer extraction | Notes |
+|---|---|---|
+| [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | |

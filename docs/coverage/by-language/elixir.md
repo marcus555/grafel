@@ -87,6 +87,17 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [Phoenix Channels](../detail/msg.phoenix-channels.md) | [message_broker](../by-category/message_broker.md) | 🔴 | |
 | [Ueberauth (Elixir OAuth)](../detail/lang.elixir.framework.ueberauth.md) | [security](../by-category/security.md) | 🔴 | |
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | |
+
+
+### Realtime Channels
+
+| Name | Consumer extraction | Producer extraction | Room channel grouping | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [Phoenix Channels](../detail/msg.phoenix-channels.md) | 🔴 | ✅ | ✅ | 🟢 | |

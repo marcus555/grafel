@@ -112,14 +112,36 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
-| Name | Category | Status | Notes |
-|---|---|---|---|
-| [APScheduler (Python advanced scheduler)](../detail/msg.apscheduler.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [Celery (Python task queue)](../detail/msg.celery.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [Django Channels](../detail/msg.django-channels.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)](../detail/msg.orm-lifecycle-hooks-py.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
+
+### Schedulers
+
+| Name | Consumer extraction | Notes |
+|---|---|---|
+| [APScheduler (Python advanced scheduler)](../detail/msg.apscheduler.md) | 🟢 | |
+
+
+### Task Queues
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | |
+| [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | |
+
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | ✅ | ✅ | ✅ | |
+| [ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)](../detail/msg.orm-lifecycle-hooks-py.md) | ✅ | ✅ | ✅ | |
+
+
+### Realtime Channels
+
+| Name | Consumer extraction | Producer extraction | Room channel grouping | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [Django Channels](../detail/msg.django-channels.md) | — | — | ✅ | — | |
+
 
 ### Workflow / DAG & State Machines
 

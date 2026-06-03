@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
+- **Subcategory:** Schedulers
 - **Capability cells:** 1
 
 ## Capabilities
