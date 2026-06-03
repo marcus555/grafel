@@ -451,13 +451,37 @@ func pythonPaginationVerdict(region, body string) (paginationVerdict, bool) {
 // `request.query_params.get("name")` in the handler body.
 func pythonRequestQueryParams(body string) map[string]bool {
 	present := map[string]bool{}
+	// flask / sanic / quart / starlette / litestar: request.args.get / .query_params.get.
 	for _, m := range pyRequestQueryGetRe.FindAllStringSubmatch(body, -1) {
-		name := strings.ToLower(m[1])
-		if isPaginationParam(name) {
-			present[name] = true
+		addPaginationParam(present, m[1])
+	}
+	// bottle: request.query.<name> / request.query.get("name") / request.query["name"].
+	for _, m := range pyBottleQueryRe.FindAllStringSubmatch(body, -1) {
+		// Exactly one of the three capture groups is non-empty per match.
+		for _, g := range m[1:] {
+			if g != "" {
+				addPaginationParam(present, g)
+			}
 		}
 	}
+	// falcon: req.get_param("name") / req.get_param_as_int("name").
+	for _, m := range pyFalconGetParamRe.FindAllStringSubmatch(body, -1) {
+		addPaginationParam(present, m[1])
+	}
+	// tornado: self.get_query_argument("name") / self.get_argument("name").
+	for _, m := range pyTornadoArgRe.FindAllStringSubmatch(body, -1) {
+		addPaginationParam(present, m[1])
+	}
 	return present
+}
+
+// addPaginationParam lower-cases a candidate param name and records it iff it
+// is a recognised pagination param.
+func addPaginationParam(present map[string]bool, raw string) {
+	name := strings.ToLower(raw)
+	if isPaginationParam(name) {
+		present[name] = true
+	}
 }
 
 // pythonSignatureParams extracts the parameter identifiers from a (possibly
@@ -583,6 +607,18 @@ func jsQueryParams(src string) map[string]bool {
 			name = strings.TrimSpace(strings.Split(name, "=")[0])
 			if isPaginationParam(name) {
 				present[name] = true
+			}
+		}
+	}
+	// hono: c.req.query("limit")
+	for _, m := range jsHonoQueryRe.FindAllStringSubmatch(src, -1) {
+		addPaginationParam(present, m[1])
+	}
+	// adonisjs: request.input("limit") / request.qs().limit / request.qs()["offset"]
+	for _, m := range jsAdonisInputRe.FindAllStringSubmatch(src, -1) {
+		for _, g := range m[1:] {
+			if g != "" {
+				addPaginationParam(present, g)
 			}
 		}
 	}

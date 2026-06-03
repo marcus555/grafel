@@ -879,3 +879,246 @@ def items():
 		t.Fatalf("paginated=%q want absent (lone limit is ambiguous)", got)
 	}
 }
+
+// ===========================================================================
+// Wave3 endpoint_pagination_posture — concrete request-idiom reader extension
+// (epic #3872). Each framework reads query params from the request object via
+// a framework-specific idiom the reader previously did not recognise; the
+// reader extension surfaces limit/offset/page/cursor so applyEndpointPagination
+// stamps the EXACT posture. Every positive asserts paginated=true +
+// pagination_style + pagination_params explicitly (never len>0); every
+// framework has a paired negative proving non-vacuousness.
+// ===========================================================================
+
+// --- JS/TS: Hono c.req.query("...") reads (jsPaginationVerdict) ------------
+
+func TestPagination_Hono_ReqQueryLimitOffset(t *testing.T) {
+	src := `
+import { Hono } from 'hono'
+const app = new Hono()
+app.get('/items', (c) => {
+  const limit = c.req.query('limit')
+  const offset = c.req.query('offset')
+  return c.json([])
+})
+`
+	eps := deprecProps(t, "typescript", "src/hono.ts", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if e.Properties["paginated"] != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", e.Properties["paginated"], e.Properties)
+	}
+	if e.Properties["pagination_style"] != "offset" {
+		t.Fatalf("pagination_style=%q want offset", e.Properties["pagination_style"])
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+func TestPagination_Hono_LoneLimitNotPaginated(t *testing.T) {
+	src := `
+import { Hono } from 'hono'
+const app = new Hono()
+app.get('/items', (c) => {
+  const limit = c.req.query('limit')
+  return c.json([])
+})
+`
+	eps := deprecProps(t, "typescript", "src/hono.ts", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (lone limit is ambiguous)", got)
+	}
+}
+
+// --- JS/TS: AdonisJS request.input(...) / request.qs() reads ---------------
+
+func TestPagination_Adonis_InputLimitOffset(t *testing.T) {
+	src := `
+import Route from '@ioc:Adonis/Core/Route'
+Route.get('/items', async ({ request }) => {
+  const limit = request.input('limit')
+  const offset = request.input('offset')
+  return []
+})
+`
+	eps := deprecProps(t, "typescript", "start/routes.ts", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if e.Properties["paginated"] != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", e.Properties["paginated"], e.Properties)
+	}
+	if e.Properties["pagination_style"] != "offset" {
+		t.Fatalf("pagination_style=%q want offset", e.Properties["pagination_style"])
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+func TestPagination_Adonis_QsCursor(t *testing.T) {
+	// request.qs().cursor — a cursor token is unambiguous on its own.
+	src := `
+import Route from '@ioc:Adonis/Core/Route'
+Route.get('/feed', async ({ request }) => {
+  const cursor = request.qs().cursor
+  return []
+})
+`
+	eps := deprecProps(t, "typescript", "start/routes.ts", src)
+	e := mustEndpoint(t, eps, "GET /feed")
+	if e.Properties["paginated"] != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", e.Properties["paginated"], e.Properties)
+	}
+	if e.Properties["pagination_style"] != "cursor" {
+		t.Fatalf("pagination_style=%q want cursor", e.Properties["pagination_style"])
+	}
+	if got := e.Properties["pagination_params"]; got != "cursor" {
+		t.Fatalf("pagination_params=%q want cursor", got)
+	}
+}
+
+func TestPagination_Adonis_NoParamNotPaginated(t *testing.T) {
+	src := `
+import Route from '@ioc:Adonis/Core/Route'
+Route.get('/health', async ({ request }) => {
+  return 'ok'
+})
+`
+	eps := deprecProps(t, "typescript", "start/routes.ts", src)
+	e := mustEndpoint(t, eps, "GET /health")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (no pagination param)", got)
+	}
+}
+
+// --- Python: Bottle request.query.<name> reads (pythonRequestQueryParams) --
+
+func TestPagination_Bottle_QueryAttrLimitOffset(t *testing.T) {
+	src := `
+from bottle import route, request
+
+@route("/items")
+def items():
+    limit = request.query.limit
+    offset = request.query.offset
+    return []
+`
+	eps := deprecProps(t, "python", "app/b.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if e.Properties["paginated"] != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", e.Properties["paginated"], e.Properties)
+	}
+	if e.Properties["pagination_style"] != "offset" {
+		t.Fatalf("pagination_style=%q want offset", e.Properties["pagination_style"])
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+func TestPagination_Bottle_LoneLimitNotPaginated(t *testing.T) {
+	src := `
+from bottle import route, request
+
+@route("/items")
+def items():
+    limit = request.query.get("limit")
+    return []
+`
+	eps := deprecProps(t, "python", "app/b.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (lone limit is ambiguous)", got)
+	}
+}
+
+// --- Python: Falcon req.get_param("...") reads ------------------------------
+
+func TestPagination_Falcon_GetParamLimitOffset(t *testing.T) {
+	src := `
+import falcon
+
+class ItemsResource:
+    def on_get(self, req, resp):
+        limit = req.get_param("limit")
+        offset = req.get_param("offset")
+        resp.media = []
+
+app = falcon.App()
+app.add_route("/items", ItemsResource())
+`
+	eps := deprecProps(t, "python", "app/f.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if e.Properties["paginated"] != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", e.Properties["paginated"], e.Properties)
+	}
+	if e.Properties["pagination_style"] != "offset" {
+		t.Fatalf("pagination_style=%q want offset", e.Properties["pagination_style"])
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+func TestPagination_Falcon_NoParamNotPaginated(t *testing.T) {
+	src := `
+import falcon
+
+class HealthResource:
+    def on_get(self, req, resp):
+        resp.media = {"status": "ok"}
+
+app = falcon.App()
+app.add_route("/health", HealthResource())
+`
+	eps := deprecProps(t, "python", "app/f.py", src)
+	e := mustEndpoint(t, eps, "GET /health")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (no pagination param)", got)
+	}
+}
+
+// --- Python: Tornado self.get_query_argument("...") reads ------------------
+
+func TestPagination_Tornado_GetQueryArgLimitOffset(t *testing.T) {
+	src := `
+import tornado.web
+
+class ItemsHandler(tornado.web.RequestHandler):
+    def get(self):
+        limit = self.get_query_argument("limit")
+        offset = self.get_query_argument("offset")
+        self.write([])
+
+app = tornado.web.Application([(r"/items", ItemsHandler)])
+`
+	eps := deprecProps(t, "python", "app/t.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if e.Properties["paginated"] != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", e.Properties["paginated"], e.Properties)
+	}
+	if e.Properties["pagination_style"] != "offset" {
+		t.Fatalf("pagination_style=%q want offset", e.Properties["pagination_style"])
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+func TestPagination_Tornado_LoneLimitNotPaginated(t *testing.T) {
+	src := `
+import tornado.web
+
+class ItemsHandler(tornado.web.RequestHandler):
+    def get(self):
+        limit = self.get_argument("limit")
+        self.write([])
+
+app = tornado.web.Application([(r"/items", ItemsHandler)])
+`
+	eps := deprecProps(t, "python", "app/t.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (lone limit is ambiguous)", got)
+	}
+}
