@@ -829,6 +829,12 @@ func generate(reg *Registry, outRoot string) error {
 			return rows[i].Label < rows[j].Label
 		})
 		subSecs, flatRows := splitCategoryRowsBySubcategory(n, rows)
+		// Don't-strand guard for the flat (un-subcategorised) table (#3874):
+		// drop any bucket-union capability column that is "—" for every flat
+		// record so grab-bag tool/infra categories (build_system,
+		// message_broker, package_manager) stop rendering always-empty
+		// columns. Presentation-only — registry statuses are untouched.
+		keys = nonStrandedCapKeys(keys, flatRows)
 		if err := renderToFile(tmpls, "by-category.md.tmpl",
 			filepath.Join(root, "by-category", n+".md"),
 			categoryPageData{
@@ -1053,6 +1059,46 @@ func nonStrandedGroupNames(candidates []string, records int, digestFor func(rec 
 				break
 			}
 		}
+	}
+	return out
+}
+
+// nonStrandedCapKeys is the per-capability-column analogue of
+// nonStrandedGroupNames for FLAT (un-subcategorised) by-category tables
+// (#3874). A flat category renders one column per capability key drawn
+// from the bucket-wide union (bucketCapabilityKeys) or the category's
+// declared keys. For grab-bag tool/infra categories — build_system,
+// message_broker, package_manager — that union is far wider than any one
+// record's vocabulary: build tools and test frameworks never declare a
+// "Lockfile parsing" cell, so that column is "—" for every row. Such an
+// all-"—" column is pure visual noise (it is "truly N/A for the records
+// present", not "tracked-but-missing"), and it is the root cause of the
+// sparse-table / repeated-name disease the audit targets.
+//
+// This guard drops any candidate key whose cell is non-applicable
+// (statusGlyph → "—": StatusNotApplicable, empty, or absent) for EVERY
+// record in the table. A key kept by even one record survives. The result
+// preserves candidates' order, is a fresh allocation (never aliases
+// candidates), and never reaches into registry status values to change
+// them — it is presentation-only. Determinism: iteration is over the
+// ordered candidates and the explicitly-ordered record slice. When every
+// column would be stranded (a degenerate all-"—" category) the candidates
+// are returned unchanged so the table never renders header-less.
+func nonStrandedCapKeys(candidates []string, rows []categoryRow) []string {
+	if len(candidates) == 0 || len(rows) == 0 {
+		return candidates
+	}
+	out := make([]string, 0, len(candidates))
+	for _, key := range candidates {
+		for _, r := range rows {
+			if statusGlyph(r.CapByKey[key].Status) != "—" {
+				out = append(out, key)
+				break
+			}
+		}
+	}
+	if len(out) == 0 {
+		return candidates
 	}
 	return out
 }

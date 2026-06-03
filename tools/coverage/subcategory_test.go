@@ -381,6 +381,50 @@ func TestNonStrandedGroupNames(t *testing.T) {
 	}
 }
 
+// TestNonStrandedCapKeys covers the per-capability-column don't-strand
+// guard for FLAT (un-subcategorised) by-category tables (#3874): a column
+// whose cell is "—" (not_applicable / empty / absent) for EVERY record is
+// dropped, a column with at least one extracted cell (full/partial) OR a
+// tracked-but-missing cell is kept, and candidate order is preserved. This
+// is the fix for the build_system / package_manager grab-bag sparsity —
+// build tools never declare "Lockfile parsing", so that bucket-union column
+// is all-"—" and gets removed.
+func TestNonStrandedCapKeys(t *testing.T) {
+	mk := func(byKey map[string]string) categoryRow {
+		m := map[string]Capability{}
+		for k, s := range byKey {
+			m[k] = Capability{Status: s}
+		}
+		return categoryRow{CapByKey: m}
+	}
+	candidates := []string{"dependency_graph", "lockfile_parsing", "manifest_parsing", "target_extraction"}
+	rows := []categoryRow{
+		// A build tool: declares dependency_graph + target_extraction only.
+		mk(map[string]string{"dependency_graph": StatusFull, "target_extraction": StatusMissing}),
+		// A test framework: same two lanes, lockfile/manifest absent (→ "—").
+		mk(map[string]string{"dependency_graph": StatusPartial, "target_extraction": StatusFull}),
+	}
+	got := nonStrandedCapKeys(candidates, rows)
+	want := []string{"dependency_graph", "target_extraction"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("nonStrandedCapKeys = %v, want %v (lockfile/manifest are all-\"—\" → dropped)", got, want)
+	}
+	// not_applicable is treated as "—" and dropped when uniform.
+	naRows := []categoryRow{mk(map[string]string{"a": StatusFull, "b": StatusNotApplicable})}
+	if g := nonStrandedCapKeys([]string{"a", "b"}, naRows); !reflect.DeepEqual(g, []string{"a"}) {
+		t.Errorf("not_applicable column should be stranded, got %v", g)
+	}
+	// All-stranded → candidates returned unchanged (never a header-less table).
+	allDash := []categoryRow{mk(map[string]string{"a": StatusNotApplicable, "b": ""})}
+	if g := nonStrandedCapKeys([]string{"a", "b"}, allDash); !reflect.DeepEqual(g, []string{"a", "b"}) {
+		t.Errorf("all-stranded should pass candidates through, got %v", g)
+	}
+	// Zero rows / nil candidates → passthrough (no panic, no filtering).
+	if g := nonStrandedCapKeys(candidates, nil); !reflect.DeepEqual(g, candidates) {
+		t.Errorf("zero rows should pass candidates through, got %v", g)
+	}
+}
+
 // TestBuildBucketSectionHidesStrandedGroups proves the guard wired into
 // buildBucketSection drops an all-"—" universal-core column from the
 // rendered subsection while keeping a populated universal lane — and that

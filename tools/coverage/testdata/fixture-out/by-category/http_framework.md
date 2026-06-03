@@ -16,10 +16,10 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 ## Other
 
-| Language | Name | Auth coverage | Endpoint synthesis | Handler attribution | Middleware coverage | Notes |
-|---|---|---|---|---|---|---|
-| [JS/TS](../by-language/jsts.md) | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | — | |
-| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟢 | ✅ | ✅ | — | |
-| [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | — | |
-| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | — | ✅ | — | — | |
-| [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | — | 🔴 | 🔴 | — | |
+| Language | Name | Auth coverage | Endpoint synthesis | Handler attribution | Notes |
+|---|---|---|---|---|---|
+| [JS/TS](../by-language/jsts.md) | [Express.js](../detail/lang.jsts.framework.express.md) | — | ✅ | — | |
+| [python](../by-language/python.md) | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟢 | ✅ | ✅ | |
+| [python](../by-language/python.md) | [FastAPI](../detail/lang.python.framework.fastapi.md) | — | ✅ | — | |
+| [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | — | ✅ | — | |
+| [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | — | 🔴 | 🔴 | |
