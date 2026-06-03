@@ -19,16 +19,31 @@ package mcp
 // source_class:CreateModelMixin, default_status:201, error_statuses:[400] even
 // though the ViewSet body is empty).
 //
+// MRO WIRING (deploy-9 item-4): the tool no longer depends SOLELY on the
+// engine-stamped effective_* props. It resolves the same MRO/baseknowledge-pack
+// data get_source reads, so it returns a contract wherever get_source can:
+//   - BACKFILL: a router-expanded route whose effective_* fields are absent (an
+//     index that predates the stamping pass, or an honest-partial stamp) is
+//     filled from resolveInheritedEndpoint -> the pack (stamped values always
+//     win — never clobbered).
+//   - CLASS FALLBACK: when NO router-expanded routes exist for the ViewSet (a
+//     real DRF app whose routing the expansion pass did not materialise — the
+//     live-daemon empty case), the per-verb contract is synthesized from the
+//     ViewSet CLASS entity's EXTENDS edges + the pack, exactly as resolveMember
+//     does for get_source.
+//
 // HONEST-PARTIAL: a verb whose backing route carries no resolvable contract
 // field simply omits that field (projectEffectiveContract leaves it zero/empty)
-// — nothing is fabricated. A ViewSet with no router-expanded routes in the
-// index returns an empty handlers list with a note, not an error.
+// — nothing is fabricated. A ViewSet with neither router-expanded routes nor a
+// pack-resolvable EXTENDS chain returns an empty handlers list with a note, not
+// an error.
 
 import (
 	"context"
 	"sort"
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/frameworks/baseknowledge"
 	"github.com/cajasmota/archigraph/internal/graph"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -146,6 +161,13 @@ func (s *Server) handleEffectiveContract(_ context.Context, req mcpapi.CallToolR
 			if !ok {
 				continue
 			}
+			// #3964 follow-up: when the route carries no stamped per-verb
+			// contract (effective_kind/effective_status absent because the
+			// index predates the stamping pass, or the stamp was honest-partial),
+			// backfill from the SAME MRO/pack resolution get_source uses
+			// (resolveInheritedEndpoint). This is what keeps the tool and
+			// get_source from disagreeing on an inherited verb's contract.
+			backfillEffectiveContractFromMRO(r, e, &c)
 			key := groupKey{repo: r.Repo, class: vs}
 			g, exists := groups[key]
 			if !exists {
@@ -158,6 +180,38 @@ func (s *Server) handleEffectiveContract(_ context.Context, req mcpapi.CallToolR
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
+		}
+	}
+
+	// CLASS FALLBACK (deploy-9 item-4): when NO router-expanded route entities
+	// were found for the ViewSet — the live-daemon empty case on a real DRF app
+	// whose routing the expansion pass didn't materialise — synthesize the
+	// per-verb contract from the ViewSet CLASS entity's EXTENDS edges + the
+	// baseknowledge pack, exactly as get_source's resolveMember does. The data
+	// the tool needs is the same MRO-reachable data get_source reads; this makes
+	// the tool return it wherever get_source can.
+	if len(groups) == 0 {
+		for _, r := range reposToConsider(lg, nil) {
+			if r.Doc == nil {
+				continue
+			}
+			cls := findViewSetClassEntity(r, wantVS)
+			if cls == nil {
+				continue
+			}
+			handlers := synthesizeClassEffectiveContracts(r, cls)
+			if len(handlers) == 0 {
+				continue
+			}
+			key := groupKey{repo: r.Repo, class: leafAfterDot(cls.Name)}
+			g := &effectiveContractGroup{
+				Class:     leafAfterDot(cls.Name),
+				Framework: classFramework(cls),
+				Repo:      r.Repo,
+			}
+			g.Handlers = handlers
+			groups[key] = g
+			order = append(order, key)
 		}
 	}
 
@@ -176,11 +230,160 @@ func (s *Server) handleEffectiveContract(_ context.Context, req mcpapi.CallToolR
 	}
 
 	if len(out.Groups) == 0 {
-		out.Note = "no router-expanded routes found for this ViewSet. " +
-			"The effective contract is stamped by the DRF expansion pass (T5 #3964); " +
-			"if the index predates that stamping a reindex is required to populate it."
+		out.Note = "no effective contract resolvable for this ViewSet: neither " +
+			"router-expanded routes nor a ViewSet class entity with EXTENDS edges to " +
+			"a known framework base (e.g. ModelViewSet) were found in the index. " +
+			"Confirm the target is a DRF ViewSet and that its class is indexed; if the " +
+			"index predates the DRF expansion pass (#3964) a reindex may help."
 	}
 	return jsonResult(out), nil
+}
+
+// backfillEffectiveContractFromMRO fills the per-verb contract fields a
+// router-expanded route left empty (the stamp omitted them, or the index
+// predates the stamping pass) from the SAME MRO resolution get_source uses:
+// resolveInheritedEndpoint -> the baseknowledge pack contract. It never
+// OVERWRITES a stamped value — stamped props win — so an index that already
+// carries effective_* is byte-identical to before. Honest-partial: when the MRO
+// can't resolve the verb, the empty fields stay empty.
+func backfillEffectiveContractFromMRO(r *LoadedRepo, e *graph.Entity, c *effectiveContract) {
+	// Only inherited routes carry a pack-resolvable framework contract; explicit
+	// bodies and @action verbs have no framework default to backfill.
+	res, ok := resolveInheritedEndpoint(r, e)
+	if !ok || res.Contract == nil {
+		return
+	}
+	applyPackContract(res, c)
+}
+
+// applyPackContract maps a pack-resolved memberResolution into the per-verb
+// effectiveContract, filling ONLY the fields the caller left zero/empty so a
+// stamped value is never clobbered.
+func applyPackContract(res memberResolution, c *effectiveContract) {
+	m := res.Contract
+	if c.Kind == "" {
+		c.Kind = "inherited"
+	}
+	if c.SourceClass == "" {
+		c.SourceClass = res.DefiningClass
+	}
+	if c.Verb == "" {
+		c.Verb = m.HTTPVerb
+	}
+	if c.DefaultStatus == 0 && m.DefaultStatus != baseknowledge.StatusUnknown {
+		c.DefaultStatus = m.DefaultStatus
+	}
+	if len(c.ErrorStatuses) == 0 && len(m.ErrorStatuses) > 0 {
+		c.ErrorStatuses = append([]int(nil), m.ErrorStatuses...)
+	}
+	if c.Behaviour == "" {
+		c.Behaviour = m.Behaviour
+	}
+}
+
+// findViewSetClassEntity returns the ViewSet declaration entity whose leaf name
+// (lower-cased) matches wantVS, used by the class-fallback synthesis when no
+// router-expanded routes exist for the ViewSet.
+//
+// It accepts not only isClassEntity nodes (SCOPE.Component / class subtype) but
+// any entity that owns at least one EXTENDS/IMPLEMENTS edge — because the Python
+// extractor emits a DRF ViewSet as Kind="View" with an empty subtype (so
+// isClassEntity is false for it) yet still records the inheritance edge to
+// ModelViewSet that the synthesis walks. Restricting to "has an EXTENDS edge"
+// keeps this from matching unrelated same-named non-class entities.
+func findViewSetClassEntity(r *LoadedRepo, wantVS string) *graph.Entity {
+	if r.Doc == nil {
+		return nil
+	}
+	var fallback *graph.Entity
+	for i := range r.Doc.Entities {
+		e := &r.Doc.Entities[i]
+		if strings.ToLower(leafAfterDot(e.Name)) != wantVS {
+			continue
+		}
+		if isClassEntity(e) {
+			return e
+		}
+		if fallback == nil && len(extendsBases(r, e)) > 0 {
+			fallback = e
+		}
+	}
+	return fallback
+}
+
+// classFramework reports the route framework leaf for a ViewSet class entity,
+// from its framework property when set, defaulting to "django" for a
+// pack-recognised DRF base. Empty when neither is known.
+func classFramework(cls *graph.Entity) string {
+	if fw := cls.Properties["framework"]; fw != "" {
+		return fw
+	}
+	return "django"
+}
+
+// synthesizeClassEffectiveContracts builds the per-verb effective contract for a
+// ViewSet class entity directly from its EXTENDS edges + the baseknowledge pack
+// — the same resolution get_source performs on a ViewSet's inherited method
+// entity. For each known base (e.g. ModelViewSet, ListModelMixin), every member
+// the base contributes is emitted as one inherited per-verb contract. Returns
+// nil when the class extends no pack-known base (honest-partial: nothing
+// synthesized rather than a fabricated contract).
+func synthesizeClassEffectiveContracts(r *LoadedRepo, cls *graph.Entity) []effectiveContract {
+	reg := baseknowledge.Default()
+	owning := leafAfterDot(cls.Name)
+	serializer := cls.Properties["serializer_class"]
+
+	// BFS the EXTENDS graph so a ViewSet that subclasses an in-repo base which
+	// itself extends ModelViewSet still resolves the inherited verbs.
+	type byVerb struct {
+		member        baseknowledge.Member
+		definingClass string
+	}
+	resolved := map[string]byVerb{} // member name -> contract (first match wins)
+	visited := map[string]bool{cls.ID: true}
+	frontier := extendsBases(r, cls)
+	for len(frontier) > 0 {
+		var next []baseRef
+		for _, b := range frontier {
+			for name, m := range reg.MembersOf(b.name) {
+				if _, seen := resolved[name]; seen {
+					continue
+				}
+				dc := m.DefiningClass
+				if dc == "" {
+					dc = canonicalBaseFQN(reg, b.name)
+				}
+				resolved[name] = byVerb{member: m, definingClass: dc}
+			}
+			if b.entity != nil && !visited[b.entity.ID] {
+				visited[b.entity.ID] = true
+				next = append(next, extendsBases(r, b.entity)...)
+			}
+		}
+		frontier = next
+	}
+	if len(resolved) == 0 {
+		return nil
+	}
+
+	out := make([]effectiveContract, 0, len(resolved))
+	for _, v := range resolved {
+		c := effectiveContract{
+			Handler:    owning + "." + v.member.Name,
+			Serializer: serializer,
+		}
+		res := memberResolution{
+			Provenance:    provInheritedExternal,
+			Member:        v.member.Name,
+			OwningClass:   owning,
+			DefiningClass: v.definingClass,
+			Contract:      &v.member,
+		}
+		applyPackContract(res, &c)
+		c.Pagination = v.member.PaginationApplicable
+		out = append(out, c)
+	}
+	return out
 }
 
 // sortEffectiveContracts orders per-verb contracts deterministically by path

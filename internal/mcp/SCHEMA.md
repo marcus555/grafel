@@ -1287,12 +1287,20 @@ routes carry it.
 `error_statuses`, `serializer`, `pagination`, `permissions`, `auth_required`,
 `behaviour`.
 
+**MRO wiring.** The tool does not depend solely on the engine-stamped
+`effective_*` props. It resolves the same MRO + baseknowledge-pack data
+`archigraph_get_source` reads, so it returns a contract wherever `get_source`
+can: (1) a router-expanded route whose `effective_*` fields are absent is
+**backfilled** from the inherited-endpoint MRO resolution → the pack (stamped
+values always win), and (2) when **no** router-expanded routes exist for the
+ViewSet, the per-verb contract is **synthesized from the ViewSet class entity's
+`EXTENDS` edges + the pack** (e.g. a `ModelViewSet` subclass yields its six CRUD
+verbs), exactly as `get_source` does.
+
 **Honest-partial.** A verb whose backing route carries no resolvable contract
 field simply omits that field (`default_status` 0, empty `error_statuses`) — it
-is never fabricated. A ViewSet with no router-expanded routes returns an empty
-`groups` list with a `note` (the contract is stamped by the T5 #3964 DRF
-expansion pass — an index predating that stamping requires a **reindex** to
-populate it).
+is never fabricated. A ViewSet with neither router-expanded routes nor a
+pack-resolvable `EXTENDS` chain returns an empty `groups` list with a `note`.
 
 ---
 
