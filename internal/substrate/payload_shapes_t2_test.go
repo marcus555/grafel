@@ -36,6 +36,134 @@ end
 	}
 }
 
+// TestPayloadShapesRuby_SinatraRoute verifies that a Sinatra routing-DSL
+// handler (no `def`) gets BOTH its request shape (bare `params[:x]`
+// reads) and its response shape (`json({...})` helper) bound to the
+// route header `POST /users` (#3951).
+func TestPayloadShapesRuby_SinatraRoute(t *testing.T) {
+	const src = `
+require 'sinatra'
+post '/users' do
+  name = params[:name]
+  email = params[:email]
+  json({ id: 1, name: name })
+end
+`
+	shapes := sniffPayloadShapesRuby(src)
+	req := findShape(shapes, "POST /users", PayloadDirectionRequest, PayloadSideProducer)
+	if req == nil {
+		t.Fatalf("expected sinatra request shape on POST /users; got %+v", shapes)
+	}
+	if got := sortedNames(req.Fields); !reflect.DeepEqual(got, []string{"email", "name"}) {
+		t.Errorf("sinatra request fields: want [email name] got %v", got)
+	}
+	resp := findShape(shapes, "POST /users", PayloadDirectionResponse, PayloadSideProducer)
+	if resp == nil {
+		t.Fatalf("expected sinatra response shape on POST /users; got %+v", shapes)
+	}
+	if got := sortedNames(resp.Fields); !reflect.DeepEqual(got, []string{"id", "name"}) {
+		t.Errorf("sinatra response fields: want [id name] got %v", got)
+	}
+}
+
+// TestPayloadShapesRuby_GrapeRequiresAndExpose verifies a Grape API: the
+// `params do; requires/optional` block yields the request shape, and the
+// Grape::Entity `expose` declarations yield the response shape — neither
+// of which uses `def` (#3951).
+func TestPayloadShapesRuby_GrapeRequiresAndExpose(t *testing.T) {
+	const src = `
+class Users < Grape::API
+  params do
+    requires :name, type: String
+    optional :age, type: Integer
+  end
+  post '/users' do
+    present User.create!(declared(params)), with: Entities::User
+  end
+end
+
+module Entities
+  class User < Grape::Entity
+    expose :id
+    expose :name
+  end
+end
+`
+	shapes := sniffPayloadShapesRuby(src)
+	req := findShape(shapes, "params", PayloadDirectionRequest, PayloadSideProducer)
+	if req == nil {
+		t.Fatalf("expected grape requires request shape; got %+v", shapes)
+	}
+	if got := sortedNames(req.Fields); !reflect.DeepEqual(got, []string{"age", "name"}) {
+		t.Errorf("grape request fields: want [age name] got %v", got)
+	}
+	resp := findShape(shapes, "User", PayloadDirectionResponse, PayloadSideProducer)
+	if resp == nil {
+		t.Fatalf("expected grape expose response shape; got %+v", shapes)
+	}
+	if got := sortedNames(resp.Fields); !reflect.DeepEqual(got, []string{"id", "name"}) {
+		t.Errorf("grape response fields: want [id name] got %v", got)
+	}
+}
+
+// TestPayloadShapesRuby_HanamiAction verifies a Hanami action: `def call`
+// binds the request shape (`params[:x]` reads) and the
+// `JSON.generate({...})` response body binds the response shape (#3951).
+func TestPayloadShapesRuby_HanamiAction(t *testing.T) {
+	const src = `
+module Web::Controllers::Users
+  class Create
+    include Web::Action
+    def call(params)
+      email = params[:email]
+      name = params[:name]
+      self.body = JSON.generate({ id: 1, email: email })
+    end
+  end
+end
+`
+	shapes := sniffPayloadShapesRuby(src)
+	req := findShape(shapes, "call", PayloadDirectionRequest, PayloadSideProducer)
+	if req == nil {
+		t.Fatalf("expected hanami request shape; got %+v", shapes)
+	}
+	if got := sortedNames(req.Fields); !reflect.DeepEqual(got, []string{"email", "name"}) {
+		t.Errorf("hanami request fields: want [email name] got %v", got)
+	}
+	resp := findShape(shapes, "call", PayloadDirectionResponse, PayloadSideProducer)
+	if resp == nil {
+		t.Fatalf("expected hanami response shape; got %+v", shapes)
+	}
+	if got := sortedNames(resp.Fields); !reflect.DeepEqual(got, []string{"email", "id"}) {
+		t.Errorf("hanami response fields: want [email id] got %v", got)
+	}
+}
+
+// TestPayloadShapesRuby_SiblingNegatives guards the precision boundary:
+// a param-less route yields no shape, `to_json` on a bare receiver does
+// not fire a response shape, and a Rails `render json:` still yields
+// exactly one response shape (no double-count from the json() helper).
+func TestPayloadShapesRuby_SiblingNegatives(t *testing.T) {
+	if s := sniffPayloadShapesRuby("get '/health' do\n  \"ok\"\nend\n"); len(s) != 0 {
+		t.Errorf("param-less route must yield no shapes; got %+v", s)
+	}
+	for _, s := range sniffPayloadShapesRuby("post '/x' do\n  user.to_json\nend\n") {
+		if s.Direction == PayloadDirectionResponse {
+			t.Errorf("to_json must not fire a response shape; got %+v", s)
+		}
+	}
+	const rails = "class C < ApplicationController\n  def show\n    render json: { a: 1, b: 2 }\n  end\nend\n"
+	resp := 0
+	for _, s := range sniffPayloadShapesRuby(rails) {
+		if s.Direction == PayloadDirectionResponse {
+			resp++
+		}
+	}
+	if resp != 1 {
+		t.Errorf("rails render json: want exactly 1 response shape; got %d", resp)
+	}
+}
+
 func TestPayloadShapesRuby_ConsumerHTTParty(t *testing.T) {
 	const src = `
 def push
