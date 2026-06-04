@@ -228,7 +228,11 @@ func buildReport(tools []mcpapi.Tool, ceiling, baseline int) AuditReport {
 // initEnvelopeBytes is the approximate byte count of the MCP initialize
 // envelope (server name, version string, instructions, JSON-RPC framing).
 // Derived from empirical measurement; update when instructions change.
-const initEnvelopeBytes = 512
+//
+// Breakdown: ~339 bytes of fixed framing (server name/version + JSON-RPC) plus
+// the mcpInstructions orientation map (~1180 bytes; internal/mcp/server.go).
+// When mcpInstructions changes, recompute as framing + len(mcpInstructions).
+const initEnvelopeBytes = 1519
 
 // printHuman writes a human-readable table to stdout.
 func printHuman(r AuditReport) {

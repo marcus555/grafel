@@ -3362,3 +3362,83 @@ func TestMCP_WhoamiP50Under50ms(t *testing.T) {
 	}
 	t.Logf("whoami p50=%dms (limit %dms), archigraph_mcp_metrics p50=%dms", p50, p50LimitMS, metricsP50)
 }
+
+// TestMCPInstructionsOrientationMap guards the handshake orientation map
+// (mcpInstructions) so it can't silently rot back to a thin one-liner. The
+// instructions are pushed to the model at MCP initialize with no tool call, so
+// they are the agent's first and only zero-cost orientation surface. We assert
+// the load-bearing pieces: the whoami directive, the shared id-form convention,
+// the deprecated-tool steer, and at least one real tool name per INTENT group.
+//
+// Every tool named here MUST be a live registration; cmd/mcp-audit enforces the
+// token budget separately. If a tool below is renamed/removed, update both the
+// map in server.go and this test (and re-run mcp-audit).
+func TestMCPInstructionsOrientationMap(t *testing.T) {
+	t.Parallel()
+
+	// (1) whoami-first directive.
+	if !strings.Contains(mcpInstructions, "archigraph_whoami") {
+		t.Errorf("instructions must direct agents to call archigraph_whoami first")
+	}
+	if !strings.Contains(mcpInstructions, "suggested_action") {
+		t.Errorf("instructions must tell agents to act on suggested_action")
+	}
+
+	// (2) cross-cutting conventions: the id|qualified_name|label form and the
+	// deprecated-tool steer toward neighbors.
+	for _, want := range []string{"qualified_name", "bare label", "Deprecated", "neighbors"} {
+		if !strings.Contains(mcpInstructions, want) {
+			t.Errorf("instructions missing convention marker %q", want)
+		}
+	}
+
+	// (3) at least one real tool name per INTENT category, so the map covers
+	// the breadth of the toolset and can't decay to a single category.
+	perCategory := map[string]string{
+		"find code": "find",
+		"navigate":  "neighbors",
+		"http":      "endpoints",
+		"effects":   "effects",
+		"security":  "security_findings",
+		"structure": "module_analysis",
+	}
+	for category, tool := range perCategory {
+		if !strings.Contains(mcpInstructions, tool) {
+			t.Errorf("instructions missing %s tool %q", category, tool)
+		}
+	}
+
+	// Every tool token in the map must be a registered tool. Build the live
+	// tool-name set from a fully-constructed server (NewServer runs
+	// registerTools and wires the underlying MCP server; newTestServer does
+	// not, so srv.MCP would be nil here).
+	regPath := filepath.Join(t.TempDir(), "registry.json")
+	if err := os.WriteFile(regPath, []byte(`{"groups":{}}`), 0o644); err != nil {
+		t.Fatalf("write temp registry: %v", err)
+	}
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	registered := map[string]bool{}
+	for name := range srv.MCP.ListTools() {
+		registered[name] = true
+	}
+	candidates := []string{
+		"find", "search_entities", "get_source", "inspect",
+		"neighbors", "trace", "find_paths", "subgraph", "impact_radius", "traces",
+		"endpoints", "effective_contract", "endpoint_posture", "cross_links", "payload_drift",
+		"effects", "data_flows", "security_findings", "auth_coverage", "secrets",
+		"dead_code", "import_cycles", "quality_cycles", "clusters", "module_analysis", "stats",
+		"expand", "find_callers", "find_callees",
+	}
+	for _, c := range candidates {
+		full := "archigraph_" + c
+		if !strings.Contains(mcpInstructions, c) {
+			continue // only validate names that actually appear in the map
+		}
+		if !registered[full] {
+			t.Errorf("instructions name %q (%s) is not a registered tool", c, full)
+		}
+	}
+}

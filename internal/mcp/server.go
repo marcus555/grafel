@@ -50,9 +50,34 @@ func resolveReloadDebounce() time.Duration {
 	return defaultReloadDebounceMS * time.Millisecond
 }
 
-// mcpInstructions is the handshake text returned to MCP clients on initialize.
-// It tells agents to call archigraph_whoami first and act on suggested_action.
-const mcpInstructions = `archigraph code-graph MCP. Call archigraph_whoami on connect (cwd= set to caller dir); act on suggested_action. Set ARCHIGRAPH_WHOAMI_NUDGE=quiet to suppress doc-state (CI).`
+// mcpInstructions is the handshake text returned to MCP clients on initialize
+// (pushed to the model at the MCP `initialize` step — no tool call required).
+//
+// It is a deliberately compact ORIENTATION MAP, not a manual: it tells agents
+// to call archigraph_whoami first, states the cross-cutting CONVENTIONS that
+// every tool shares (id forms, token budgeting, repo/ref scoping, deprecated
+// tools), and groups the real tools by INTENT so an agent can pick one without
+// a discovery round-trip. Per-tool param detail intentionally stays in each
+// tool's inputSchema — duplicating it here would blow the handshake budget.
+//
+// This string is BUDGET-SENSITIVE: it ships in the initialize envelope counted
+// by cmd/mcp-audit against mcp.TokenCeiling. Every tool named below MUST be a
+// real registration (see registerTools); audit fails the build if the handshake
+// exceeds the ceiling. When you edit this text, re-run `go run ./cmd/mcp-audit`
+// and update initEnvelopeBytes in cmd/mcp-audit/main.go to match the new length.
+const mcpInstructions = `archigraph: a code knowledge-graph over your indexed repos (entities + typed edges). Call archigraph_whoami first - it resolves group/repo/ref from your cwd; act on its suggested_action.
+
+CONVENTIONS
+- entity_id/source/target accept an id, qualified_name, OR a bare label.
+- Output is token-budgeted; pass verbose / token_budget / max_results for more.
+- Defaults to cwd repo at HEAD; widen with cross_repo=true or group/ref. Each tool's inputSchema documents its params. Deprecated: expand, find_callers, find_callees - use neighbors.
+
+PICK A TOOL BY INTENT
+- Find code: find (semantic "where is X?"); search_entities (substring); get_source (by id|qname|label); inspect (entity + calls/called_by).
+- Navigate: neighbors (in|out|both); trace / find_paths (path between nodes); subgraph (N-hop); impact_radius (blast-radius); traces (process flows).
+- HTTP: endpoints; effective_contract (per-verb); endpoint_posture (auth/rate_limit); cross_links, payload_drift (cross-repo).
+- Effects/security: effects (db/http/fs/mutation); data_flows; security_findings (taint); auth_coverage; secrets.
+- Structure: dead_code; import_cycles / quality_cycles; clusters; module_analysis; stats.`
 
 // sentinelToolName is the single tool returned when the caller's cwd is not
 // covered by any registered archigraph group (#1769).
