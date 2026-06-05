@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cajasmota/archigraph/internal/install/agenthooks"
 	"github.com/cajasmota/archigraph/internal/install/hooks"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 	"github.com/cajasmota/archigraph/internal/install/rulesfiles"
@@ -35,6 +36,12 @@ type Options struct {
 	// (AGENTS.md, CLAUDE.md, .windsurfrules, .cursorrules,
 	// .codeium/instructions.md, .github/copilot-instructions.md).
 	SkipRulesFiles bool
+	// InstallAgentHooks, when true, installs the OPT-IN Claude Code
+	// PreToolUse grep-interceptor hook (#4273) into each repo's
+	// .claude/settings.json. It is also gated by Config.Features.AgentHooks;
+	// either the explicit option OR the persisted feature flag enables it.
+	// CLAUDE CODE ONLY; advisory-only; never blocks.
+	InstallAgentHooks bool
 }
 
 // Result reports what an Apply call did so the CLI can print a summary.
@@ -54,6 +61,10 @@ type Result struct {
 	// RulesFilesStaleReplaced maps repo path → rules-file paths that
 	// were entirely predecessor content and got overwritten.
 	RulesFilesStaleReplaced map[string][]string
+	// AgentHooksInstalled lists repo paths that got the opt-in Claude Code
+	// PreToolUse grep-interceptor hook (#4273). Empty unless agent hooks
+	// were enabled.
+	AgentHooksInstalled []string
 }
 
 // Apply registers the group, writes its config, then installs hooks +
@@ -147,6 +158,14 @@ func Apply(opts Options) (*Result, error) {
 				res.RulesFiles[repo] = append([]string{}, rulesfiles.Targets...)
 			}
 		}
+		if opts.InstallAgentHooks || opts.Config.Features.AgentHooks {
+			if !opts.DryRun {
+				if _, err := agenthooks.Install(repo); err != nil {
+					return nil, fmt.Errorf("agent hooks for %s: %w", repo, err)
+				}
+			}
+			res.AgentHooksInstalled = append(res.AgentHooksInstalled, repo)
+		}
 		if !opts.SkipWatchers && opts.Config.Features.Watchers {
 			u := watchers.Unit{Group: opts.Group, Repo: repo, BinPath: opts.BinPath}
 			if !opts.DryRun {
@@ -226,6 +245,7 @@ func Uninstall(group string, purge bool) error {
 		loader := watchers.NewLoader()
 		for _, r := range cfg.Repos {
 			_ = hooks.Uninstall(r.Path)
+			_ = agenthooks.Uninstall(r.Path)
 			u := watchers.Unit{Group: group, Repo: r.Path, BinPath: bin}
 			// Deregister from the OS scheduler before removing the unit file so
 			// that the OS does not attempt to launch a missing binary.

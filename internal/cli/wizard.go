@@ -26,6 +26,7 @@ func newWizardCmd() *cobra.Command {
 		groupDocs      string
 		watchers       bool
 		gitHooks       bool
+		agentHooks     bool
 		runInstall     bool
 	)
 	cmd := &cobra.Command{
@@ -41,6 +42,7 @@ func newWizardCmd() *cobra.Command {
 				GroupDocs:      groupDocs,
 				Watchers:       watchers,
 				GitHooks:       gitHooks,
+				AgentHooks:     agentHooks,
 				RunInstall:     runInstall,
 			}
 			return runWizard(out, opts)
@@ -53,6 +55,7 @@ func newWizardCmd() *cobra.Command {
 	cmd.Flags().StringVar(&groupDocs, "group-docs", "", "optional path to shared group docs")
 	cmd.Flags().BoolVar(&watchers, "watchers", true, "enable watchers")
 	cmd.Flags().BoolVar(&gitHooks, "git-hooks", true, "enable git hooks")
+	cmd.Flags().BoolVar(&agentHooks, "agent-hooks", false, "opt-in: install the Claude Code PreToolUse grep-interceptor hook that nudges toward archigraph on structural greps (advisory-only, never blocks; Claude Code only)")
 	cmd.Flags().BoolVar(&runInstall, "install", true, "run install at the end")
 	return cmd
 }
@@ -63,6 +66,7 @@ type wizardOptions struct {
 	ParentDir, ReposCSV string
 	GroupDocs           string
 	Watchers, GitHooks  bool
+	AgentHooks          bool
 	RunInstall          bool
 }
 
@@ -70,6 +74,7 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 	cfg := &registry.GroupConfig{}
 	cfg.Features.Watchers = opts.Watchers
 	cfg.Features.GitHooks = opts.GitHooks
+	cfg.Features.AgentHooks = opts.AgentHooks
 	cfg.GroupDocs = opts.GroupDocs
 
 	// Step 1 — group name.

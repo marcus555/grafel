@@ -139,6 +139,16 @@ type GroupConfig struct {
 		// Example fleet JSON:
 		//   "features": { "track_worktrees": true }
 		TrackWorktrees bool `json:"track_worktrees,omitempty"`
+		// AgentHooks, when true, installs the OPT-IN Claude Code PreToolUse
+		// grep-interceptor hook into each repo's .claude/settings.json. The
+		// hook is advisory-only (never blocks) and nudges the agent toward
+		// archigraph MCP tools when it is about to run a STRUCTURAL grep.
+		//
+		// This is CLAUDE CODE ONLY reinforcement — no other agent host
+		// exposes a PreToolUse surface — and it COMPLEMENTS, not replaces,
+		// the cross-host rules block. Default false: it is opt-in to avoid
+		// nagging users who don't want it (#4273).
+		AgentHooks bool `json:"agent_hooks,omitempty"`
 	} `json:"features"`
 	// ExtraStdlibFilter is a user-extensible map from language tag to a list
 	// of bare-name symbols that should be suppressed as if they were stdlib
