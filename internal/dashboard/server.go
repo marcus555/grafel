@@ -551,6 +551,10 @@ func (s *Server) routes() http.Handler {
 	// #4255 (epic #4249): GraphQL resolver-effects surface.
 	mux.HandleFunc("GET /api/graphql/{group}", s.handleGraphQL)
 
+	// #4256 (epic #4249): IaC / Infrastructure surface — resources grouped by
+	// tool with typed config props + grant/event-source/dependency/topology edges.
+	mux.HandleFunc("GET /api/iac/{group}", s.handleIaC)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)
