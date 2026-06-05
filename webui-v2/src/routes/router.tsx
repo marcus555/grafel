@@ -21,6 +21,7 @@ import TopologyScreen from "./topology";
 import PathsScreen from "./paths";
 import LinksScreen from "./links";
 import GraphQLScreen from "./graphql";
+import IaCScreen from "./iac";
 import DocsScreen from "./docs";
 import SecurityScreen from "./security";
 import QualityScreen from "./quality";
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
           { path: "paths", element: <PathsScreen />, handle: { surfaceLabel: "Paths" } },
           { path: "links", element: <LinksScreen />, handle: { surfaceLabel: "Links" } },
           { path: "graphql", element: <GraphQLScreen />, handle: { surfaceLabel: "GraphQL" } },
+          { path: "iac", element: <IaCScreen />, handle: { surfaceLabel: "Infrastructure" } },
           { path: "docs", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
           // Wildcard: the doc key (repoSlug/rel/path.md) may contain slashes.
           { path: "docs/*", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },

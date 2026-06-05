@@ -68,6 +68,7 @@ import type {
   QualityTrendsReply,
   GroupLinksReply,
   GraphQLReport,
+  IaCReport,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -804,6 +805,16 @@ export const api = {
   getGraphQL: (groupId: string) =>
     request<GraphQLReport>(
       `/graphql/${encodeURIComponent(groupId)}`,
+    ),
+
+  // --- IaC / Infrastructure (#4256) ---
+  // Raw JSON (no v2 envelope) → `request`. Handler: handlers_iac.go handleIaC,
+  // which returns an IaCReport (resources grouped by iac_tool).
+
+  /** GET /api/iac/{group} — IaC resources grouped by tool, with props + relations. */
+  getIaC: (groupId: string) =>
+    request<IaCReport>(
+      `/iac/${encodeURIComponent(groupId)}`,
     ),
 };
 

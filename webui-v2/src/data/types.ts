@@ -2046,3 +2046,87 @@ export interface GraphQLReport {
   groups: GraphQLTypeGroup[];
   schema_types: GraphQLSchemaType[];
 }
+
+// ---------------------------------------------------------------------------
+// IaC / Infrastructure surface (#4256, epic #4249)
+//
+// Wire shape for GET /api/iac/{group} (handlers_iac.go → handleIaC). RAW JSON
+// (not the v2 envelope). Mirrors the Go structs in
+// internal/dashboard/handlers_iac.go. Surfaces the IaC extraction the graph
+// has: every tool (aws-cdk / pulumi / bicep / cloudformation / sam /
+// serverless-framework / terraform) emits resource entities carrying a tool
+// label, a cross-tool resource_category, tool-native resource type, and a
+// curated set of typed scalar config properties (instance_type / memory_size /
+// timeout / runtime / region / …). Resource-to-resource edges model IAM grants,
+// event-source wiring, plain dependencies, and stack/app/module topology.
+//
+// HONESTY: properties + relations render only when genuinely extracted. Many
+// caps are partial (some props only on some tools; topology only where a stack/
+// app/module is modeled); absent facets are omitted, never fabricated.
+// ---------------------------------------------------------------------------
+
+/** One stamped typed config property on a resource. */
+export interface IaCProperty {
+  key: string;
+  value: string;
+}
+
+/**
+ * One relationship facet on a resource.
+ * facet: "grant" | "event_source" | "dependency" | "topology" | "trigger" | "output".
+ */
+export interface IaCRelation {
+  facet: string;
+  /** Raw graph edge kind (DEPENDS_ON / USES / IMPORTS / CONTAINS / JOINS / …). */
+  kind: string;
+  /** "out" (this → target) or "in" (source → this). */
+  direction: string;
+  /** Human-readable name (logical id) of the other endpoint. */
+  target: string;
+  /** Grant method or other edge qualifier, when set. */
+  detail?: string;
+}
+
+/** One extracted IaC resource. */
+export interface IaCResource {
+  entity_id: string;
+  repo: string;
+  /** Logical id / resource name. */
+  name: string;
+  /** aws-cdk / pulumi / bicep / cloudformation / sam / serverless-framework / terraform. */
+  tool: string;
+  /** Tool-native type string (construct_type / resource_type). */
+  resource_type?: string;
+  /** Cross-tool resource_category join key. */
+  category?: string;
+  /** Logical id when distinct from name (CDK/CFN). */
+  logical_id?: string;
+  source_file?: string;
+  start_line?: number;
+  /** Curated typed config props; [] when none stamped. */
+  properties: IaCProperty[];
+  /** Grants / event-sources / dependencies / topology / triggers; [] when none. */
+  relations: IaCRelation[];
+}
+
+/** Resources grouped under one iac_tool. */
+export interface IaCToolGroup {
+  tool: string;
+  count: number;
+  resources: IaCResource[];
+}
+
+/** GET /api/iac/{group} — IaC / Infrastructure report. */
+export interface IaCReport {
+  group: string;
+  total_resources: number;
+  total_grants: number;
+  total_event_sources: number;
+  total_dependencies: number;
+  total_outputs: number;
+  with_props_count: number;
+  tools: string[];
+  /** resource_category → count across all tools. */
+  counts_by_category: Record<string, number>;
+  groups: IaCToolGroup[];
+}
