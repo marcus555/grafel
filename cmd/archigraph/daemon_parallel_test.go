@@ -100,15 +100,19 @@ func TestDaemonRebuildParallel(t *testing.T) {
 	if peak < 2 {
 		t.Errorf("peak concurrency = %d, want ≥2", peak)
 	}
-	// The wall-clock speedup ratio is environment-sensitive: on a 2-core CI
-	// runner (e.g. GitHub's windows-latest) two 60ms sleeps barely overlap and
-	// the ratio dips below 1.3× even though real parallelism happened (peak≥2,
-	// asserted above). Gate the ratio assertion to hosts with enough cores to
-	// make it meaningful; the parallelism itself is still covered everywhere
-	// via the peakConc check (#4285).
-	if runtime.NumCPU() < 4 {
-		t.Logf("skipping speedup-ratio assertion on %d-core host (#4285); "+
-			"parallelism still verified via peakConc=%d", runtime.NumCPU(), peak)
+	// The wall-clock speedup ratio is fundamentally unassertable on shared CI
+	// runners: GitHub's hosted runners (including windows-latest, which reports
+	// 4 cores) share CPU/IO with other tenants and suffer AV-scanning and slow
+	// disk, so two 60ms sleeps can make the "parallel" run SLOWER than serial
+	// (observed speedup=0.46×) even though real parallelism happened (peak≥2,
+	// asserted above and valid everywhere). A core-count gate doesn't help —
+	// the 4-core runner clears it yet still fails. Gate the ratio assertion to
+	// non-CI hosts; GitHub Actions always sets CI=true. The parallelism itself
+	// is still covered everywhere via the peakConc check (#4285).
+	if os.Getenv("CI") != "" {
+		t.Logf("skipping speedup-ratio assertion under CI (CI=%s, #4285); "+
+			"parallelism still verified via peakConc=%d (%d-core host)",
+			os.Getenv("CI"), peak, runtime.NumCPU())
 	} else if speedup < 1.3 {
 		t.Errorf("parallel speedup = %.2f×, want ≥1.3× vs serial", speedup)
 	}
