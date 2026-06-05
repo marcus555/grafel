@@ -24,6 +24,7 @@ import GraphQLScreen from "./graphql";
 import IaCScreen from "./iac";
 import DocsScreen from "./docs";
 import SecurityScreen from "./security";
+import DataflowScreen from "./dataflow";
 import QualityScreen from "./quality";
 import SettingsScreen from "./settings";
 import PendingScreen from "./pending";
@@ -59,6 +60,7 @@ export const router = createBrowserRouter([
           // Wildcard: the doc key (repoSlug/rel/path.md) may contain slashes.
           { path: "docs/*", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
           { path: "security", element: <SecurityScreen />, handle: { surfaceLabel: "Security" } },
+          { path: "taint", element: <DataflowScreen />, handle: { surfaceLabel: "Taint" } },
           { path: "quality", element: <QualityScreen />, handle: { surfaceLabel: "Quality" } },
           { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
           { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },

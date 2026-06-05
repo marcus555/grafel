@@ -69,6 +69,7 @@ import type {
   GroupLinksReply,
   GraphQLReport,
   IaCReport,
+  DataflowReport,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -815,6 +816,17 @@ export const api = {
   getIaC: (groupId: string) =>
     request<IaCReport>(
       `/iac/${encodeURIComponent(groupId)}`,
+    ),
+
+  // --- Data-flow & Taint (#4265) ---
+  // Raw JSON (no v2 envelope) → `request`. Handler: handlers_dataflow.go
+  // handleDataflow, which returns a DataflowReport (ranked taint findings +
+  // request-input → sink DATA_FLOWS_TO edges).
+
+  /** GET /api/dataflow/{group} — taint flows + ranked source→sink findings. */
+  getDataflow: (groupId: string) =>
+    request<DataflowReport>(
+      `/dataflow/${encodeURIComponent(groupId)}`,
     ),
 };
 
