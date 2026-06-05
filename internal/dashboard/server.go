@@ -555,6 +555,10 @@ func (s *Server) routes() http.Handler {
 	// tool with typed config props + grant/event-source/dependency/topology edges.
 	mux.HandleFunc("GET /api/iac/{group}", s.handleIaC)
 
+	// #4265 (epic #4249): Data-flow & Taint surface — request-input → sink taint
+	// flows (DATA_FLOWS_TO) + ranked security findings (source→sink paths).
+	mux.HandleFunc("GET /api/dataflow/{group}", s.handleDataflow)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)

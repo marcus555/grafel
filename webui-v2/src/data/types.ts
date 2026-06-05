@@ -2130,3 +2130,94 @@ export interface IaCReport {
   counts_by_category: Record<string, number>;
   groups: IaCToolGroup[];
 }
+
+// ---------------------------------------------------------------------------
+// Data-flow & Taint surface (#4265, epic #4249)
+//
+// Wire shape for GET /api/dataflow/{group} (handlers_dataflow.go →
+// handleDataflow). RAW JSON (not the v2 envelope). Mirrors the Go structs in
+// internal/dashboard/handlers_dataflow.go, which reads two sidecars:
+//
+//   - the taint sidecar → ranked SecurityFinding records (source→sink paths,
+//     confidence, vulnerability category) produced by internal/links/taint_flow.go;
+//   - the data-flow sidecar → request-input → sink DATA_FLOWS_TO edges (the
+//     tainted field, sink_kind, inter-procedural hop_path) produced by
+//     internal/links/dataflow_pass.go.
+//
+// HONESTY: only genuinely-extracted flows/findings are surfaced. The taint pass
+// drops anything below confidence_floor and never fabricates a flow it could not
+// soundly follow; when both sidecars are absent the screen shows a clean empty
+// state. Source/sink names resolve to entity refs where the entity is known;
+// otherwise the raw endpoint tail is shown — never invented.
+// ---------------------------------------------------------------------------
+
+/** One end (source or sink) of a flow / finding, resolved to an entity ref. */
+export interface DataflowEndpoint {
+  /** "<repo>/<id>" when resolved, else the raw sidecar endpoint key. */
+  entity_id: string;
+  repo?: string;
+  /** Entity name, or the raw key tail when unresolved. */
+  name: string;
+  kind?: string;
+  source_file?: string;
+  line?: number;
+  /** Taint-rule label that fired (source_primitive / sink_primitive); findings only. */
+  primitive?: string;
+}
+
+/** One node on a finding's source→sink path. */
+export interface DataflowPathStep {
+  entity_id: string;
+  name: string;
+  repo?: string;
+}
+
+/** One ranked taint source→sink security finding. */
+export interface SecurityFindingView {
+  fingerprint: string;
+  /** sql_injection / command_injection / path_traversal / xss / ssrf / … */
+  category: string;
+  confidence: number;
+  source: DataflowEndpoint;
+  sink: DataflowEndpoint;
+  /** Ordered source→sink entity chain (inclusive). */
+  path: DataflowPathStep[];
+  /** len(path)-1 call hops, clamped at 0. */
+  hops: number;
+  explanation: string;
+}
+
+/** One request-input → sink DATA_FLOWS_TO edge. */
+export interface TaintFlow {
+  id: string;
+  source: DataflowEndpoint;
+  sink: DataflowEndpoint;
+  relation?: string;
+  confidence: number;
+  /** Tainted request field that flows to the sink. */
+  field?: string;
+  /** Sink classification (sql / command / fs / http / template / …). */
+  sink_kind?: string;
+  /** Inter-procedural chain ("a -> b -> c") when present. */
+  hop_path?: string;
+  hop_count?: number;
+}
+
+/** GET /api/dataflow/{group} — Data-flow & Taint report. */
+export interface DataflowReport {
+  group: string;
+  /** Ranked source→sink findings (confidence desc). */
+  findings: SecurityFindingView[];
+  /** Request-input → sink DATA_FLOWS_TO edges. */
+  flows: TaintFlow[];
+  total_findings: number;
+  total_flows: number;
+  /** Vulnerability category → finding count. */
+  findings_by_category: Record<string, number>;
+  /** sink_kind → flow count. */
+  flows_by_sink_kind: Record<string, number>;
+  /** Taint pass drop threshold (provenance). */
+  confidence_floor: number;
+  taint_method?: string;
+  flow_method?: string;
+}

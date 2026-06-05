@@ -21,6 +21,7 @@ import {
   Link2,
   Boxes,
   Server,
+  Waypoints,
   Wrench,
   Inbox,
   Settings,
@@ -45,6 +46,7 @@ export const SCREENS: ScreenDef[] = [
   { to: "flows", label: "Flows", Icon: Workflow, shortcut: "F" },
   { to: "docs", label: "Docs", Icon: FileText, shortcut: "D" },
   { to: "security", label: "Security", Icon: ShieldCheck, shortcut: "S" },
+  { to: "taint", label: "Taint", Icon: Waypoints, shortcut: "X" },
   { to: "quality", label: "Quality", Icon: GaugeCircle, shortcut: "Q" },
   { to: "operations", label: "Operations", Icon: Wrench, shortcut: "O" },
 ];
