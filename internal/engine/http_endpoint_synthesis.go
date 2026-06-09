@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
+	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/frameworks/routes"
 	"github.com/cajasmota/archigraph/internal/types"
 )
@@ -136,6 +137,67 @@ func synthesisSupportsLanguage(lang string) bool {
 	default:
 		return false
 	}
+}
+
+// synthesisHandlerStructuralRef returns the merge-stable, file-scoped structural
+// reference to the handler METHOD that a producer-side route synthesizer should
+// use as the FromID of a synthesis-time endpoint→handler IMPLEMENTS bridge
+// (#4319). It returns "" when no same-file handler method is named — in which
+// case no bridge is emitted and the existing name-resolution / co-location
+// fallbacks in ResolveHTTPEndpointHandlers take over.
+//
+// The returned stub has the canonical Format-A shape
+//
+//	scope:operation:method:<lang>:<file>:<methodName>
+//
+// which the central resolver (resolve.References) binds to the same-file handler
+// Operation by (file, name) — independent of line numbers and stable across
+// entity merge. Because it is file-scoped it can never bind a method in another
+// controller, and an unresolved name is left unmatched (no guess).
+//
+// It fires only for refKinds that name a same-file handler METHOD
+// (Controller / View / SCOPE.Operation as emitted by the annotation- and
+// router-DSL synthesizers). It deliberately rejects:
+//   - empty refName (GraphQL-resolver / inline-arrow synthetics with no symbol),
+//   - the Spring `Route:<path>` placeholder (refKind="Route"),
+//   - dotted qualified names (`Class.method`) — the synthesis-time bridge is for
+//     the bare-method, same-file case; qualified cross-file shapes are handled by
+//     the resolve pass. (A dotted name would also not match byLocation[file][name].)
+func synthesisHandlerStructuralRef(lang, file, refKind, refName string) string {
+	if refName == "" || file == "" || lang == "" {
+		return ""
+	}
+	switch refKind {
+	case "Controller", "View", "SCOPE.Operation":
+		// same-file handler-method kinds
+	default:
+		return ""
+	}
+	// Reject dotted qualified names — the same-file byLocation index keys on the
+	// bare method Name, and a dotted ref is the cross-file shape.
+	if strings.ContainsAny(refName, ".:#") {
+		return ""
+	}
+	return extractor.BuildOperationStructuralRef(lang, file, refName)
+}
+
+// dropTrailingSynthesisTimeBridge removes the most-recently-appended
+// synthesis-time endpoint→handler bridge edge (#4319) for canonicalPath, if it
+// is the last element of rels. Used by the CROSS-FILE emitters (emitFile /
+// emitResource) to retract the same-file structural bridge that makeEmit emitted
+// before they learned the handler actually lives in another file. Matching on
+// the trailing element + pattern_type + path keeps it surgical: it only ever
+// removes the bridge this same emit() call just added.
+func dropTrailingSynthesisTimeBridge(rels []types.RelationshipRecord, canonicalPath string) []types.RelationshipRecord {
+	if n := len(rels); n > 0 {
+		last := rels[n-1]
+		if last.Kind == implementsEdgeKind &&
+			last.Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
+			last.Properties["path"] == canonicalPath {
+			return rels[:n-1]
+		}
+	}
+	return rels
 }
 
 // isTestSourceFile reports whether filePath is a test/spec/fixture file that
@@ -397,6 +459,58 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 				EnrichmentStatus:   types.StatusPending,
 				QualityScore:       0.8,
 			})
+
+			// #4319 LONG-TERM FIX — emit the endpoint→handler bridge AT SYNTHESIS
+			// TIME, from the decorated handler node, using a merge-stable,
+			// file-scoped STRUCTURAL reference to the handler method (rather than
+			// reconstructing the bridge later by name- / co-location matching in
+			// ResolveHTTPEndpointHandlers).
+			//
+			// Two prior detect-and-repair fixes (#4326 bare↔qualified name match,
+			// #4330 file:line co-location) both reproduced in synthetic fixtures
+			// but FAILED on the live graph: the bridge was rebuilt POST-merge from
+			// the `source_handler` string or the synthetic's StartLine, and the
+			// merge/dedup step destabilises both (a same-(verb,path) synthetic from
+			// another pass can win attribution carrying no usable source_handler,
+			// and a duplicate handler Operation at the same file:line trips the
+			// no-guess guard) → the endpoint is left a graph ISLAND.
+			//
+			// The structural edge below is IMMUNE to that lossy round-trip: it is a
+			// `scope:operation:method:<lang>:<file>:<name>` stub that the CENTRAL
+			// resolver (resolve.References, in buildDocument) binds to the same-file
+			// handler by (file, name) — independent of StartLine, independent of the
+			// http-endpoint resolve pass, and stable across entity-merge (it travels
+			// as a stub, not a hex ID, and is rewritten only once, after all merging).
+			// It is file-scoped so it can NEVER mis-bridge to a method in another
+			// controller, and when the name does not resolve in-file the resolver
+			// simply leaves it unmatched (no guess, no phantom edge) — preserving the
+			// no-mis-bridge guarantee the prior fixes established.
+			//
+			// GENERALISED: this fires for EVERY producer synthesizer that hands a
+			// real same-file handler METHOD name (NestJS / Express / Fastify /
+			// FastAPI / Flask / JAX-RS / Axum / Rocket / …) via refKind ∈
+			// {Controller, View, SCOPE.Operation}. It deliberately does NOT fire for
+			// the cross-file `handler_file`-hint frameworks (Rails / Phoenix /
+			// Sails / Adonis / Feathers — refKind=Controller but the method lives in
+			// another file, handled by handlerFileHint resolution) nor for Spring's
+			// `Route:<path>` placeholder, because those carry no same-file method
+			// name. The existing name-resolution + co-location paths remain as
+			// fallbacks; this is the primary, merge-stable bridge.
+			if patternType == "http_endpoint_synthesis" {
+				if bridgeRef := synthesisHandlerStructuralRef(lang, path, refKind, refName); bridgeRef != "" {
+					relationships = append(relationships, types.RelationshipRecord{
+						FromID: bridgeRef,
+						ToID:   kind + ":" + id,
+						Kind:   implementsEdgeKind,
+						Properties: map[string]string{
+							"pattern_type": "http_endpoint_synthesis_time_bridge",
+							"framework":    framework,
+							"verb":         strings.ToUpper(method),
+							"path":         canonicalPath,
+						},
+					})
+				}
+			}
 		}
 	}
 	emit := makeEmit("http_endpoint_synthesis", "source_handler")
@@ -432,6 +546,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 				last.Properties = map[string]string{}
 			}
 			last.Properties["handler_file"] = handlerFile
+			// #4319 — this is a CROSS-FILE handler (Rails / Phoenix / Sails /
+			// Adonis / Feathers): the method named by refName lives in
+			// handlerFile, NOT in `path`. The synthesis-time structural bridge
+			// emit() just appended is keyed on THIS file, so it would never
+			// resolve here; drop it so it does not show up as an unmatched stub.
+			// Cross-file attribution stays the job of the handler_file-hint
+			// resolution path in ResolveHTTPEndpointHandlers.
+			relationships = dropTrailingSynthesisTimeBridge(relationships, canonicalPath)
 		}
 		if defLine > 0 {
 			last.StartLine = defLine
@@ -465,6 +587,9 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		}
 		if handlerFile != "" {
 			last.Properties["handler_file"] = handlerFile
+			// #4319 — cross-file handler: drop the same-file synthesis-time
+			// bridge (see emitFile for the rationale).
+			relationships = dropTrailingSynthesisTimeBridge(relationships, canonicalPath)
 		}
 		routes.Stamp(last.Properties, framework, action)
 	}

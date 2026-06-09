@@ -438,19 +438,28 @@ func TestDetect_RelationshipProperties(t *testing.T) {
 		t.Fatalf("Detect failed: %v", err)
 	}
 
+	// Scope the YAML-rule assertions to the ROUTES_TO edges this test is about.
+	// #4319 — the producer synthesis pass now ALSO emits a merge-stable
+	// endpoint→handler IMPLEMENTS bridge (pattern_type=http_endpoint_synthesis_
+	// time_bridge) for same-file handler frameworks, Gin included; those are a
+	// separate, intentional edge kind and are validated by the #4319 repro tests.
+	sawRoutesTo := false
 	for _, rel := range result.Relationships {
-		if rel.Kind != "ROUTES_TO" {
-			t.Errorf("relationship Kind = %q, want ROUTES_TO", rel.Kind)
-		}
-		if rel.Properties["framework"] != "go" {
-			t.Errorf("relationship framework property = %q, want go", rel.Properties["framework"])
-		}
-		if rel.Properties["pattern_type"] != "yaml_driven" {
-			t.Errorf("relationship pattern_type = %q, want yaml_driven", rel.Properties["pattern_type"])
+		if rel.Kind == "ROUTES_TO" {
+			sawRoutesTo = true
+			if rel.Properties["framework"] != "go" {
+				t.Errorf("relationship framework property = %q, want go", rel.Properties["framework"])
+			}
+			if rel.Properties["pattern_type"] != "yaml_driven" {
+				t.Errorf("relationship pattern_type = %q, want yaml_driven", rel.Properties["pattern_type"])
+			}
 		}
 		if rel.FromID == "" || rel.ToID == "" {
 			t.Errorf("relationship has empty FromID or ToID: from=%q to=%q", rel.FromID, rel.ToID)
 		}
+	}
+	if !sawRoutesTo {
+		t.Error("expected at least one ROUTES_TO relationship from the gin YAML rule")
 	}
 }
 
