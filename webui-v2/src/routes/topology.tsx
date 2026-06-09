@@ -38,6 +38,8 @@ import {
   useOrphanSubscribers,
   flattenChannels,
   deriveCounts,
+  extractOrphanPublishers,
+  extractOrphanSubscribers,
 } from "@/hooks/use-topology";
 import type {
   TopologyChannel,
@@ -46,8 +48,6 @@ import type {
   BrokerCanonical,
   TopologyChannelDetail,
   TopologyEntityRef,
-  OrphanPublisherEntry,
-  OrphanSubscriberEntry,
 } from "@/data/types";
 
 // ---------------------------------------------------------------------------
@@ -1458,7 +1458,15 @@ function DetailPanel({
 // § Orphan tabs
 // ---------------------------------------------------------------------------
 
-function OrphanPublisherTab({ groupId }: { groupId: string }) {
+function OrphanPublisherTab({
+  groupId,
+  selectedId,
+  onSelect,
+}: {
+  groupId: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   const { data, isLoading } = useOrphanPublishers(groupId);
   if (isLoading) {
     return (
@@ -1470,12 +1478,9 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
     );
   }
   // Real daemon returns { orphan_publishers: [...] }, not a bare array (#1535).
-  const entries = (
-    Array.isArray(data)
-      ? data
-      : ((data as { orphan_publishers?: OrphanPublisherEntry[] } | undefined)
-          ?.orphan_publishers ?? [])
-  ) as OrphanPublisherEntry[];
+  // extractOrphanPublishers is the single source of truth shared with the
+  // tab-strip badge so the count can never disagree with the rows (#5).
+  const entries = extractOrphanPublishers(data);
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center py-16 text-center gap-3">
@@ -1494,7 +1499,20 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
         return (
           <div
             key={e.id}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface"
+            role="button"
+            tabIndex={0}
+            aria-pressed={e.id === selectedId}
+            onClick={() => onSelect(e.id)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                onSelect(e.id);
+              }
+            }}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg border bg-surface cursor-pointer transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong",
+              e.id === selectedId ? "border-border-strong" : "border-border",
+            )}
           >
             <BrokerShapeIcon canonical={brokerKey} size={18} />
             <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
@@ -1517,7 +1535,15 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
   );
 }
 
-function OrphanSubscriberTab({ groupId }: { groupId: string }) {
+function OrphanSubscriberTab({
+  groupId,
+  selectedId,
+  onSelect,
+}: {
+  groupId: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   const { data, isLoading } = useOrphanSubscribers(groupId);
   if (isLoading) {
     return (
@@ -1529,12 +1555,9 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
     );
   }
   // Real daemon returns { orphan_subscribers: [...] }, not a bare array (#1535).
-  const entries = (
-    Array.isArray(data)
-      ? data
-      : ((data as { orphan_subscribers?: OrphanSubscriberEntry[] } | undefined)
-          ?.orphan_subscribers ?? [])
-  ) as OrphanSubscriberEntry[];
+  // extractOrphanSubscribers is the single source of truth shared with the
+  // tab-strip badge so the count can never disagree with the rows (#5).
+  const entries = extractOrphanSubscribers(data);
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center py-16 text-center gap-3">
@@ -1554,7 +1577,20 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
         return (
           <div
             key={e.id}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface"
+            role="button"
+            tabIndex={0}
+            aria-pressed={e.id === selectedId}
+            onClick={() => onSelect(e.id)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                onSelect(e.id);
+              }
+            }}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg border bg-surface cursor-pointer transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong",
+              e.id === selectedId ? "border-border-strong" : "border-border",
+            )}
           >
             <BrokerShapeIcon canonical={brokerKey} size={18} />
             <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
@@ -1590,7 +1626,15 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
 // § Scheduled tab
 // ---------------------------------------------------------------------------
 
-function ScheduledTab({ channels }: { channels: FlatChannel[] }) {
+function ScheduledTab({
+  channels,
+  selectedId,
+  onSelect,
+}: {
+  channels: FlatChannel[];
+  selectedId: string | null;
+  onSelect: (ch: FlatChannel) => void;
+}) {
   const scheduled = channels.filter((ch) => ch.scheduled);
   if (scheduled.length === 0) {
     return (
@@ -1611,7 +1655,20 @@ function ScheduledTab({ channels }: { channels: FlatChannel[] }) {
       {sorted.map((ch) => (
         <div
           key={ch.id}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-surface"
+          role="button"
+          tabIndex={0}
+          aria-pressed={ch.id === selectedId}
+          onClick={() => onSelect(ch)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelect(ch);
+            }
+          }}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg border bg-surface cursor-pointer transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong",
+            ch.id === selectedId ? "border-border-strong" : "border-border",
+          )}
         >
           <BrokerShapeIcon canonical={ch.broker_canonical} size={18} />
           <span className="font-mono text-md text-text truncate flex-1">{ch.label}</span>
@@ -1658,8 +1715,26 @@ export default function TopologyScreen() {
 
   const { data, isLoading, isError } = useTopology(groupId);
   const channels = flattenChannels(data);
-  const counts = deriveCounts(channels, data?.broker_groups ?? []);
   const brokerGroups = data?.broker_groups ?? [];
+
+  // Orphan badge counts MUST come from the same endpoint arrays the orphan tabs
+  // render, otherwise the pill and the list disagree (#5). The previous
+  // deriveCounts-based pill counted a client-derived lifecycle bucket whose
+  // orphan-pub/orphan-sub labels were inverted relative to the daemon's
+  // canonical definition (handlers_topology_orphans.go), so the badge could
+  // read 16 while the tab showed "No orphan publishers". We now take the badge
+  // count straight from extractOrphanPublishers/Subscribers — the single source
+  // of truth the OrphanPublisherTab / OrphanSubscriberTab bodies use.
+  const { data: orphanPubData } = useOrphanPublishers(groupId);
+  const { data: orphanSubData } = useOrphanSubscribers(groupId);
+  const orphanPublishers = extractOrphanPublishers(orphanPubData);
+  const orphanSubscribers = extractOrphanSubscribers(orphanSubData);
+  const baseCounts = deriveCounts(channels, brokerGroups);
+  const counts = {
+    ...baseCounts,
+    orphanPub: orphanPublishers.length,
+    orphanSub: orphanSubscribers.length,
+  };
 
   // Sync channel deep-link param
   useEffect(() => {
@@ -1693,8 +1768,45 @@ export default function TopologyScreen() {
     return true;
   });
 
+  // Orphan rows come from the orphan endpoints and may reference channels that
+  // aren't in the main topology payload, so when a selected id isn't a known
+  // channel we synthesize a minimal FlatChannel from the orphan entry. The
+  // detail panel then hydrates the rest from the detail endpoint via the id,
+  // exactly like clicking a channel (#6).
+  const orphanChannelFallback = (id: string): FlatChannel | null => {
+    const pub = orphanPublishers.find((e) => e.id === id);
+    if (pub) {
+      return {
+        id: pub.id,
+        label: pub.label,
+        broker: pub.broker,
+        broker_canonical: (pub.broker_canonical ?? pub.broker) as FlatChannel["broker_canonical"],
+        owning_service: "",
+        producers: pub.producers ?? [],
+        consumers: [],
+        repo: pub.repo,
+        lifecycle_state: "orphan_publisher",
+      };
+    }
+    const sub = orphanSubscribers.find((e) => e.id === id);
+    if (sub) {
+      return {
+        id: sub.id,
+        label: sub.label,
+        broker: sub.broker,
+        broker_canonical: (sub.broker_canonical ?? sub.broker) as FlatChannel["broker_canonical"],
+        owning_service: "",
+        producers: [],
+        consumers: sub.consumers ?? [],
+        repo: sub.repo,
+        lifecycle_state: "orphan_subscriber",
+      };
+    }
+    return null;
+  };
+
   const selectedChannel = selectedId
-    ? channels.find((ch) => ch.id === selectedId) ?? null
+    ? channels.find((ch) => ch.id === selectedId) ?? orphanChannelFallback(selectedId)
     : null;
 
   function selectChannel(ch: FlatChannel) {
@@ -1702,6 +1814,16 @@ export default function TopologyScreen() {
     setSearchParams((prev) => {
       const n = new URLSearchParams(prev);
       n.set("channel", ch.id);
+      return n;
+    });
+  }
+
+  // Select by id (used by orphan rows whose entries aren't full FlatChannels).
+  function selectChannelId(id: string) {
+    setSelectedId(id);
+    setSearchParams((prev) => {
+      const n = new URLSearchParams(prev);
+      n.set("channel", id);
       return n;
     });
   }
@@ -1963,25 +2085,79 @@ export default function TopologyScreen() {
         {/* Orphan publishers */}
         <TabsContent
           value="orphan-publishers"
-          className="flex-1 min-h-0 overflow-y-auto ag-scroll mt-0"
+          className="flex-1 min-h-0 flex mt-0"
         >
-          <OrphanPublisherTab groupId={groupId} />
+          <div className="flex-1 min-w-0 overflow-y-auto ag-scroll">
+            <OrphanPublisherTab
+              groupId={groupId}
+              selectedId={selectedId}
+              onSelect={selectChannelId}
+            />
+          </div>
+          {selectedChannel && (
+            <div
+              className="hidden lg:flex flex-col shrink-0 overflow-hidden"
+              style={{ width: 380 }}
+            >
+              <DetailPanel
+                channel={selectedChannel}
+                onClose={closeDetail}
+                groupId={groupId}
+              />
+            </div>
+          )}
         </TabsContent>
 
         {/* Orphan subscribers */}
         <TabsContent
           value="orphan-subscribers"
-          className="flex-1 min-h-0 overflow-y-auto ag-scroll mt-0"
+          className="flex-1 min-h-0 flex mt-0"
         >
-          <OrphanSubscriberTab groupId={groupId} />
+          <div className="flex-1 min-w-0 overflow-y-auto ag-scroll">
+            <OrphanSubscriberTab
+              groupId={groupId}
+              selectedId={selectedId}
+              onSelect={selectChannelId}
+            />
+          </div>
+          {selectedChannel && (
+            <div
+              className="hidden lg:flex flex-col shrink-0 overflow-hidden"
+              style={{ width: 380 }}
+            >
+              <DetailPanel
+                channel={selectedChannel}
+                onClose={closeDetail}
+                groupId={groupId}
+              />
+            </div>
+          )}
         </TabsContent>
 
         {/* Scheduled */}
         <TabsContent
           value="scheduled"
-          className="flex-1 min-h-0 overflow-y-auto ag-scroll mt-0"
+          className="flex-1 min-h-0 flex mt-0"
         >
-          <ScheduledTab channels={channels} />
+          <div className="flex-1 min-w-0 overflow-y-auto ag-scroll">
+            <ScheduledTab
+              channels={channels}
+              selectedId={selectedId}
+              onSelect={selectChannel}
+            />
+          </div>
+          {selectedChannel && (
+            <div
+              className="hidden lg:flex flex-col shrink-0 overflow-hidden"
+              style={{ width: 380 }}
+            >
+              <DetailPanel
+                channel={selectedChannel}
+                onClose={closeDetail}
+                groupId={groupId}
+              />
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
