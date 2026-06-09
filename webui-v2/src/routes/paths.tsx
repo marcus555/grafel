@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/ui";
 import { RefLine } from "@/components/RefLine";
+import { getRepoColor } from "@/lib/repo-color";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ShapeTree, type ShapeTreeRow } from "@/components/ShapeTree";
 import { AuthSection } from "@/components/Paths/EndpointDetail/AuthSection";
@@ -810,11 +811,27 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
               {detail.handlers[0].framework}
             </span>
           )}
-          {detail.repos.slice(0, 2).map((r) => (
-            <span key={r} className="text-xs px-2 py-0.5 rounded-full bg-surface-2 text-text-3 font-mono">
-              {r}
-            </span>
-          ))}
+          {detail.repos.slice(0, 2).map((r) => {
+            // #4341: route the header repo tag through the shared repo-color
+            // resolver (same as RefLine, #4323) so it gets the luminance-based
+            // WCAG-AA foreground/background/border instead of low-contrast
+            // bg-surface-2/text-text-3. Layout (pill shape) is unchanged.
+            const repoColors = getRepoColor(r);
+            return (
+              <span
+                key={r}
+                className="text-xs px-2 py-0.5 rounded-full font-mono"
+                style={{
+                  background: repoColors.background,
+                  color: repoColors.foreground,
+                  border: `1px solid ${repoColors.border}`,
+                }}
+                title={r}
+              >
+                {r}
+              </span>
+            );
+          })}
           {detail.repos.length > 2 && (
             <span className="text-xs text-text-4">+{detail.repos.length - 2}</span>
           )}
