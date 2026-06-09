@@ -12,6 +12,8 @@ import type {
   TopologyBrokerGroup,
   ChannelLifecycle,
   BrokerCanonical,
+  OrphanPublisherEntry,
+  OrphanSubscriberEntry,
 } from "@/data/types";
 
 // ---------------------------------------------------------------------------
@@ -104,6 +106,36 @@ export function deriveCounts(
     active += bg.health_summary?.active ?? 0;
   }
   return { total: channels?.length ?? 0, orphanPub, orphanSub, scheduled, active };
+}
+
+/**
+ * Normalise the orphan-publisher endpoint payload into the row array that the
+ * Orphan-pub tab actually renders.
+ *
+ * The real daemon returns `{ orphan_publishers: [...] }`; older/mocked shapes
+ * return a bare array (#1535). This is the ONE canonical source of truth for
+ * the orphan-publisher list — both the tab body and the tab-strip badge derive
+ * from it so the count can never disagree with the rendered rows (#5).
+ */
+export function extractOrphanPublishers(data: unknown): OrphanPublisherEntry[] {
+  if (Array.isArray(data)) return data as OrphanPublisherEntry[];
+  return (
+    (data as { orphan_publishers?: OrphanPublisherEntry[] } | undefined)
+      ?.orphan_publishers ?? []
+  );
+}
+
+/**
+ * Normalise the orphan-subscriber endpoint payload into the row array that the
+ * Orphan-sub tab renders. Canonical source of truth for both the list body and
+ * the tab-strip badge (#5). See {@link extractOrphanPublishers}.
+ */
+export function extractOrphanSubscribers(data: unknown): OrphanSubscriberEntry[] {
+  if (Array.isArray(data)) return data as OrphanSubscriberEntry[];
+  return (
+    (data as { orphan_subscribers?: OrphanSubscriberEntry[] } | undefined)
+      ?.orphan_subscribers ?? []
+  );
 }
 
 // ---------------------------------------------------------------------------
