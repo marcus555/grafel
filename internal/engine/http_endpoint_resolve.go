@@ -141,6 +141,23 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// can locate and scan the actual handler body.
 	type knKey = httpResolveNameKey
 	globalIdx := make(map[knKey]int, len(merged))
+	// #4319 — same-file bare↔qualified bridge index. The per-language
+	// synthesizers were written against an extractor convention that records
+	// handlers by BARE method name (NestJS / Express / Axum / Rocket / JAX-RS
+	// all stamp `source_handler=Controller:<method>`). Some extractor
+	// configurations instead land a controller method as a QUALIFIED entity
+	// (`<Class>.<method>` — the same shape Django/Spring/ASP.NET handlers use),
+	// so the resolver's exact-Name lookup misses and the synthetic is DROPPED,
+	// leaving the http_endpoint_definition a graph island (its handler's
+	// VALIDATES / CALLS / RETURNS edges are unreachable from the endpoint node).
+	// This index maps (sourceFile, bareName) → candidate indices of same-file
+	// handler entities whose Name is exactly `bareName` OR ends in
+	// `.<bareName>` (qualified `Class.method`). It is consulted ONLY as a
+	// same-file fallback, so it can never mis-bridge an endpoint to a method in
+	// a different controller, and it keys on the precise method name so a
+	// multi-method controller maps each endpoint to ITS OWN handler.
+	type fileBareKey struct{ sourceFile, bare string }
+	sameFileBareIdx := make(map[fileBareKey][]int, len(merged))
 	// #2692 — multi-match index for the Phoenix-style `name@file_hint`
 	// resolution path. Routes-file frameworks (Phoenix router) declare
 	// handlers by short action name (`index`, `show`) that collides
@@ -182,6 +199,19 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			globalIdx[gk] = i
 		}
 		globalMulti[gk] = append(globalMulti[gk], i)
+		// #4319 — register this handler under its bare method name within its
+		// source file. For a qualified Name (`Class.method`) the bare key is
+		// `method`; for an already-bare Name the bare key equals the Name (so
+		// the inverse mismatch — synthesizer stamps qualified, handler is bare —
+		// is also covered).
+		bare := r.Name
+		if dot := strings.LastIndexByte(bare, '.'); dot >= 0 && dot < len(bare)-1 {
+			bare = bare[dot+1:]
+		}
+		if bare != "" {
+			fk := fileBareKey{r.SourceFile, bare}
+			sameFileBareIdx[fk] = append(sameFileBareIdx[fk], i)
+		}
 	}
 
 	// Build an index of definitions by canonical Name (= synthetic ID)
@@ -388,6 +418,28 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 					found = true
 					break
 				}
+			}
+		}
+		// #4319 — same-file bare↔qualified bridge. The exact-Name lookups above
+		// match only when the synthesizer's bare `source_handler` name and the
+		// handler entity's Name agree character-for-character. For the
+		// bare-name-emitting frameworks (NestJS / Express / Axum / Rocket /
+		// JAX-RS) the handler method is sometimes indexed QUALIFIED
+		// (`Controller.method`) — the same shape Django/Spring/ASP.NET handlers
+		// carry — so the route synthetic was DROPPED and the
+		// http_endpoint_definition left a graph island. Here, before falling
+		// back to the (risky) cross-file global lookup, we try the same-file
+		// bare-name index: a handler in the SAME file whose Name is exactly `hn`
+		// or ends in `.hn`. Same-file scoping makes this unambiguous — a
+		// multi-method controller still maps each endpoint to its OWN handler
+		// because the bare method name is the key. When more than one candidate
+		// shares the bare name in one file (rare: an overload-like collision) we
+		// do NOT guess; we leave it for the existing fallbacks so we never
+		// mis-bridge. Skipped when a handler_file hint redirected lookupFile.
+		if !found && handlerFileHint == "" {
+			if cands := sameFileBareIdx[fileBareKey{r.SourceFile, hn}]; len(cands) == 1 {
+				handlerIdx = cands[0]
+				found = true
 			}
 		}
 		if !found {
