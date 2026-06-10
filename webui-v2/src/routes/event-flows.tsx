@@ -32,7 +32,7 @@ import { Radio, Workflow, ChevronRight, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api";
-import { Badge, Skeleton } from "@/components/ui";
+import { Badge, Skeleton, InsightBanner } from "@/components/ui";
 import { useSourcePeek } from "@/components/SourcePeek";
 import { cn } from "@/lib/utils";
 
@@ -264,7 +264,25 @@ export default function EventFlowsScreen() {
   }
 
   return (
-    <div className="flex h-full w-full gap-4 p-4">
+    <div className="flex h-full w-full flex-col gap-4 p-4">
+      <InsightBanner
+        storageKey="event-flows"
+        human={
+          <>
+            Event flows — multi-hop publish/subscribe chains seeded from message
+            channels (Kafka topics, EventBridge buses and similar). Each chain
+            walks from a producer through every downstream handler that consumes
+            the event, so you can follow an event end-to-end across services
+            instead of guessing who reacts to it.
+          </>
+        }
+        agent={{
+          tool: "archigraph_flows",
+          example:
+            "Before changing the payload published to an `order.created` topic, an agent calls archigraph_flows to walk the pub/sub chain and list every downstream subscriber, so it updates all consumers in the same change instead of breaking a handler two hops away.",
+        }}
+      />
+      <div className="flex min-h-0 w-full flex-1 gap-4">
       {/* Left rail */}
       <aside className="flex w-[380px] shrink-0 flex-col gap-3 rounded-lg border border-border bg-surface-0 p-3">
         <header className="flex items-center justify-between">
@@ -332,6 +350,7 @@ export default function EventFlowsScreen() {
         )}
         {selectedId && detail.data && <ChainDetail detail={detail.data} />}
       </main>
+      </div>
     </div>
   );
 }
