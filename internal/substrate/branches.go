@@ -150,6 +150,57 @@ func BranchLanguages() []string {
 
 func init() { RegisterBranchAnalyzer("python", analyzeBranchesPython) }
 
+// braceLangs is the set of brace-delimited languages whose function body is
+// bounded by a balanced `{`…`}` block. ClampToFunctionBody uses braceBodyEnd
+// for these; Python uses bodyEndPython. Languages absent here (e.g. ruby,
+// which is `end`-delimited) are not clamped at the source level yet — see
+// ClampToFunctionBody and the #4666 follow-up.
+var braceLangs = map[string]bool{
+	"jsts": true, "java": true, "go": true, "php": true,
+	"csharp": true, "kotlin": true, "scala": true, "rust": true,
+}
+
+// ClampToFunctionBody trims a (possibly padded) source window down to the
+// SINGLE function/method body that begins at its first non-blank header line,
+// so a branch analyzer never bleeds into the sibling defs that follow.
+//
+// This is the language-general companion to the per-analyzer Python clamp
+// (bodyEndPython): the effects MCP tool pads StartLine+N when an entity's
+// EndLine is missing/zero (#4488/#4666), and EVERY brace-language analyzer
+// (jsts/java/go/php/csharp/kotlin/scala/rust) walks its whole input window —
+// so without this clamp the padded tail's sibling methods are mis-attributed
+// to the target method. Clamping ONCE at the source level fixes all current
+// and future analyzers uniformly.
+//
+// Behaviour by language family:
+//   - Python: clamp to the dedent boundary (bodyEndPython).
+//   - Brace languages: clamp to the matching `}` of the header's own block.
+//   - Anything else (e.g. ruby `end`-delimited): returned unchanged — honest
+//     no-op until a body-end detector is implemented for it (#4666 follow-up).
+//
+// It is idempotent and safe on an already-tight window: an exact single-method
+// body has no trailing sibling, so the boundary is len(lines) and the source is
+// returned unchanged.
+func ClampToFunctionBody(src, lang string) string {
+	if strings.TrimSpace(src) == "" {
+		return src
+	}
+	lines := strings.Split(src, "\n")
+	var end int
+	switch {
+	case lang == "python":
+		end = bodyEndPython(lines)
+	case braceLangs[lang]:
+		end = braceBodyEnd(lines)
+	default:
+		return src // no body-end detector for this language yet
+	}
+	if end >= len(lines) {
+		return src
+	}
+	return strings.Join(lines[:end], "\n")
+}
+
 // --- Python branch analyzer ---------------------------------------------
 //
 // Walk model: Python's significant indentation makes a line-oriented walk a

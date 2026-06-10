@@ -32,6 +32,52 @@ func init() {
 	RegisterBranchAnalyzer("go", analyzeBranchesGo)
 }
 
+// --- method-boundary clamp (shared by all brace-language analyzers) -------
+
+// braceBodyEnd returns the exclusive line index at which the function/method
+// whose header is the first non-blank line of `lines` ends — the line just
+// AFTER the `}` that closes the body block the header opens. It is the
+// brace-language analogue of bodyEndPython: it stops a branch walk from
+// bleeding into the sibling methods that follow when the effects tool padded
+// the source window because the entity's EndLine was missing (#4488/#4666).
+//
+// Walk model: find the first `{` at or after the header line (K&R or Allman),
+// then track brace depth — skipping braces inside string/char literals and
+// comments via stripBraceNoise — until depth returns to 0. The line holding
+// that closing `}` is the last line of the body; the boundary is the next
+// index. When no opening brace is found (a brace-less arrow body, or a
+// truncated window), the whole window is returned (len(lines)) so we never
+// drop real branches — honest over-inclusion beats silent truncation.
+func braceBodyEnd(lines []string) int {
+	headerIdx := -1
+	for i, ln := range lines {
+		if strings.TrimSpace(ln) != "" {
+			headerIdx = i
+			break
+		}
+	}
+	if headerIdx < 0 {
+		return len(lines)
+	}
+	depth := 0
+	opened := false
+	for j := headerIdx; j < len(lines); j++ {
+		for _, r := range stripBraceNoise(lines[j]) {
+			switch r {
+			case '{':
+				depth++
+				opened = true
+			case '}':
+				depth--
+			}
+		}
+		if opened && depth <= 0 {
+			return j + 1 // body closes on line j; boundary is the next line
+		}
+	}
+	return len(lines)
+}
+
 // --- shared brace-block helpers -----------------------------------------
 
 // braceBlockBody returns the source lines of the block opened on or after the

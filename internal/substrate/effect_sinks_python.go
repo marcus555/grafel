@@ -62,8 +62,25 @@ var pyHTTPRe = regexp.MustCompile(
 // pair `cursor.execute(...)` with a SELECT heuristic via a separate
 // regex (pyCursorSelectRe) so we don't double-count execute() as both
 // read and write.
+//
+// #4668 — read/write attribution asymmetry. pyDBWriteRe matches the write
+// verbs (.save/.create/.delete/...) on ANY receiver (a bare `.save(`), so a
+// layered repository's `self.queryset.save(obj)` correctly resolves db_write
+// and propagates up the controller→service→repo CALLS chain. The read side
+// only matched the `.objects.<verb>` MANAGER form, so a repository/query-builder
+// read held on a variable or attribute — `self.queryset.filter(...)`,
+// `qs.exclude(...)`, `self.get_queryset().annotate(...)` — was MISSED, and the
+// GET/list handler that delegates to it resolved PURE (the ~40 false-pure read
+// endpoints stub_detector flagged). We now ALSO match the distinctive Django
+// queryset read terminals as BARE verbs on any receiver, mirroring the write
+// side. Only queryset-distinctive names are bare-matched (filter/exclude/
+// annotate/select_related/...) — names that collide with builtins on dict/list
+// (`.get(`, `.all(`, `.first(`, `.count(`, `.values(`) stay gated to the
+// `.objects.` manager form to avoid false positives. The bare set is the
+// long-term general fix for the read-sink reach gap, not a per-endpoint patch.
 var pyDBReadRe = regexp.MustCompile(
 	`\.\s*objects\s*\.\s*(?:all|filter|exclude|get|first|last|count|exists|values|values_list|annotate|aggregate|raw|none|in_bulk|earliest|latest)\b` +
+		`|\.\s*(?:filter|exclude|annotate|select_related|prefetch_related|values_list|only|defer|distinct|order_by|get_queryset)\s*\(` +
 		`|\.\s*query\s*\(` +
 		`|\.\s*fetchall\s*\(|\.\s*fetchone\s*\(|\.\s*fetchmany\s*\(` +
 		`|\bsession\s*\.\s*(?:query|execute|scalar|scalars|get)\s*\(`,

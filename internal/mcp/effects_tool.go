@@ -220,6 +220,12 @@ func attachBranchesFacet(out map[string]any, lr *LoadedRepo, e *graph.Entity, wa
 	if err != nil || src == "" {
 		return
 	}
+	// Clamp the (possibly EndLine-padded) window to the target method's OWN
+	// body before classifying, so branches never bleed into the sibling defs
+	// that follow it (#4666/#4488). This is language-general: Python clamps on
+	// dedent, brace languages on the matching `}`. The Python analyzer also
+	// self-clamps via bodyEndPython — double-clamping is idempotent and safe.
+	src = substrate.ClampToFunctionBody(src, lang)
 	facets := analyzer(src, start)
 	out["branches_supported"] = true
 	out["branches"] = branchFacetsToJSON(facets)
