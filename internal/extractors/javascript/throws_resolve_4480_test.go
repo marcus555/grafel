@@ -277,6 +277,99 @@ func TestThrows4480_ImportedExternal_AfterFix_GREEN(t *testing.T) {
 	}
 }
 
+// --- Case 2b (#4555): dangling constructor CALLS unified onto the one node ---
+//
+// The TRUE live core-backend-v3 shape, reproduced with NO manual entity
+// injection. `throw new NotFoundException('Client not found')` produces, fully
+// independently, TWO graph artefacts after the real extractor + Synthesize:
+//
+//   1. the synthetic SCOPE.ExceptionType node `exception:NotFoundException`
+//      (id e7cb18d1694fc1d7) carrying the THROWS edge, and
+//   2. a DANGLING constructor CALLS edge whose ToID is the bare name
+//      `NotFoundException` — no ext:* placeholder is synthesised for it
+//      (the import folds to ext:@nestjs/common, not ext:NotFoundException),
+//      so it renders as a SECOND phantom node next to the exception node.
+//
+// One exception, two nodes. #4555 folds the construction CALLS onto the
+// surviving exception node so a SINGLE node carries BOTH relationships.
+
+func callsFrom(doc *graph.Document, toID string) []graph.Relationship {
+	var out []graph.Relationship
+	for _, r := range doc.Relationships {
+		if r.Kind == string(types.RelationshipKindCalls) && r.ToID == toID {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func TestThrows4555_DanglingConstructorCall_BeforeFix_RED(t *testing.T) {
+	doc := assembleDoc4480(extractTSFixture4480(t,
+		"client_repository_4480.ts",
+		"src/modules/clients/repositories/client.repository.ts"))
+	external.Synthesize(doc) // NO ResolveExceptionTypes — pre-fix snapshot.
+
+	// Artefact 1: the synthetic exception node carries THROWS.
+	if countExceptionTypeNodes(doc, "exception:NotFoundException") != 1 {
+		t.Fatal("pre-fix: expected the synthetic NotFoundException node")
+	}
+	// Artefact 2: a dangling bare-name `NotFoundException` constructor CALLS edge
+	// exists (the SECOND node the dashboard renders). No ext:NotFoundException
+	// entity backs it.
+	dangling := callsFrom(doc, "NotFoundException")
+	if len(dangling) == 0 {
+		t.Fatal("pre-fix: expected a dangling `new NotFoundException()` CALLS edge")
+	}
+	if entByID(doc, "NotFoundException") != nil || entByID(doc, "ext:NotFoundException") != nil {
+		t.Fatal("pre-fix: the constructor CALLS target must be a bare-name dangling stub (two nodes, one exception)")
+	}
+}
+
+func TestThrows4555_DanglingConstructorCall_AfterFix_GREEN(t *testing.T) {
+	doc := assembleDoc4480(extractTSFixture4480(t,
+		"client_repository_4480.ts",
+		"src/modules/clients/repositories/client.repository.ts"))
+	external.Synthesize(doc)
+	stats := external.ResolveExceptionTypes(doc)
+
+	if stats.ConstructorCallsUnified < 1 {
+		t.Fatalf("after-fix: want >=1 constructor call unified, got %+v", stats)
+	}
+	// The bare-name dangling CALLS target is gone — folded onto the one node.
+	if len(callsFrom(doc, "NotFoundException")) != 0 {
+		t.Fatal("after-fix: dangling `NotFoundException` CALLS must be re-pointed")
+	}
+	// Exactly ONE NotFoundException node survives (the exception node, kept since
+	// no real class entity exists), carrying BOTH throws and calls.
+	excNodes := 0
+	var excID string
+	for i := range doc.Entities {
+		if doc.Entities[i].Name == "exception:NotFoundException" {
+			excNodes++
+			excID = doc.Entities[i].ID
+		}
+	}
+	if excNodes != 1 {
+		t.Fatalf("after-fix: want exactly 1 exception node, got %d", excNodes)
+	}
+	// Both a THROWS and a CALLS edge now land on that single node.
+	throwsOnNode, callsOnNode := false, false
+	for _, r := range doc.Relationships {
+		if r.ToID != excID {
+			continue
+		}
+		switch r.Kind {
+		case string(types.RelationshipKindThrows):
+			throwsOnNode = true
+		case string(types.RelationshipKindCalls):
+			callsOnNode = true
+		}
+	}
+	if !throwsOnNode || !callsOnNode {
+		t.Fatalf("after-fix: single node must carry BOTH throws(%v) and calls(%v)", throwsOnNode, callsOnNode)
+	}
+}
+
 // --- Case 3: genuinely-external/unresolvable type keeps a single node --------
 //
 // When NO real class entity exists for the thrown type (truly 3rd-party type
