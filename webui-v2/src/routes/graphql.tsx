@@ -39,7 +39,7 @@ import {
   Network,
 } from "lucide-react";
 
-import { Badge, Card, CardBody, Pill } from "@/components/ui";
+import { Badge, Card, CardBody, Pill, InsightBanner } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
@@ -373,6 +373,24 @@ export default function GraphQLScreen() {
           </>
         ) : (
           <>
+            <InsightBanner
+              storageKey="graphql"
+              human={
+                <>
+                  GraphQL resolvers — every query, mutation and subscription
+                  resolver in the group, grouped by the schema type they
+                  resolve, with the side effects each one performs (DB reads/
+                  writes, HTTP calls) and whether it is auth-guarded. Use it to
+                  see which fields touch the database or run unauthenticated.
+                </>
+              }
+              agent={{
+                tool: "archigraph_effects",
+                example:
+                  "Before changing a GraphQL mutation, an agent calls archigraph_effects on the resolver entity to enumerate its db_write / http side effects and confidence, so it knows the blast radius of the field it is about to edit rather than reading the resolver body and guessing.",
+              }}
+            />
+
             {/* Summary */}
             <div className="flex flex-wrap gap-3">
               <SummaryStat label="Resolvers" value={data!.total_resolvers} />
