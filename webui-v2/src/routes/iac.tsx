@@ -51,9 +51,10 @@ import {
   Card,
   CardBody,
   Pill,
-  InsightBanner,
   DefTerm,
+  useSetInsight,
 } from "@/components/ui";
+import type { InsightValue } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
@@ -751,33 +752,35 @@ function persistView(v: IaCView): void {
   }
 }
 
-/** Shared insight banner for both List and Diagram views (#4576 / #4604). */
-function IaCInsight() {
-  return (
-    <InsightBanner
-      storageKey="iac"
-      human={
-        <>
-          Your infrastructure-as-code defined across Terraform/OpenTofu, AWS
-          CDK, Pulumi, CloudFormation/SAM, Serverless Framework, and Bicep —
-          every resource, its config, and how resources wire to each other (IAM
-          grants, event sources, dependencies, and stack/module topology). Each
-          resource is normalized into a shared{" "}
-          <DefTerm
-            term="resource category"
-            def="A cross-tool join key (function, datastore, queue, secret, network…) that normalizes each tool's native resource type into one shared vocabulary."
-          />
-          .
-        </>
-      }
-      agent={{
-        tool: "archigraph_topology",
-        example:
-          "Before editing a Terraform module that defines a Lambda, an agent calls archigraph_topology to see which queues, datastores and IAM grants that function depends on across stacks — so it doesn't remove a network or secret another service still wires into.",
-      }}
-    />
-  );
-}
+/**
+ * Screen insight (#4655 / #4576 / #4604) — registered with the breadcrumb
+ * Insights button via useSetInsight. The topology framing covers both the List
+ * and Diagram views and every env tab (#4657), so a single module-level
+ * constant (stable identity) covers the whole page. Replaces the inline
+ * <InsightBanner>.
+ */
+const IAC_INSIGHT: InsightValue = {
+  storageKey: "iac",
+  human: (
+    <>
+      Your infrastructure-as-code defined across Terraform/OpenTofu, AWS CDK,
+      Pulumi, CloudFormation/SAM, Serverless Framework, and Bicep — every
+      resource, its config, and how resources wire to each other (IAM grants,
+      event sources, dependencies, and stack/module topology). Each resource is
+      normalized into a shared{" "}
+      <DefTerm
+        term="resource category"
+        def="A cross-tool join key (function, datastore, queue, secret, network…) that normalizes each tool's native resource type into one shared vocabulary."
+      />
+      .
+    </>
+  ),
+  agent: {
+    tool: "archigraph_topology",
+    example:
+      "Before editing a Terraform module that defines a Lambda, an agent calls archigraph_topology to see which queues, datastores and IAM grants that function depends on across stacks — so it doesn't remove a network or secret another service still wires into.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // § Environment scoping (#4657)
@@ -908,6 +911,11 @@ export default function IaCScreen() {
   const [view, setView] = useState<IaCView>(readStoredView);
   const [env, setEnv] = useState<string>(ALL_ENVS);
 
+  // #4655: register the page insight with the breadcrumb Insights button. The
+  // topology framing applies to both List and Diagram and every env tab, so a
+  // single stable constant covers the whole screen. Clears on unmount.
+  useSetInsight(IAC_INSIGHT);
+
   const setAndPersistView = useCallback((v: IaCView) => {
     persistView(v);
     setView(v);
@@ -958,7 +966,6 @@ export default function IaCScreen() {
               <EnvTabs envs={envs} value={env} onChange={setEnv} />
             </div>
           </div>
-          <IaCInsight />
         </div>
         <div className="min-h-0 flex-1">
           {scoped!.total_resources === 0 ? (
@@ -995,10 +1002,6 @@ export default function IaCScreen() {
                 <EnvTabs envs={envs} value={env} onChange={setEnv} />
               </div>
             </div>
-
-            {/* #4576: List view now carries the same insight banner
-                the Diagram view does. */}
-            <IaCInsight />
 
             {/* Summary — recomputed for the selected env (#4657). */}
             <div className="flex flex-wrap gap-3">
