@@ -156,6 +156,116 @@ func TestResolveExceptionTypes_ComponentCandidate(t *testing.T) {
 	}
 }
 
+func callsRel(from, to string) graph.Relationship {
+	return graph.Relationship{
+		ID:     graph.RelationshipID(from, to, string(types.RelationshipKindCalls)),
+		FromID: from, ToID: to, Kind: string(types.RelationshipKindCalls),
+	}
+}
+
+func callsTo(doc *graph.Document, from string) []string {
+	var out []string
+	for _, r := range doc.Relationships {
+		if r.Kind == string(types.RelationshipKindCalls) && r.FromID == from {
+			out = append(out, r.ToID)
+		}
+	}
+	return out
+}
+
+// #4555 — the live NotFoundException shape: a synthetic ExceptionType node with
+// THROWS on it, plus a DANGLING `new NotFoundException()` constructor CALLS edge
+// (bare-name target, no entity) from the SAME throwing method. No real class
+// entity exists, so the exception node is KEPT — and the constructor CALLS must
+// be folded onto it so ONE node carries both throws + calls.
+func TestResolveExceptionTypes_4555_UnifiesDanglingConstructorCall(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "method", Name: "remove", Kind: string(types.EntityKindFunction), SourceFile: "repo.ts"},
+			excType("exc", "NotFoundException"),
+		},
+		Relationships: []graph.Relationship{
+			throwsRel("method", "exc"),
+			callsRel("method", "NotFoundException"), // dangling bare-name ctor call
+		},
+	}
+	// RED before: two nodes — exception node + phantom dangling CALLS target.
+	if got := callsTo(doc, "method"); len(got) != 1 || got[0] != "NotFoundException" {
+		t.Fatalf("setup: want dangling CALLS to bare name, got %v", got)
+	}
+
+	st := ResolveExceptionTypes(doc)
+
+	if st.ConstructorCallsUnified != 1 {
+		t.Fatalf("want 1 constructor call unified, got %+v", st)
+	}
+	// Exception node KEPT (no real class to resolve to).
+	if !hasEntity(doc, "exc") {
+		t.Fatal("exception node must be kept (no real class)")
+	}
+	// GREEN: both THROWS and the construction CALLS now target the ONE node.
+	if throwsTo(doc) != "exc" {
+		t.Fatalf("THROWS must target exception node, got %s", throwsTo(doc))
+	}
+	got := callsTo(doc, "method")
+	if len(got) != 1 || got[0] != "exc" {
+		t.Fatalf("construction CALLS must be folded onto exception node, got %v", got)
+	}
+}
+
+// #4555 — when the exception DOES resolve to a real class, both the THROWS and
+// the dangling constructor CALLS fold onto that real class (single node).
+func TestResolveExceptionTypes_4555_UnifiesOntoRealClass(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "method", Name: "findById", Kind: string(types.EntityKindFunction), SourceFile: "svc.ts"},
+			realClass("cls", "AppNotFoundError"),
+			excType("exc", "AppNotFoundError"),
+		},
+		Relationships: []graph.Relationship{
+			throwsRel("method", "exc"),
+			callsRel("method", "AppNotFoundError"),
+		},
+	}
+	st := ResolveExceptionTypes(doc)
+	if st.SyntheticDropped != 1 || st.Retargeted != 1 || st.ConstructorCallsUnified != 1 {
+		t.Fatalf("stats: %+v", st)
+	}
+	if hasEntity(doc, "exc") {
+		t.Fatal("synthetic node must be dropped")
+	}
+	if throwsTo(doc) != "cls" {
+		t.Fatalf("THROWS must target real class, got %s", throwsTo(doc))
+	}
+	got := callsTo(doc, "method")
+	if len(got) != 1 || got[0] != "cls" {
+		t.Fatalf("CALLS must fold onto real class, got %v", got)
+	}
+}
+
+// #4555 precision — a same-named construction from a method that does NOT throw
+// the exception is left untouched (no spurious fold).
+func TestResolveExceptionTypes_4555_NonThrowingCallerNotFolded(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "thrower", Name: "a", Kind: string(types.EntityKindFunction), SourceFile: "a.ts"},
+			{ID: "other", Name: "b", Kind: string(types.EntityKindFunction), SourceFile: "b.ts"},
+			excType("exc", "NotFoundException"),
+		},
+		Relationships: []graph.Relationship{
+			throwsRel("thrower", "exc"),
+			callsRel("other", "NotFoundException"), // different method, not a thrower
+		},
+	}
+	st := ResolveExceptionTypes(doc)
+	if st.ConstructorCallsUnified != 0 {
+		t.Fatalf("non-throwing caller must not be folded, got %+v", st)
+	}
+	if got := callsTo(doc, "other"); len(got) != 1 || got[0] != "NotFoundException" {
+		t.Fatalf("non-thrower CALLS must be untouched, got %v", got)
+	}
+}
+
 func TestResolveExceptionTypes_NilSafe(t *testing.T) {
 	if st := ResolveExceptionTypes(nil); st.Retargeted != 0 {
 		t.Fatal("nil doc must be safe")

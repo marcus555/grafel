@@ -2,6 +2,7 @@ package external
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -56,6 +57,12 @@ type ExceptionResolveStats struct {
 	// SyntheticKept is the number of synthetic SCOPE.ExceptionType nodes left
 	// in place because no unambiguous real class entity exists for them.
 	SyntheticKept int
+	// ConstructorCallsUnified is the number of constructor CALLS edges
+	// (`new <Type>()` / `raise <Type>(...)` / `throw new <Type>()`) re-pointed
+	// from a bare-name dangling target onto the surviving exception node, so a
+	// single exception node carries BOTH the `throws` and `calls` (construction)
+	// relationships (#4555).
+	ConstructorCallsUnified int
 }
 
 // candidateKind reports whether kind is a real, declaration-backed entity that
@@ -100,6 +107,17 @@ func ResolveExceptionTypes(doc *graph.Document) ExceptionResolveStats {
 	var synthetics []synthNode
 	byTypeName := map[string][]string{} // typeName -> candidate real entity ids
 
+	// allEntityIDs lets the constructor-CALLS unification (#4555) tell a real
+	// graph entity from a bare-name DANGLING CALLS target. A `new <Type>()`
+	// constructor call emits a CALLS edge whose ToID is the bare type name; when
+	// no ext:<Type> / declared-class entity was synthesised for it, that ToID
+	// resolves to NO entity and is rendered as a phantom node alongside the
+	// exception node — the second half of the duplicate this pass removes.
+	allEntityIDs := make(map[string]bool, len(doc.Entities))
+	for i := range doc.Entities {
+		allEntityIDs[doc.Entities[i].ID] = true
+	}
+
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
 		if e.Kind == string(types.EntityKindExceptionType) {
@@ -127,7 +145,14 @@ func ResolveExceptionTypes(doc *graph.Document) ExceptionResolveStats {
 	// remap from synthetic-id -> real-id and the set of synthetic ids to drop.
 	remap := map[string]string{} // synthetic id -> real entity id
 	drop := map[string]bool{}    // synthetic ids to remove
+	// survivorByExc maps every exception-node id to the id that SURVIVES this
+	// pass: the real class entity when the node is resolved+dropped, otherwise
+	// the exception node itself (kept). typeNameByExc carries the bare type name
+	// for the constructor-CALLS unification (#4555) leaf-name match.
+	survivorByExc := make(map[string]string, len(synthetics))
+	typeNameByExc := make(map[string]string, len(synthetics))
 	for _, sn := range synthetics {
+		typeNameByExc[sn.id] = sn.typeName
 		cands := byTypeName[sn.typeName]
 		// Deduplicate candidate ids (a class can appear once; guard anyway) and
 		// exclude the synthetic node itself defensively.
@@ -135,26 +160,40 @@ func ResolveExceptionTypes(doc *graph.Document) ExceptionResolveStats {
 		if len(uniq) != 1 {
 			// Zero real candidates -> genuinely external/unresolvable: keep the
 			// synthetic node. More than one -> ambiguous leaf name: keep it
-			// (precision over a possibly-wrong retarget).
+			// (precision over a possibly-wrong retarget). The kept node is the
+			// survivor that constructor CALLS edges fold onto.
+			survivorByExc[sn.id] = sn.id
 			stats.SyntheticKept++
 			continue
 		}
 		remap[sn.id] = uniq[0]
+		survivorByExc[sn.id] = uniq[0]
 		drop[sn.id] = true
 		stats.SyntheticDropped++
 	}
-	if len(remap) == 0 {
-		return stats
-	}
 
-	// Retarget THROWS / CATCHES edges. Only these two kinds point at the
-	// synthetic exception-type node, but gate on kind so an unrelated edge that
-	// happens to reference the id (none today) is never silently moved.
+	// Retarget THROWS / CATCHES edges, AND record which methods THROW each
+	// exception node. The throwing-method set is captured from the THROWS edge's
+	// ORIGINAL ToID (still the exception-node id at this point) so the
+	// constructor-CALLS unification below can require the `new <Type>()` call to
+	// originate from a method that also throws that very exception — never
+	// folding an unrelated same-named construction onto the exception node.
+	//
+	// throwsFrom: exception-node-id -> set of throwing-method FromIDs.
+	throwsFrom := map[string]map[string]bool{}
 	for k := range doc.Relationships {
 		r := &doc.Relationships[k]
 		if r.Kind != string(types.RelationshipKindThrows) &&
 			r.Kind != string(types.RelationshipKindCatches) {
 			continue
+		}
+		if r.Kind == string(types.RelationshipKindThrows) {
+			if _, isExc := survivorByExc[r.ToID]; isExc && r.FromID != "" {
+				if throwsFrom[r.ToID] == nil {
+					throwsFrom[r.ToID] = map[string]bool{}
+				}
+				throwsFrom[r.ToID][r.FromID] = true
+			}
 		}
 		if real, ok := remap[r.ToID]; ok {
 			r.ToID = real
@@ -162,6 +201,60 @@ func ResolveExceptionTypes(doc *graph.Document) ExceptionResolveStats {
 			// (FromID, ToID, Kind) — keeping incremental diffs and de-dup stable.
 			r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 			stats.Retargeted++
+		}
+	}
+
+	// #4555 — constructor-CALLS unification. A `throw new <Type>()` (Java/C#/JS),
+	// `raise <Type>(...)` (Python), etc. emits, INDEPENDENTLY of throws-analysis,
+	// a CALLS edge to the constructor. When that target was never materialised as
+	// a real entity (no ext:<Type> placeholder, no declared class) it dangles as
+	// a bare-name ToID == <Type> and the dashboard renders it as a SECOND phantom
+	// node next to the exception node — one exception, two nodes.
+	//
+	// Fold the construction onto the surviving exception node so a SINGLE node
+	// carries both the `throws` and the `calls` (construction) relationships.
+	// Precision gates, all required: the CALLS target must (a) be a bare name
+	// resolving to NO entity (a genuinely dangling stub, not a real class call),
+	// (b) equal the simple name of an exception node, and (c) originate from a
+	// method that THROWS that same exception node. This is language-general:
+	// the bare-name dangling-constructor shape is identical across extractors.
+	if len(throwsFrom) > 0 {
+		// excByTypeName: bare type name -> set of exception-node survivor targets
+		// whose throwing-method set we can consult. Multiple distinct exception
+		// nodes can share a leaf name across files; we only fold when exactly one
+		// of them is thrown by the calling method (the (c) gate disambiguates).
+		excIDsByName := map[string][]string{}
+		for id, tn := range typeNameByExc {
+			excIDsByName[tn] = append(excIDsByName[tn], id)
+		}
+		for k := range doc.Relationships {
+			r := &doc.Relationships[k]
+			if r.Kind != string(types.RelationshipKindCalls) || r.FromID == "" {
+				continue
+			}
+			// (a) dangling bare-name target — not a graph entity, not an
+			// already-synthesised ext:* placeholder, not a hex id.
+			if r.ToID == "" || allEntityIDs[r.ToID] ||
+				isHexID(r.ToID) || strings.HasPrefix(r.ToID, ExtIDPrefix) {
+				continue
+			}
+			// (b)+(c) the bare name matches an exception node thrown by THIS method.
+			var target string
+			matches := 0
+			for _, excID := range excIDsByName[r.ToID] {
+				if throwsFrom[excID] != nil && throwsFrom[excID][r.FromID] {
+					target = survivorByExc[excID]
+					matches++
+				}
+			}
+			if matches != 1 || target == "" || target == r.ToID {
+				// No match, or ambiguous (same leaf name thrown by the method for
+				// two distinct exception nodes) — leave the edge untouched.
+				continue
+			}
+			r.ToID = target
+			r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+			stats.ConstructorCallsUnified++
 		}
 	}
 
