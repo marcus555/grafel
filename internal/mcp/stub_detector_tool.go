@@ -200,7 +200,7 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 	// Deterministic order: likely_stub first (highest confidence), then by
 	// endpoint label.
 	sort.SliceStable(results, func(i, j int) bool {
-		ri, rj := verdictRank(results[i].Verdict), verdictRank(results[j].Verdict)
+		ri, rj := stubVerdictRank(results[i].Verdict), stubVerdictRank(results[j].Verdict)
 		if ri != rj {
 			return ri < rj
 		}
@@ -253,7 +253,7 @@ func resultsToJSON(results []stubdetector.Result) []map[string]any {
 	return out
 }
 
-func verdictRank(v stubdetector.Verdict) int {
+func stubVerdictRank(v stubdetector.Verdict) int {
 	switch v {
 	case stubdetector.VerdictLikelyStub:
 		return 0
