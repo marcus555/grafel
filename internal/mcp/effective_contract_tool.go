@@ -265,6 +265,20 @@ func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractR
 		out.Groups = append(out.Groups, *g)
 	}
 
+	// FRAMEWORK REGISTRY (#4601): when the DRF projection + class-fallback
+	// synthesis produced nothing (a non-DRF stack — e.g. the NestJS upvate-v3
+	// rewrite), try the pluggable per-framework contract resolvers. They compose
+	// the SAME effectiveContract structure (status set, request fields, per-branch
+	// response shapes, auth) from signals that already exist on the graph, so the
+	// cross-group response_shape_diff / parity tools consume DRF and non-DRF
+	// contracts uniformly. DRF behaviour is unchanged: this runs ONLY when DRF
+	// resolved nothing.
+	if len(out.Groups) == 0 {
+		if rgroups, ok := newContractResolverRegistry().resolve(lg, target, wantVS); ok {
+			out.Groups = rgroups
+		}
+	}
+
 	if len(out.Groups) == 0 {
 		out.Note = "no effective contract resolvable for \"" + target + "\": no " +
 			"router-expanded routes are attributed to this ViewSet, and its class " +

@@ -76,6 +76,60 @@ type effectiveContract struct {
 	// AuthRequired is true when a non-AllowAny permission or any authentication
 	// class is in effect on the route.
 	AuthRequired bool `json:"auth_required,omitempty"`
+
+	// --- Cross-framework contract fields (#4601) ---------------------------
+	//
+	// The DRF projection above leaves these zero/empty (DRF callers consume the
+	// flat status/serializer fields). The NestJS resolver (and future Spring /
+	// FastAPI / Express resolvers) populate them so the cross-group
+	// response_shape_diff / parity tools can consume a structured request +
+	// per-branch response contract for ANY framework.
+
+	// RequestFields are the resolved request-shape members for this endpoint:
+	// the @Body / @Query / @Param DTO field members (CONTAINS → SCOPE.Schema/
+	// field) and scalar params. Empty when no request shape is resolvable
+	// (honest-partial). Sorted for stable output.
+	RequestFields []contractField `json:"request_fields,omitempty"`
+
+	// ResponseBranches are the per-branch response outcomes the handler can
+	// produce — one {status, shape} per detected return/throw branch (from the
+	// effects-branches facet). Empty when no branching response is resolvable.
+	// Sorted by status for stable output.
+	ResponseBranches []contractResponseBranch `json:"response_branches,omitempty"`
+
+	// AuthKind is the resolved auth posture vocabulary term (public /
+	// authenticated / page / action / role / scope / superuser / unknown), and
+	// AuthLiteral the page-slug / action-codename / role / scope it carries.
+	// Populated by the framework resolver from the effective guard (#4667).
+	AuthKind    string `json:"auth_kind,omitempty"`
+	AuthLiteral string `json:"auth_literal,omitempty"`
+	// Framework is the resolver that produced this contract ("django-drf",
+	// "nestjs", …), for cross-group provenance.
+	Framework string `json:"framework,omitempty"`
+}
+
+// contractField is one resolved request-shape member: its name, the location
+// it arrives in (body / query / param), the declared type when known, and the
+// DTO it belongs to. Source is the signal it was composed from (dto_field /
+// scalar_param) for provenance.
+type contractField struct {
+	Name     string `json:"name"`
+	In       string `json:"in,omitempty"`       // body | query | param
+	Type     string `json:"type,omitempty"`     // declared TS type when known
+	DTO      string `json:"dto,omitempty"`      // owning DTO type, when a DTO field
+	Required bool   `json:"required,omitempty"` // false when the field is optional (`?`)
+	Source   string `json:"source,omitempty"`   // dto_field | scalar_param
+}
+
+// contractResponseBranch is one per-branch response outcome: the HTTP status
+// the branch produces and a short shape descriptor of its payload. Mirrors the
+// DRF default_status + error_statuses split but per concrete branch, so a
+// 200/201/409-branching handler surfaces all three.
+type contractResponseBranch struct {
+	Status int    `json:"status,omitempty"`
+	Shape  string `json:"shape,omitempty"`
+	// Outcome is the branch disposition ("return_value" / "raise") for context.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // isRouterExpandedRoute reports whether e is a DRF router-expanded route entity

@@ -233,6 +233,17 @@ var (
 	jstsStatusCallRe = regexp.MustCompile(`\.\s*(?:status|code|sendStatus)\s*\(\s*(\d{3})\b`)
 	jstsHTTPExcRe    = regexp.MustCompile(`HttpException\s*\([^)]*?\b(\d{3})\b`)
 	jstsStatusNumRe  = regexp.MustCompile(`statusCode\s*[:=]\s*(\d{3})\b`)
+
+	// jstsHTTPStatusEnumRe — NestJS `HttpStatus.CONFLICT` / `HttpStatus.CREATED`
+	// (the enum form, mapped via httpStatusNameToCode — shared with the Java/Go
+	// analyzers so the status vocabulary stays one source of truth).
+	jstsHTTPStatusEnumRe = regexp.MustCompile(`HttpStatus\s*\.\s*([A-Z_]+)`)
+
+	// jstsNestExcRe — NestJS built-in HTTP exception classes
+	// (`throw new ConflictException(...)`). Nest maps each to a fixed status, so
+	// a branching handler that throws one declares that branch's status without
+	// any numeric literal. Mapped via nestExceptionStatus.
+	jstsNestExcRe = regexp.MustCompile(`\bnew\s+([A-Z][A-Za-z]*Exception)\b`)
 )
 
 func analyzeBranchesJSTS(funcSource string, startLine int) []BranchFacet {
@@ -293,7 +304,76 @@ func jstsStatusFromBody(joined string) string {
 	if m := jstsStatusNumRe.FindStringSubmatch(joined); m != nil {
 		return m[1]
 	}
+	// NestJS `HttpStatus.CONFLICT` enum reference (e.g.
+	// `throw new HttpException(msg, HttpStatus.CONFLICT)`).
+	if m := jstsHTTPStatusEnumRe.FindStringSubmatch(joined); m != nil {
+		if code := httpStatusNameToCode(m[1]); code != "" {
+			return code
+		}
+	}
+	// NestJS built-in exception class (`throw new ConflictException()` → 409).
+	if m := jstsNestExcRe.FindStringSubmatch(joined); m != nil {
+		if code := nestExceptionStatus(m[1]); code != "" {
+			return code
+		}
+	}
 	return ""
+}
+
+// nestExceptionStatus maps a NestJS built-in HTTP exception class name to its
+// fixed HTTP status code (the framework hard-codes these in
+// @nestjs/common/exceptions). Conservative — only the built-in classes; an
+// unknown / user-defined *Exception yields "" (honest-partial: no fabricated
+// status). Shared by the response-branch status derivation.
+func nestExceptionStatus(class string) string {
+	switch class {
+	case "BadRequestException":
+		return "400"
+	case "UnauthorizedException":
+		return "401"
+	case "PaymentRequiredException":
+		return "402"
+	case "ForbiddenException":
+		return "403"
+	case "NotFoundException":
+		return "404"
+	case "MethodNotAllowedException":
+		return "405"
+	case "NotAcceptableException":
+		return "406"
+	case "RequestTimeoutException":
+		return "408"
+	case "ConflictException":
+		return "409"
+	case "GoneException":
+		return "410"
+	case "PreconditionFailedException":
+		return "412"
+	case "PayloadTooLargeException":
+		return "413"
+	case "UnsupportedMediaTypeException":
+		return "415"
+	case "ImATeapotException":
+		return "418"
+	case "UnprocessableEntityException":
+		return "422"
+	case "TooManyRequestsException":
+		return "429"
+	case "InternalServerErrorException":
+		return "500"
+	case "NotImplementedException":
+		return "501"
+	case "BadGatewayException":
+		return "502"
+	case "ServiceUnavailableException":
+		return "503"
+	case "GatewayTimeoutException":
+		return "504"
+	case "HttpVersionNotSupportedException":
+		return "505"
+	default:
+		return ""
+	}
 }
 
 // --- Java analyzer -------------------------------------------------------

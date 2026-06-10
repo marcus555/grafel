@@ -212,3 +212,55 @@ func TestBranchAnalyzerRegistry_BraceLangs(t *testing.T) {
 		}
 	}
 }
+
+// TestAnalyzeBranchesJSTS_NestExceptionStatus verifies NestJS built-in HTTP
+// exception classes and HttpStatus enum references decode to their fixed status
+// in the response-branch facet (#4601 — so a 409/404-branching Nest handler
+// surfaces those statuses without a numeric literal).
+func TestAnalyzeBranchesJSTS_NestExceptionStatus(t *testing.T) {
+	src := `async create(dto) {
+    if (existing) {
+        throw new ConflictException('taken');
+    }
+    if (!dto.name) {
+        throw new NotFoundException('missing');
+    }
+    if (bad) {
+        throw new HttpException('x', HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+    return this.repo.create(dto);
+}`
+	br := analyzeBranchesJSTS(src, 1)
+	want := map[string]bool{"409": false, "404": false, "422": false}
+	for _, b := range br {
+		if b.Returns != nil {
+			if _, ok := want[b.Returns.Status]; ok {
+				want[b.Returns.Status] = true
+			}
+		}
+	}
+	for status, seen := range want {
+		if !seen {
+			t.Errorf("expected a branch with status %s; got %+v", status, br)
+		}
+	}
+}
+
+// TestNestExceptionStatus_Mapping spot-checks the NestJS exception → status map.
+func TestNestExceptionStatus_Mapping(t *testing.T) {
+	cases := map[string]string{
+		"BadRequestException":         "400",
+		"UnauthorizedException":       "401",
+		"ForbiddenException":          "403",
+		"NotFoundException":           "404",
+		"ConflictException":           "409",
+		"UnprocessableEntityException": "422",
+		"InternalServerErrorException": "500",
+		"SomeUserDefinedException":    "",
+	}
+	for class, want := range cases {
+		if got := nestExceptionStatus(class); got != want {
+			t.Errorf("nestExceptionStatus(%q) = %q, want %q", class, got, want)
+		}
+	}
+}
