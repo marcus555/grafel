@@ -51,6 +51,27 @@ type GroupCoverageReport struct {
 	// directory using the shared path segments.
 	ByFile   []graph.FileCoverage   `json:"by_file"`
 	ByModule []graph.ModuleCoverage `json:"by_module"`
+	// ByFileUncovered (#4636) nests uncovered entities under their owning file
+	// (keyed by the forward-slash source path, matching ByFile.File) so the
+	// frontend can render them as leaf children of each file node in the
+	// coverage tree: directory → file → entity. Severity sorted (high first)
+	// and capped per file (PerFileUncoveredCap) with a per-file overflow count.
+	ByFileUncovered map[string]FileUncovered `json:"by_file_uncovered,omitempty"`
+}
+
+// PerFileUncoveredCap bounds how many uncovered-entity leaves a single file
+// node carries in the payload, so a pathological file can't bloat the response.
+// The overflow is reported as FileUncovered.More.
+const PerFileUncoveredCap = 50
+
+// FileUncovered is the per-file slice of uncovered entities for the tree leaves.
+type FileUncovered struct {
+	// Entities are this file's uncovered entities, severity-sorted (high first),
+	// capped at PerFileUncoveredCap.
+	Entities []graph.UncoveredEntity `json:"entities"`
+	// More is the number of additional uncovered entities beyond the cap, shown
+	// as a "+N more" affordance in the UI.
+	More int `json:"more,omitempty"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,6 +198,45 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	if v, ok := severityOrder[filterSeverity]; ok {
 		minSev = v
 	}
+
+	// ── nest uncovered entities under their file (#4636) ─────────────────────
+	// Build the per-file map from the FULL uncovered set (before the global
+	// severity filter and the flat-list cap) so each file node in the tree
+	// carries all of its uncovered leaves; the frontend severity filter then
+	// narrows which leaves render. Keyed by the forward-slash source path to
+	// match ByFile.File.
+	byFileUncovered := make(map[string]FileUncovered)
+	{
+		grouped := make(map[string][]graph.UncoveredEntity)
+		for _, u := range result.UncoveredEntities {
+			key := filepath.ToSlash(u.SourceFile)
+			if key == "" {
+				continue
+			}
+			grouped[key] = append(grouped[key], u)
+		}
+		for key, ents := range grouped {
+			sort.SliceStable(ents, func(i, j int) bool {
+				si := severityOrder[ents[i].Severity]
+				sj := severityOrder[ents[j].Severity]
+				if si != sj {
+					return si < sj
+				}
+				if ents[i].StartLine != ents[j].StartLine {
+					return ents[i].StartLine < ents[j].StartLine
+				}
+				return ents[i].Name < ents[j].Name
+			})
+			fu := FileUncovered{}
+			if len(ents) > PerFileUncoveredCap {
+				fu.More = len(ents) - PerFileUncoveredCap
+				ents = ents[:PerFileUncoveredCap]
+			}
+			fu.Entities = ents
+			byFileUncovered[key] = fu
+		}
+	}
+	result.ByFileUncovered = byFileUncovered
 
 	filtered := result.UncoveredEntities[:0]
 	for _, u := range result.UncoveredEntities {

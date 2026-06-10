@@ -40,6 +40,11 @@ import {
   Folder,
   FolderOpen,
   FileCode2,
+  Box,
+  Braces,
+  Hexagon,
+  Variable,
+  Network,
 } from "lucide-react";
 
 import {
@@ -62,6 +67,7 @@ import {
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
+import { useSourcePeek } from "@/components/SourcePeek";
 import { RepoChip } from "@/lib/repo-color";
 import { cn } from "@/lib/utils";
 import {
@@ -73,6 +79,7 @@ import {
 } from "@/hooks/use-quality";
 import type {
   UncoveredEntity,
+  FileUncovered,
   DirCoverage,
   FileCoverage,
   PackageEntry,
@@ -302,6 +309,13 @@ interface CovTreeNode {
   /** True when this node is a source file (deepest leaf), not a directory. */
   isFile: boolean;
   children: CovTreeNode[];
+  /**
+   * Uncovered entities owned by this file (#4636). Only ever set on file nodes;
+   * rendered as slim leaf rows when the file is expanded.
+   */
+  uncovered?: UncoveredEntity[];
+  /** Count of uncovered entities the backend trimmed past its per-file cap. */
+  uncoveredMore?: number;
 }
 
 /**
@@ -315,7 +329,11 @@ interface CovTreeNode {
  * Intermediate folders the backend never emitted directly are synthesised so
  * the hierarchy is complete.
  */
-function buildCoverageTree(dirs: DirCoverage[], files: FileCoverage[]): CovTreeNode[] {
+function buildCoverageTree(
+  dirs: DirCoverage[],
+  files: FileCoverage[],
+  byFileUncovered?: Record<string, FileUncovered>,
+): CovTreeNode[] {
   const root: CovTreeNode = {
     name: "",
     path: "",
@@ -363,6 +381,13 @@ function buildCoverageTree(dirs: DirCoverage[], files: FileCoverage[]): CovTreeN
       const fileNode = ensureChild(cursor, base, true);
       fileNode.covered += f.covered;
       fileNode.total += f.total;
+      // Attach this file's uncovered entities as leaf data (#4636). Keyed by the
+      // full forward-slash path, which matches FileCoverage.file.
+      const fu = byFileUncovered?.[f.file];
+      if (fu) {
+        fileNode.uncovered = [...(fileNode.uncovered ?? []), ...(fu.entities ?? [])];
+        if (fu.more) fileNode.uncoveredMore = (fileNode.uncoveredMore ?? 0) + fu.more;
+      }
     }
   } else {
     // Fallback: directory-only tree (legacy payloads without by_file).
@@ -390,16 +415,115 @@ function buildCoverageTree(dirs: DirCoverage[], files: FileCoverage[]): CovTreeN
   return root.children;
 }
 
+// Severity → dot color for the slim uncovered leaf rows (#4636). High=red,
+// Medium=amber, Low=neutral.
+const COV_SEVERITY_DOT: Record<string, string> = {
+  high: "bg-danger",
+  medium: "bg-warning",
+  low: "bg-text-4",
+};
+
+// Minimal kind → icon map for uncovered-entity leaves. Keeps the slim row
+// visually scannable without a heavy per-row chip. Falls back to a generic box.
+function kindIcon(kind: string) {
+  const k = (kind || "").toLowerCase();
+  if (k.includes("class") || k.includes("struct") || k.includes("interface") || k.includes("type"))
+    return Hexagon;
+  if (k.includes("func") || k.includes("method") || k.includes("constructor")) return Braces;
+  if (k.includes("endpoint") || k.includes("route") || k.includes("handler")) return Network;
+  if (k.includes("var") || k.includes("const") || k.includes("field") || k.includes("prop"))
+    return Variable;
+  return Box;
+}
+
+type CovSeverity = "all" | "high" | "medium" | "low";
+
+/**
+ * Slim uncovered-entity leaf row (#4636) — a deep tree leaf, so it stays
+ * compact: kind icon · entity name · severity dot · `:line`. Clicking opens the
+ * shared source-peek modal (no per-row repo chip; the repo is the tree root).
+ */
+function UncoveredLeafRow({
+  u,
+  repo,
+  groupId,
+  depth,
+}: {
+  u: UncoveredEntity;
+  repo: string;
+  groupId: string;
+  depth: number;
+}) {
+  const { openSourcePeek } = useSourcePeek();
+  // Prefer the entity's own repo slug (stamped by the aggregator, #4551).
+  const entityRepo = u.repo || repo;
+  const Icon = kindIcon(u.kind);
+  const canPeek = !!u.source_file;
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 pr-3 py-1 rounded-lg border border-transparent",
+        "hover:bg-surface-2 transition-colors",
+        canPeek && "cursor-pointer",
+      )}
+      style={{ paddingLeft: `${0.5 + depth * 1.1}rem` }}
+      onClick={
+        canPeek
+          ? () =>
+              openSourcePeek({
+                groupId,
+                file: u.source_file,
+                line: u.start_line ?? 0,
+                repo: entityRepo,
+              })
+          : undefined
+      }
+      role={canPeek ? "button" : undefined}
+      title={`${u.kind} ${u.name}${u.source_file ? ` · ${u.source_file}:${u.start_line ?? 0}` : ""}`}
+    >
+      {/* Align with the chevron column of directory/file rows. */}
+      <span className="w-4 shrink-0" />
+      <Icon size={12} className="shrink-0 text-text-4" />
+      <span className="font-mono text-xs text-text-2 truncate min-w-0 flex-1" title={u.name}>
+        {u.name}
+      </span>
+      <span
+        className={cn("h-1.5 w-1.5 rounded-full shrink-0", COV_SEVERITY_DOT[u.severity] ?? "bg-text-4")}
+        title={`${u.severity} severity`}
+      />
+      <span className="font-mono text-[11px] tabular-nums text-text-4 shrink-0">
+        :{u.start_line ?? 0}
+      </span>
+    </div>
+  );
+}
+
 function CovTreeRow({
   node,
   expanded,
   toggle,
+  severity,
+  groupId,
+  repo,
 }: {
   node: CovTreeNode;
   expanded: Set<string>;
   toggle: (path: string) => void;
+  severity: CovSeverity;
+  groupId: string;
+  repo: string;
 }) {
-  const hasChildren = node.children.length > 0;
+  // Uncovered leaves under a file, narrowed by the active severity filter.
+  const leaves =
+    node.isFile && node.uncovered
+      ? severity === "all"
+        ? node.uncovered
+        : node.uncovered.filter((u) => u.severity === severity)
+      : [];
+  const moreCount =
+    node.isFile && severity === "all" ? node.uncoveredMore ?? 0 : 0;
+  const hasLeaves = leaves.length > 0 || moreCount > 0;
+  const hasChildren = node.children.length > 0 || hasLeaves;
   const isOpen = expanded.has(node.path);
   const pct = node.total > 0 ? (node.covered / node.total) * 100 : 0;
 
@@ -453,19 +577,62 @@ function CovTreeRow({
       {hasChildren && isOpen && (
         <div>
           {node.children.map((c) => (
-            <CovTreeRow key={c.path} node={c} expanded={expanded} toggle={toggle} />
+            <CovTreeRow
+              key={c.path}
+              node={c}
+              expanded={expanded}
+              toggle={toggle}
+              severity={severity}
+              groupId={groupId}
+              repo={repo}
+            />
           ))}
+          {leaves.map((u) => (
+            <UncoveredLeafRow
+              key={u.entity_id}
+              u={u}
+              repo={repo}
+              groupId={groupId}
+              depth={node.depth + 1}
+            />
+          ))}
+          {moreCount > 0 && (
+            <div
+              className="flex items-center gap-2 pr-3 py-0.5 text-[11px] text-text-4 italic"
+              style={{ paddingLeft: `${0.5 + (node.depth + 1) * 1.1 + 1.25}rem` }}
+            >
+              +{moreCount} more uncovered
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function CoverageTree({ dirs, files }: { dirs: DirCoverage[]; files: FileCoverage[] }) {
-  const tree = useMemo(() => buildCoverageTree(dirs, files), [dirs, files]);
-  // Default: top level expanded, deeper collapsed.
+function CoverageTree({
+  dirs,
+  files,
+  byFileUncovered,
+  severity,
+  groupId,
+  repo,
+}: {
+  dirs: DirCoverage[];
+  files: FileCoverage[];
+  byFileUncovered?: Record<string, FileUncovered>;
+  severity: CovSeverity;
+  groupId: string;
+  repo: string;
+}) {
+  const tree = useMemo(
+    () => buildCoverageTree(dirs, files, byFileUncovered),
+    [dirs, files, byFileUncovered],
+  );
+  // Default: top-level directories expanded; files (and their uncovered leaves)
+  // collapsed — the uncovered entities reveal on demand (#4552 deferred this).
   const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(tree.map((n) => n.path)),
+    () => new Set(tree.filter((n) => !n.isFile).map((n) => n.path)),
   );
   const toggle = (path: string) =>
     setExpanded((prev) => {
@@ -478,7 +645,15 @@ function CoverageTree({ dirs, files }: { dirs: DirCoverage[]; files: FileCoverag
   return (
     <div className="space-y-0.5">
       {tree.map((n) => (
-        <CovTreeRow key={n.path} node={n} expanded={expanded} toggle={toggle} />
+        <CovTreeRow
+          key={n.path}
+          node={n}
+          expanded={expanded}
+          toggle={toggle}
+          severity={severity}
+          groupId={groupId}
+          repo={repo}
+        />
       ))}
     </div>
   );
@@ -542,6 +717,35 @@ function CoverageTab({ groupId }: { groupId: string }) {
       ? uncoveredEntities
       : uncoveredEntities.filter((u) => u.severity === severity);
 
+  // The tree carries uncovered entities as file leaves (#4636) whenever the
+  // backend serves by_file_uncovered. The flat list below is only a fallback
+  // for older backends that don't.
+  const byFileUncovered = data.by_file_uncovered;
+  const treeCarriesUncovered =
+    !!byFileUncovered && Object.keys(byFileUncovered).length > 0;
+  // Total uncovered leaves shown in the tree at the current severity (for the
+  // header count when the tree is the primary surface).
+  const treeUncoveredCount = treeCarriesUncovered
+    ? Object.values(byFileUncovered).reduce(
+        (sum, fu) =>
+          sum +
+          (severity === "all"
+            ? (fu.entities?.length ?? 0)
+            : (fu.entities ?? []).filter((u) => u.severity === severity).length),
+        0,
+      )
+    : uncovered.length;
+
+  const severityFilter = (
+    <div className="flex items-center gap-2">
+      {(["all", "high", "medium", "low"] as const).map((s) => (
+        <Pill key={s} active={severity === s} onClick={() => setSeverity(s)}>
+          {s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}
+        </Pill>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <InsightBanner
@@ -573,55 +777,72 @@ function CoverageTab({ groupId }: { groupId: string }) {
 
       {(data.by_directory?.length ?? 0) > 0 && (
         <Card>
-          <CardHeader className="flex items-center justify-between gap-2">
+          <CardHeader className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-1.5">
               By directory
               <MetricInfo
                 hint={
                   <>
                     Coverage rolled up into a folder tree, drilling directory →
-                    file. Each folder aggregates the covered ÷ total entity counts
-                    of everything beneath it; expand a folder to reach its
-                    subdirectories and source files. Bar color: red &lt;50%, amber
-                    50–80%, green 80%+.
+                    file → entity. Each folder aggregates the covered ÷ total
+                    counts beneath it; expand a folder to reach its files, and
+                    expand a file to see its individual uncovered entities. The
+                    severity filter narrows which uncovered entities appear. Bar
+                    color: red &lt;50%, amber 50–80%, green 80%+.
                   </>
                 }
               />
+              {treeCarriesUncovered && (
+                <span className="ml-1 text-text-4 tabular-nums font-normal text-xs">
+                  {treeUncoveredCount} uncovered
+                </span>
+              )}
             </CardTitle>
-            <span className="text-[11px] text-text-4">expand to drill in</span>
+            {treeCarriesUncovered ? (
+              severityFilter
+            ) : (
+              <span className="text-[11px] text-text-4">expand to drill in</span>
+            )}
           </CardHeader>
           <CardBody className="space-y-1.5">
-            <CoverageTree dirs={data.by_directory} files={data.by_file ?? []} />
+            <CoverageTree
+              dirs={data.by_directory}
+              files={data.by_file ?? []}
+              byFileUncovered={data.by_file_uncovered}
+              severity={severity}
+              groupId={groupId}
+              repo={data.group}
+            />
           </CardBody>
         </Card>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-md font-medium text-text-2">
-          Uncovered entities
-          <span className="ml-2 text-text-4 tabular-nums">{uncovered.length}</span>
-        </h3>
-        <div className="flex items-center gap-2">
-          {(["all", "high", "medium", "low"] as const).map((s) => (
-            <Pill key={s} active={severity === s} onClick={() => setSeverity(s)}>
-              {s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}
-            </Pill>
-          ))}
-        </div>
-      </div>
+      {/* Fallback flat list — only for older backends that don't nest uncovered
+          entities under their file in the tree (#4636). */}
+      {!treeCarriesUncovered && (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-md font-medium text-text-2">
+              Uncovered entities
+              <span className="ml-2 text-text-4 tabular-nums">{uncovered.length}</span>
+            </h3>
+            {severityFilter}
+          </div>
 
-      {uncovered.length === 0 ? (
-        <EmptyState
-          icon={<CheckCircle2 size={28} className="text-success" />}
-          title="Nothing at this severity"
-          hint="No uncovered entities match the selected severity filter."
-        />
-      ) : (
-        <div className="space-y-2">
-          {uncovered.map((u) => (
-            <UncoveredRow key={u.entity_id} u={u} repo={data.group} />
-          ))}
-        </div>
+          {uncovered.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircle2 size={28} className="text-success" />}
+              title="Nothing at this severity"
+              hint="No uncovered entities match the selected severity filter."
+            />
+          ) : (
+            <div className="space-y-2">
+              {uncovered.map((u) => (
+                <UncoveredRow key={u.entity_id} u={u} repo={data.group} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

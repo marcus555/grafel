@@ -1853,6 +1853,18 @@ export interface FileCoverage {
   coverage_pct: number;
 }
 
+/**
+ * Per-file slice of uncovered entities (#4636), nested under their owning file
+ * so the coverage tree can render them as leaf children: directory → file →
+ * entity. Capped per file by the backend with `more` carrying the overflow.
+ */
+export interface FileUncovered {
+  /** This file's uncovered entities, severity-sorted (high first), capped. */
+  entities: UncoveredEntity[];
+  /** Count of additional uncovered entities beyond the cap ("+N more"). */
+  more?: number;
+}
+
 /** Per-module coverage statistics. */
 export interface ModuleCoverage {
   module: string;
@@ -1874,6 +1886,13 @@ export interface GroupCoverageReport {
   by_directory: DirCoverage[];
   by_file: FileCoverage[];
   by_module: ModuleCoverage[];
+  /**
+   * Uncovered entities nested under their owning file path (#4636), keyed by
+   * the forward-slash source path (matching FileCoverage.file). Powers the
+   * directory → file → entity leaves of the coverage tree. Absent on older
+   * backends — the UI falls back to the flat `uncovered_entities` list.
+   */
+  by_file_uncovered?: Record<string, FileUncovered>;
 }
 
 /** One declared / used / unused / phantom external dependency. */
