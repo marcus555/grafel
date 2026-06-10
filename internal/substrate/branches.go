@@ -191,12 +191,23 @@ func analyzeBranchesPython(funcSource string, startLine int) []BranchFacet {
 		return nil
 	}
 	lines := strings.Split(funcSource, "\n")
+	// Scope the walk to the method's OWN body. The source window the effects
+	// tool hands us starts at the entity's StartLine (the `def` header) but its
+	// EndLine can be missing/zero — in which case branchSourceSpan pads a
+	// generous tail that overshoots into the SIBLING methods/defs that follow
+	// (the #4419/#4488 over-capture: create_contact's branch list bled into
+	// update_contact and beyond). bodyEndPython finds the method's dedent
+	// boundary — the first non-blank line indented at or below the `def`
+	// header's own indent (a sibling `def`, a decorator, or the class body) —
+	// and we walk only up to there. This is self-correcting: even a 400-line
+	// padded window is clamped to exactly this method's body.
+	bodyEnd := bodyEndPython(lines)
 	var out []BranchFacet
 	// firstGuardSeen lets us label the LEADING guard as early_return and
 	// later same-shape guards as guard (mid-body). env-gates override both.
 	firstGuardSeen := false
 
-	for i := 0; i < len(lines); i++ {
+	for i := 0; i < bodyEnd; i++ {
 		raw := lines[i]
 		if strings.TrimSpace(raw) == "" {
 			continue
@@ -249,6 +260,101 @@ func analyzeBranchesPython(funcSource string, startLine int) []BranchFacet {
 		}
 	}
 	return out
+}
+
+// bodyEndPython returns the exclusive line index at which the method/function
+// whose `def` header is the first non-blank line of `lines` ends — i.e. the
+// index of the first line AFTER the header that dedents to or below the
+// header's own indentation (a sibling `def`/`class`, a trailing decorator, or
+// the enclosing class/module body). When the window is exactly the method body
+// (no trailing siblings) this is len(lines). This is the single source of truth
+// for the method-boundary scope: it stops the branch walk from bleeding into
+// adjacent `@action` methods when the entity's EndLine is missing and the
+// source window was padded.
+//
+// It is robust to leading decorators (`@action(...)`) preceding the `def`: the
+// header is the first `def`/`async def` line, and its indent — not a
+// decorator's — is the boundary indent.
+func bodyEndPython(lines []string) int {
+	// Locate the def header and record its indent. Leading decorator lines
+	// (`@action(...)`, possibly multi-line) precede the `def` in the source
+	// window — skip them so the boundary indent is the `def`'s own, never a
+	// decorator's. We only fall back to a bare-body anchor (first non-blank,
+	// non-decorator line) when there is NO def at all in the window.
+	headerIdx := -1
+	headerIndent := 0
+	bareIdx := -1
+	bareIndent := 0
+	inDecorator := false
+	for i, ln := range lines {
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		if pyFuncDefRe.MatchString(ln) {
+			headerIdx = i
+			headerIndent = leadingWS(ln)
+			break
+		}
+		// Track (possibly multi-line) decorators so their continuation lines
+		// aren't mistaken for the bare-body anchor.
+		trimmed := strings.TrimSpace(ln)
+		if inDecorator {
+			inDecorator = !decoratorComplete(trimmed)
+			continue
+		}
+		if strings.HasPrefix(trimmed, "@") {
+			inDecorator = !decoratorComplete(trimmed)
+			continue
+		}
+		// First real (non-decorator) non-blank line and still no def → remember
+		// it as the bare-body anchor, but keep scanning in case a def follows.
+		if bareIdx < 0 {
+			bareIdx = i
+			bareIndent = leadingWS(ln)
+		}
+	}
+	if headerIdx < 0 {
+		// No def in the window — anchor on the first bare-body line so we still
+		// clamp at the first dedent below it. No anchor at all → whole window.
+		if bareIdx < 0 {
+			return len(lines)
+		}
+		headerIdx = bareIdx
+		headerIndent = bareIndent
+	}
+	for j := headerIdx + 1; j < len(lines); j++ {
+		ln := lines[j]
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		if leadingWS(ln) <= headerIndent {
+			return j
+		}
+	}
+	return len(lines)
+}
+
+// pyFuncDefRe matches a Python function/method header (`def f(` /
+// `async def f(`), ignoring leading indentation.
+var pyFuncDefRe = regexp.MustCompile(`^\s*(?:async\s+)?def\s+[A-Za-z_]\w*\s*\(`)
+
+// decoratorComplete reports whether a decorator line that has been seen so far
+// (joined trimmed text) is syntactically complete — i.e. it opened no
+// parenthesis, or every `(` it opened has been closed. A multi-line
+// `@shared_task(\n  ...\n)` decorator is incomplete until the closing `)`.
+// Cheap paren-balance, sufficient for the well-formed windows the effects
+// pipeline feeds in (decorator args rarely embed unbalanced parens in strings).
+func decoratorComplete(trimmed string) bool {
+	depth := 0
+	for _, r := range trimmed {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		}
+	}
+	return depth <= 0
 }
 
 // pyBlockBody returns the statements belonging to the block whose header is at
