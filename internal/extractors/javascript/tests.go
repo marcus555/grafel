@@ -54,8 +54,172 @@ import (
 	"path/filepath"
 	"strings"
 
+	sitter "github.com/smacker/go-tree-sitter"
+
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// testBlockCallNames is the set of test-framework block functions whose
+// arrow/function callback body hosts spec logic. A module-level call to one
+// of these (describe/it/test/...) is the owner-less call site issue #4671
+// addresses: its callback is not a named entity, so walk() never ran the
+// call-relationship extractor over it.
+var testBlockCallNames = map[string]bool{
+	"describe": true, "it": true, "test": true, "suite": true, "context": true,
+	"beforeeach": true, "beforeall": true, "aftereach": true, "afterall": true,
+	"before": true, "after": true,
+}
+
+// emitTestScopeOwner emits a single SCOPE.Operation entity per JS/TS test
+// file that owns every CALLS edge reachable from the module-level
+// test-framework blocks (describe/it/test/before*/after*). Those blocks pass
+// their spec logic as arrow/function callbacks that are NOT named entities,
+// so walk() produced no owner for the `subject.method()` calls inside them —
+// the root cause that left controller-unit specs unable to credit coverage
+// (#4671). The call extractor runs with a nil base frame; withLocalReceiverTypes
+// (invoked inside extractCallRelationships) types the locally-constructed
+// subjects (`const c = new XController()`, `module.get(X)`) so their method
+// calls resolve to the imported class's source file.
+//
+// Scope discipline: only the module-level test-block callbacks are mined.
+// Calls inside named functions / class methods already have owners from
+// walk(), so re-mining them here would double-emit CALLS edges. We therefore
+// walk the program's children, pick the test-block call statements, and
+// extract from their callback bodies only — never descending into named
+// function/class declarations.
+//
+// No-op for non-test files and for test files with no module-level blocks.
+func (x *extractor) emitTestScopeOwner(root *sitter.Node) {
+	if root == nil || !isJSTestFile(x.filePath) {
+		return
+	}
+	bodies := x.collectTestBlockBodies(root)
+	if len(bodies) == 0 {
+		return
+	}
+	scopeName := testScopeName(x.filePath)
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for _, body := range bodies {
+		for _, rel := range x.extractCallRelationships(body, scopeName, nil) {
+			// Only CALLS edges define the test→subject reachability that
+			// ComputeCoverage credits; drop the sibling navigation / uses /
+			// validates edges this extractor also produces (they belong to
+			// real owner entities, not this synthetic test scope).
+			if rel.Kind != "CALLS" {
+				continue
+			}
+			key := rel.ToID
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			rels = append(rels, rel)
+		}
+	}
+	if len(rels) == 0 {
+		return
+	}
+	x.emitWithRels(
+		scopeName,
+		"SCOPE.Operation",
+		root,
+		"test_scope",
+		"test scope "+scopeName,
+		rels,
+	)
+}
+
+// collectTestBlockBodies returns the callback bodies of every module-level
+// test-framework block (describe/it/test/before*/after*) in the program.
+// Blocks may be nested (describe → it); we recurse into a matched block's
+// callback so inner it() bodies are mined too, but we do NOT descend into
+// named function/class declarations (their calls already have owners).
+func (x *extractor) collectTestBlockBodies(root *sitter.Node) []*sitter.Node {
+	var out []*sitter.Node
+	x.walkTestBlocks(root, &out)
+	return out
+}
+
+// walkTestBlocks recursively finds test-block call callbacks. It treats a
+// call_expression whose callee leaf is a test-block name as a block, records
+// its callback body, and recurses into that body to catch nested blocks.
+func (x *extractor) walkTestBlocks(n *sitter.Node, out *[]*sitter.Node) {
+	if n == nil {
+		return
+	}
+	switch n.Type() {
+	// Do not descend into named declarations — walk() already owns their
+	// call relationships.
+	case "function_declaration", "class_declaration", "method_definition":
+		return
+	case "call_expression":
+		if body := x.testBlockCallbackBody(n); body != nil {
+			*out = append(*out, body)
+			// Recurse into the callback body to find nested it()/test()
+			// blocks; their bodies are appended too.
+			x.walkTestBlocks(body, out)
+			return
+		}
+	}
+	count := int(n.ChildCount())
+	for i := 0; i < count; i++ {
+		x.walkTestBlocks(n.Child(i), out)
+	}
+}
+
+// testBlockCallbackBody returns the body node of a test-block call's
+// arrow/function callback, or nil when the call is not a recognised test
+// block or carries no function callback. Handles `describe('x', () => {...})`,
+// `it('y', async () => {...})`, and `it('y', function () {...})`.
+func (x *extractor) testBlockCallbackBody(call *sitter.Node) *sitter.Node {
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		return nil
+	}
+	var leaf string
+	switch fn.Type() {
+	case "identifier":
+		leaf = x.nodeText(fn)
+	case "member_expression":
+		// `it.only(...)`, `describe.each(...)` etc. — match on the object leaf.
+		obj := fn.ChildByFieldName("object")
+		if obj != nil && obj.Type() == "identifier" {
+			leaf = x.nodeText(obj)
+		}
+	}
+	if leaf == "" || !testBlockCallNames[strings.ToLower(leaf)] {
+		return nil
+	}
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return nil
+	}
+	count := int(args.ChildCount())
+	for i := 0; i < count; i++ {
+		a := args.Child(i)
+		if a == nil {
+			continue
+		}
+		switch a.Type() {
+		case "arrow_function", "function_expression", "function":
+			if b := a.ChildByFieldName("body"); b != nil {
+				return b
+			}
+		}
+	}
+	return nil
+}
+
+// testScopeName derives a stable name for the per-file test-scope owner
+// entity from the file path: the base filename with its extension stripped,
+// suffixed with "::testScope" so it never collides with a production symbol.
+func testScopeName(filePath string) string {
+	base := filepath.Base(filepath.ToSlash(filePath))
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	return stem + "::testScope"
+}
 
 // jsTestFileExts is the set of file extensions that may host JS/TS test
 // code under the `.test.` / `.spec.` naming convention. Mirrors

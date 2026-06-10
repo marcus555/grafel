@@ -400,6 +400,21 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// platform-variant pass so the file entity already exists.
 	x.emitMobileNavigationSignals(root)
 
+	// Issue #4671 — module-level test-scope owner. Jest/Vitest/Mocha specs
+	// place their test logic in arrow callbacks passed to module-level
+	// `describe()` / `it()` / `test()` calls; those callbacks are NOT named
+	// function/method/const entities, so walk() never ran
+	// extractCallRelationships over them and the `controller.getCounts()`
+	// calls inside had no owning entity to carry the CALLS edge. Emit ONE
+	// SCOPE.Operation test-scope entity per test file that owns every call
+	// reachable from the module body (after local-variable receiver typing),
+	// so emitTestsEdgesForTestFile (below) can promote the resolved
+	// structural-ref CALLS edges into TESTS edges and ComputeCoverage can
+	// credit the handler via the test→CALLS→handler path. No-op for
+	// non-test files (cheap filename check) and for test files whose module
+	// body holds no calls.
+	x.emitTestScopeOwner(root)
+
 	// Fourth pass (#1726): per-operation TESTS edges. For files identified
 	// as JS/TS test files (*.test.{ts,tsx,js,jsx,mjs,cjs},
 	// *.spec.{...}, __tests__/, tests/), reclassify each CALLS edge from
@@ -2349,6 +2364,21 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 		return nil
 	}
 	calls := findAllNodes(body, "call_expression", "new_expression")
+	// Issue #4671 — local-variable receiver typing. Unit/controller specs
+	// (the dominant test mechanism in NestJS-style codebases) construct the
+	// subject under test as a LOCAL variable —
+	//   const c = new ProposalController(mockSvc);
+	//   const svc = module.get(ProposalService);
+	// — then call `c.getCounts(...)`. The class-field/param frame built by
+	// the caller does NOT type these locals, so `receiverTypedTarget` misses
+	// and `c.method()` only ever emitted a bare, unresolvable leaf (no
+	// test→handler CALLS edge → ComputeCoverage undercount). Fold the
+	// discovered `localName → Class` bindings into a derived frame so
+	// member-expression calls on those locals type-resolve to the imported
+	// class's method (Format A structural ref). Append-only: the caller's
+	// frame is never mutated; same-named fields/params (a closer binding)
+	// win over locals.
+	frame = x.withLocalReceiverTypes(body, frame)
 	// Issue #2671 — JSX navigation components (<Link>, <NavLink>, <Navigate>,
 	// <Redirect>, next/link's <Link href=...>) are emitted from any body that
 	// renders them; they do not depend on a call_expression being present.
