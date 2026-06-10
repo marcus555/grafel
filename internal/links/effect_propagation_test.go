@@ -71,6 +71,66 @@ def handle(req):
 	}
 }
 
+// TestEffectPropagation_ReadHandlerServiceRepoChain is the #4668 regression:
+// a GET/list controller → service → repository READ chain must propagate
+// db_read to the controller exactly the way the write chain
+// (TestEffectPropagation_HandlerServiceRepoChain) propagates db_write.
+//
+// The repository read is held on a queryset attribute (`self.queryset.filter`),
+// NOT the Django `.objects.<verb>` manager form — the canonical layered-repo
+// shape. Before #4668 the read sniffer only matched the `.objects.` manager
+// form (while the write sniffer matched bare `.save(` on any receiver), so this
+// repo read resolved PURE and the list controller looked like a stub. Asserts
+// the read now reaches the controller; symmetric with the write test above.
+func TestEffectPropagation_ReadHandlerServiceRepoChain(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "repo.py", `
+class ContractRepo:
+    def list_active(self):
+        return self.queryset.filter(active=True)
+`)
+	writeFile(t, root, "svc.py", `
+class ContractService:
+    def __init__(self, r):
+        self.r = r
+    def list_contracts(self):
+        return self.r.list_active()
+`)
+	writeFile(t, root, "controller.py", `
+class ContractViewSet:
+    def list(self, request):
+        return ContractService(ContractRepo()).list_contracts()
+`)
+	graphs := []repoGraph{{
+		Repo:     "upvate-core",
+		FileRoot: root,
+		Entities: []entityNode{
+			{ID: "c1", Name: "ContractViewSet.list", Kind: "SCOPE.Operation", SourceFile: "controller.py"},
+			{ID: "s1", Name: "ContractService.list_contracts", Kind: "SCOPE.Operation", SourceFile: "svc.py"},
+			{ID: "r1", Name: "ContractRepo.list_active", Kind: "SCOPE.Operation", SourceFile: "repo.py"},
+		},
+		Edges: []edgeRef{
+			{FromID: "c1", ToID: "s1", Kind: "CALLS"},
+			{FromID: "s1", ToID: "r1", Kind: "CALLS"},
+		},
+	}}
+	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Repo owns the direct db_read.
+	if got := graphs[0].Entities[2].Properties[EffectPropertyKeySource]; got != "direct" {
+		t.Errorf("repo effect_source=%q; want direct", got)
+	}
+	if effs := graphs[0].Entities[2].Properties[EffectPropertyKeyList]; !strings.Contains(effs, "db_read") {
+		t.Fatalf("repo effects=%q; want db_read (the read sniffer must match self.queryset.filter)", effs)
+	}
+	// Controller inherits db_read transitively — the #4668 reach.
+	cEffs := graphs[0].Entities[0].Properties[EffectPropertyKeyList]
+	if !strings.Contains(cEffs, "db_read") {
+		t.Fatalf("controller effects=%q; want db_read to reach the GET/list handler transitively", cEffs)
+	}
+}
+
 // TestEffectPropagation_PureFunctionLeftUnstamped verifies that
 // functions with no detected sinks (and no transitive callees with
 // sinks) are not stamped — keeps graph noise low.
