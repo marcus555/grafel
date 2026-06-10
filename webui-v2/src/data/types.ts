@@ -1830,6 +1830,15 @@ export interface DirCoverage {
   coverage_pct: number;
 }
 
+/** Per-file coverage statistics (deepest grouping under a directory). */
+export interface FileCoverage {
+  file: string;
+  dir: string;
+  total: number;
+  covered: number;
+  coverage_pct: number;
+}
+
 /** Per-module coverage statistics. */
 export interface ModuleCoverage {
   module: string;
@@ -1849,6 +1858,7 @@ export interface GroupCoverageReport {
   repos: number;
   uncovered_entities: UncoveredEntity[];
   by_directory: DirCoverage[];
+  by_file: FileCoverage[];
   by_module: ModuleCoverage[];
 }
 
