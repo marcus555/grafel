@@ -753,13 +753,24 @@ func middlewareChainHasAuth(rest string) (string, bool) {
 // NestJS method-level guard indexer
 // ---------------------------------------------------------------------------
 
-// nestHandlerMethodRe matches a Nest handler method declaration that is
-// preceded (on earlier lines) by a route verb decorator. We instead scan
-// methods bottom-up: this regex finds the method declaration line itself.
-// Group 1 = method name. The `(?m)^` anchor keeps it to a declaration, not a
-// nested call.
+// nestHandlerMethodRe matches a Nest handler method declaration. Group 1 = the
+// method name. The `(?m)^` anchor keeps it to a declaration line, not a nested
+// call.
+//
+// The parameter list must tolerate NESTED parentheses, because real NestJS
+// handlers decorate their params — `findOne(@Param('id', ParseIntPipe) id: number)`,
+// `list(@Query() q: Dto)`. A `\([^)]*\)` body stops at the FIRST inner `)` (the
+// one closing `@Query(`) and then fails to reach `)[:{]`, so EVERY handler with a
+// decorated/parenthesised param was silently skipped — which is exactly why
+// handler-level guards weren't resolved (#handler-guard). We instead allow any
+// char except a statement terminator `;` or a block-open `{` between the opening
+// `(` and the body `{`; a method signature never contains those before its body,
+// while param decorators, generic `<...>`, default values and the `: ReturnType`
+// annotation are all permitted. The trailing `\)\s*(?::[^={;]+)?\{` pins the
+// match to the LAST `)` immediately before the (optionally return-typed) body.
 var nestHandlerMethodRe = regexp.MustCompile(
-	`(?m)^[ \t]*(?:public\s+|private\s+|protected\s+|static\s+|readonly\s+|async\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*[:{]`,
+	`(?m)^[ \t]*(?:public\s+|private\s+|protected\s+|static\s+|readonly\s+|async\s+)*` +
+		`([A-Za-z_$][\w$]*)\s*\([^;{]*\)\s*(?::[^={;]+)?\{`,
 )
 
 // nestVerbDecoratorRe identifies a route decorator (@Get/@Post/...). Used to

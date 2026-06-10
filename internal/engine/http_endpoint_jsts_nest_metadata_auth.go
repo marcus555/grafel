@@ -67,13 +67,14 @@ var nestPublicDecoratorRe = regexp.MustCompile(`@(?:Public|AllowAnonymous|AllowA
 // generic nest-access-control / casl spellings (@Permissions / @RequirePermission(s)
 // / @CheckPolicies / @UseRoles). Group 1 = decorator name, group 2 = raw args.
 var nestProtectiveMetaDecoratorRe = regexp.MustCompile(
-	`@(RequirePage|Authenticated|AnyPage|OwnerOnly|OwnerAndPage|HasPage|HasPermission|RequireAction|InternalKeyOrAuth|RequirePermissions|RequirePermission|Permissions|CheckPermissions|CheckPolicies|UseRoles|RequireScopes|RequireScope|Scopes)\s*\(([^)]*)\)`,
+	`@(RequireAnyPage|RequirePage|AuthenticatedOrInternalKey|Authenticated|RequireSuperuser|AnyPage|OwnerOnly|OwnerAndPage|HasPage|HasPermission|RequireAction|InternalKeyOrAuth|RequirePermissions|RequirePermission|Permissions|CheckPermissions|CheckPolicies|UseRoles|RequireScopes|RequireScope|Scopes)\s*\(([^)]*)\)`,
 )
 
 // nestPageBearingDecorators are the protective decorators whose quoted argument
 // names a permission page / slug we surface as auth_permissions + auth_page.
 var nestPageBearingDecorators = map[string]bool{
 	"RequirePage":        true,
+	"RequireAnyPage":     true,
 	"AnyPage":            true,
 	"OwnerAndPage":       true,
 	"HasPage":            true,
@@ -194,7 +195,8 @@ func nestFirstControllerLine(content string) int {
 // passes unless the file mentions at least one recognised metadata decorator.
 func nestHasMetadataAuthMarker(content string) bool {
 	for _, marker := range []string{
-		"@RequirePage", "@Authenticated", "@AnyPage", "@OwnerOnly", "@OwnerAndPage",
+		"@RequirePage", "@RequireAnyPage", "@Authenticated", "@AuthenticatedOrInternalKey",
+		"@RequireSuperuser", "@AnyPage", "@OwnerOnly", "@OwnerAndPage",
 		"@HasPage", "@HasPermission", "@RequireAction", "@InternalKeyOrAuth",
 		"@RequirePermission", "@Permissions", "@CheckPermissions", "@CheckPolicies",
 		"@UseRoles", "@RequireScope", "@Scopes", "@Roles",
