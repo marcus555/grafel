@@ -4217,6 +4217,10 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	relationships := make([]graph.Relationship, 0)
 
 	seenEntity := make(map[string]bool, len(merged))
+	// entityPos maps a survivor's graph ID → its index in `entities` so that a
+	// later duplicate (same EntityID) can gap-fill base-only state onto the
+	// already-emitted survivor instead of being dropped wholesale (issue #4406).
+	entityPos := make(map[string]int, len(merged))
 	seenRel := make(map[string]bool)
 
 	for k := range merged {
@@ -4258,6 +4262,75 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 				Properties:    r.Properties,
 				Confidence:    r.Confidence, // Phase 1C (#2769).
 			})
+			entityPos[id] = len(entities) - 1
+		} else if pos, ok := entityPos[id]; ok {
+			// Issue #4406 — the production dedup-by-ID path. When two
+			// EntityRecords collapse to the same graph.EntityID (same
+			// kind/name/source-file), the first wins and every later
+			// duplicate is dropped. The dropped duplicate is frequently the
+			// carrier of base-only state the survivor lacks — most critically
+			// the module-qualified QualifiedName that drives byQualifiedName
+			// resolution and cross-repo joins (the live-graph half of #4402,
+			// the same bug #4405 fixed at the MergeWithCustom boundary).
+			//
+			// Mirror #4405's supersedeBase gap-fill semantics: carry the
+			// duplicate's value onto the survivor ONLY where the survivor left
+			// the field empty — never override a value the survivor already
+			// provided. The duplicate's edges are unioned by the relationship
+			// loop below (it runs for every record, survivor or duplicate, and
+			// anchors empty-FromID edges to this same id), so no edge is
+			// orphaned by the dedup.
+			surv := &entities[pos]
+			if surv.QualifiedName == "" && r.QualifiedName != "" {
+				surv.QualifiedName = r.QualifiedName
+			}
+			if surv.Subtype == "" && r.Subtype != "" {
+				surv.Subtype = r.Subtype
+			}
+			if surv.Signature == "" && r.Signature != "" {
+				surv.Signature = r.Signature
+			}
+			if surv.Language == "" && r.Language != "" {
+				surv.Language = r.Language
+			}
+			if surv.StartLine == 0 && r.StartLine != 0 {
+				surv.StartLine = r.StartLine
+			}
+			if surv.EndLine == 0 && r.EndLine != 0 {
+				surv.EndLine = r.EndLine
+			}
+			if len(r.Tags) > 0 {
+				seenTag := make(map[string]bool, len(surv.Tags)+len(r.Tags))
+				for _, t := range surv.Tags {
+					seenTag[t] = true
+				}
+				for _, t := range r.Tags {
+					if !seenTag[t] {
+						seenTag[t] = true
+						surv.Tags = append(surv.Tags, t)
+					}
+				}
+			}
+			if len(r.Properties) > 0 {
+				if surv.Properties == nil {
+					surv.Properties = make(map[string]string, len(r.Properties))
+				}
+				for pk, pv := range r.Properties {
+					if _, exists := surv.Properties[pk]; !exists {
+						surv.Properties[pk] = pv
+					}
+				}
+			}
+			if len(r.Metadata) > 0 {
+				if surv.Metadata == nil {
+					surv.Metadata = make(map[string]interface{}, len(r.Metadata))
+				}
+				for mk, mv := range r.Metadata {
+					if _, exists := surv.Metadata[mk]; !exists {
+						surv.Metadata[mk] = mv
+					}
+				}
+			}
 		}
 
 		for j := range r.Relationships {
