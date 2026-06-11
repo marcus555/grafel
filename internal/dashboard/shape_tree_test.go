@@ -502,3 +502,128 @@ func TestShape_PlainExtendsMergesOwnAndInheritedFields(t *testing.T) {
 		}
 	}
 }
+
+// nestInterfaceResponseFixture models a NestJS response DTO declared as a
+// TypeScript `interface` (SCOPE.Schema/interface owner) that extends a base
+// interface — the #4856 shape. AlternateAddressResponse owns one field and
+// inherits one from BaseResponse via EXTENDS.
+func nestInterfaceResponseFixture() *DashGroup {
+	const file = "src/address/dto/alternate-address-response.dto.ts"
+	entities := []graph.Entity{
+		{
+			ID: "iface_base", Name: "BaseResponse",
+			Kind: "SCOPE.Schema", Subtype: "interface",
+			SourceFile: file, Language: "typescript",
+		},
+		{
+			ID: "fld_base_id", Name: "BaseResponse.id",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: file, Language: "typescript", Signature: "id: string",
+		},
+		{
+			ID: "iface_resp", Name: "AlternateAddressResponse",
+			Kind: "SCOPE.Schema", Subtype: "interface",
+			SourceFile: file, Language: "typescript",
+		},
+		{
+			ID: "fld_resp_line1", Name: "AlternateAddressResponse.line1",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: file, Language: "typescript", Signature: "line1: string",
+		},
+		// An object-shaped type alias owner, to prove it expands too.
+		{
+			ID: "alias_pet", Name: "Pet",
+			Kind: "SCOPE.Schema", Subtype: "type_alias",
+			SourceFile: file, Language: "typescript",
+		},
+		{
+			ID: "fld_pet_name", Name: "Pet.name",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: file, Language: "typescript", Signature: "name: string",
+		},
+	}
+	rels := []graph.Relationship{
+		{FromID: "iface_base", ToID: "fld_base_id", Kind: "CONTAINS"},
+		{FromID: "iface_resp", ToID: "fld_resp_line1", Kind: "CONTAINS"},
+		{FromID: "iface_resp", ToID: "iface_base", Kind: "EXTENDS",
+			Properties: map[string]string{"to": "BaseResponse"}},
+		{FromID: "alias_pet", ToID: "fld_pet_name", Kind: "CONTAINS"},
+	}
+	return makePathsTestGroup(entities, rels)
+}
+
+// TestShape_InterfaceResponseExpandsWithInheritedFields proves #4856's dashboard
+// side: a NestJS response DTO declared as an `interface` returns non-empty shape
+// rows for both its own field and the field inherited via EXTENDS, and reports
+// has_children=true. This is the upvate-v3 AlternateAddressResponse case that
+// previously returned rows:[] / has_children=None.
+func TestShape_InterfaceResponseExpandsWithInheritedFields(t *testing.T) {
+	grp := nestInterfaceResponseFixture()
+	ts := newPathsTestServer(t, grp)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v2/groups/testgrp/shape?type=AlternateAddressResponse")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var body struct {
+		OK   bool            `json:"ok"`
+		Data v2ShapeResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data.Rows) == 0 {
+		t.Fatal("interface response DTO returned empty shape rows (the #4856 bug)")
+	}
+	names := map[string]bool{}
+	for _, r := range body.Data.Rows {
+		names[r.Name] = true
+	}
+	if !names["line1"] {
+		t.Errorf("interface DTO should expose its own field line1, got rows=%+v", body.Data.Rows)
+	}
+	if !names["id"] {
+		t.Errorf("interface DTO should inherit base field id via EXTENDS, got rows=%+v", body.Data.Rows)
+	}
+
+	resolved := findClassEntityByName(grp, "AlternateAddressResponse")
+	if resolved == nil {
+		t.Fatal("AlternateAddressResponse interface not resolved")
+	}
+	if !classHasFieldChildren(grp, resolved) {
+		t.Error("interface response DTO must report has_children=true")
+	}
+}
+
+// TestShape_TypeAliasObjectExpands proves an object-shaped type alias renders
+// its field rows in the dashboard shape endpoint.
+func TestShape_TypeAliasObjectExpands(t *testing.T) {
+	grp := nestInterfaceResponseFixture()
+	ts := newPathsTestServer(t, grp)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v2/groups/testgrp/shape?type=Pet")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		OK   bool            `json:"ok"`
+		Data v2ShapeResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	names := map[string]bool{}
+	for _, r := range body.Data.Rows {
+		names[r.Name] = true
+	}
+	if !names["name"] {
+		t.Errorf("object type alias Pet should expose field name, got rows=%+v", body.Data.Rows)
+	}
+}

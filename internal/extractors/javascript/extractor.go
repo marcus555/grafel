@@ -1343,34 +1343,39 @@ func (x *extractor) handleInterfaceDeclaration(n *sitter.Node) {
 		props["extends"] = strings.Join(extendsList, ", ")
 	}
 
-	// Body fields: collect property_signature and method_signature names
+	// Body fields: collect property_signature names for the summary property,
+	// and (issue #4856) emit one SCOPE.Schema/field child entity per member
+	// plus an interface→field CONTAINS edge so the dashboard shape endpoint
+	// projects the interface's field-set. Mirrors the class fix (#4845):
+	// without these edges a NestJS response DTO declared as an `interface`
+	// (e.g. AlternateAddressResponse) resolves to a field-less node and the
+	// Response panel shows no expand glyph.
 	var fields []string
+	var fieldRels []types.RelationshipRecord
 	if body := n.ChildByFieldName("body"); body != nil {
-		for i := 0; i < int(body.ChildCount()); i++ {
-			member := body.Child(i)
-			if member == nil {
-				continue
-			}
-			switch member.Type() {
-			case "property_signature", "method_signature", "index_signature":
-				if fn := member.ChildByFieldName("name"); fn != nil {
-					fields = append(fields, x.nodeText(fn))
-				}
-			}
-		}
+		fields, fieldRels = x.emitSchemaMemberFields(body, name)
 	}
 	if len(fields) > 0 {
 		props["fields"] = strings.Join(fields, ", ")
 	}
 
-	// Build EXTENDS edges for each base interface
+	// Build EXTENDS edges for each base interface. The Properties["to"]/["from"]
+	// shape mirrors the class heritage edges (#4322) so the dashboard shape
+	// walker's extendsBaseEntities resolver can bind the bare base name and
+	// project inherited members (the walker recurses EXTENDS, #4845).
 	var rels []types.RelationshipRecord
 	for _, base := range extendsList {
 		rels = append(rels, types.RelationshipRecord{
 			ToID: base,
 			Kind: "EXTENDS",
+			Properties: map[string]string{
+				"subtype": "extends",
+				"from":    name,
+				"to":      base,
+			},
 		})
 	}
+	rels = append(rels, fieldRels...)
 
 	sig := fmt.Sprintf("interface %s", name)
 	if len(generics) > 0 {
@@ -1435,11 +1440,25 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 		props["generics"] = strings.Join(generics, ", ")
 	}
 
-	// RHS type body — capture raw text for union/intersection visibility
+	// RHS type body — capture raw text for union/intersection visibility.
+	// Issue #4856 — when the RHS is an object type literal
+	// (`type X = { a: string; b?: number }`) emit one SCOPE.Schema/field
+	// child entity per member plus an alias→field CONTAINS edge, so an
+	// object-shaped type-alias DTO expands in the dashboard exactly like a
+	// class/interface DTO. Non-object RHS (unions, primitives, mapped types)
+	// carries no member fields and is left as-is.
+	var fieldRels []types.RelationshipRecord
 	if valueNode := n.ChildByFieldName("value"); valueNode != nil {
 		body := x.nodeText(valueNode)
 		if body != "" && len(body) <= 512 {
 			props["type_body"] = body
+		}
+		if valueNode.Type() == "object_type" {
+			var fields []string
+			fields, fieldRels = x.emitSchemaMemberFields(valueNode, name)
+			if len(fields) > 0 {
+				props["fields"] = strings.Join(fields, ", ")
+			}
 		}
 	}
 
@@ -1462,6 +1481,7 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 		Properties:       props,
 		EnrichmentStatus: types.StatusPending,
 		QualityScore:     1.0,
+		Relationships:    fieldRels,
 	}
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
@@ -1469,6 +1489,97 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 	// A string/number literal-union alias (`type Role = 'admin' | 'user'`) is an
 	// enumerated value-set; emit a SCOPE.Enum node alongside (data-model #3628).
 	x.emitTSLiteralUnionValueSet(n, name)
+}
+
+// emitSchemaMemberFields walks the body of an interface (interface_body) or
+// object type literal (object_type) and, for each property member, emits a
+// SCOPE.Schema/field child entity named "<owner>.<field>" and returns a
+// CONTAINS structural-ref edge for it. It mirrors the class field-membership
+// fix (#4845): the class path emits "<Class>.<field>" SCOPE.Schema/field
+// entities in handlePublicFieldDefinition and a CONTAINS edge keyed by
+// BuildSchemaFieldStructuralRef; interfaces and object-type aliases go through
+// a different AST path (property_signature, not public_field_definition) and so
+// emitted no field children — leaving NestJS response DTOs that are declared as
+// `interface` (or `type X = {...}`) with rows:[] in the dashboard shape
+// endpoint (#4856).
+//
+// It returns the ordered list of member field names (for the owner's "fields"
+// summary property) and the owner→field CONTAINS relationships (the caller is
+// responsible for attaching them to the owner entity's Relationships, since the
+// owner record is constructed inline rather than via x.emit).
+//
+// Member handling:
+//   - property_signature (`name: Type`, optional `?`, `readonly`) → field child.
+//   - method_signature   (`greet(): void`) → field child (named like the method;
+//     callers that want behaviour can still read the body text, but a member is
+//     a member — modelling it as a field keeps the shape complete and avoids a
+//     crash). Type annotation, when present, is captured in the signature.
+//   - index_signature (`[key: string]: any`) and call/construct signatures have
+//     no member name and are skipped (gracefully, no crash) — they describe the
+//     container, not an addressable field.
+func (x *extractor) emitSchemaMemberFields(body *sitter.Node, owner string) ([]string, []types.RelationshipRecord) {
+	if body == nil || owner == "" {
+		return nil, nil
+	}
+	var fields []string
+	var rels []types.RelationshipRecord
+	seen := map[string]bool{}
+	for i := 0; i < int(body.ChildCount()); i++ {
+		member := body.Child(i)
+		if member == nil {
+			continue
+		}
+		switch member.Type() {
+		case "property_signature", "method_signature":
+			// Both expose the member name via the "name" field
+			// (property_identifier). index_signature / call_signature /
+			// construct_signature have no "name" field and fall through.
+		default:
+			continue
+		}
+		fn := member.ChildByFieldName("name")
+		if fn == nil {
+			continue
+		}
+		fieldName := x.nodeText(fn)
+		if fieldName == "" || seen[fieldName] {
+			continue
+		}
+		seen[fieldName] = true
+		fields = append(fields, fieldName)
+
+		// Signature mirrors the class field convention ("name: type"), with an
+		// optional-marker "?" when the property_signature carries one, so the
+		// dashboard parses type / nullability identically to class DTO fields.
+		sig := fieldName
+		optional := false
+		for j := 0; j < int(member.ChildCount()); j++ {
+			if ch := member.Child(j); ch != nil && ch.Type() == "?" {
+				optional = true
+				break
+			}
+		}
+		if optional {
+			sig += "?"
+		}
+		if typeNode := member.ChildByFieldName("type"); typeNode != nil {
+			// type_annotation text includes the leading ": " — fold it in.
+			ann := strings.TrimSpace(x.nodeText(typeNode))
+			ann = strings.TrimPrefix(ann, ":")
+			ann = strings.TrimSpace(ann)
+			if ann != "" {
+				sig += ": " + ann
+			}
+		}
+
+		emittedName := owner + "." + fieldName
+		x.emit(emittedName, "SCOPE.Schema", member, "field", sig)
+		rels = append(rels, types.RelationshipRecord{
+			ToID: extreg.BuildSchemaFieldStructuralRef(x.language, x.filePath, emittedName),
+			Kind: "CONTAINS",
+		})
+	}
+	return fields, rels
 }
 
 // handleEnumDeclaration handles TypeScript enum declarations: enum Direction { Up, Down }
