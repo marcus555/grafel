@@ -16,16 +16,25 @@
 package mcpreg
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ServerName is the canonical key used in mcpServers maps.
 const ServerName = "archigraph"
+
+// backupSentinelAbsent is the byte content written into a backup file when the
+// original target did NOT exist before archigraph touched it. On restore this
+// tells us to DELETE the file archigraph created rather than leave an orphan
+// `{}` or `{"mcpServers":{}}` behind.
+const backupSentinelAbsent = "ARCHIGRAPH_BACKUP_ORIGINAL_ABSENT"
 
 // homeDir returns the current user's home directory.
 // On all platforms it checks the HOME environment variable first so
@@ -306,12 +315,94 @@ func Register(tool Tool, binPath, _ string) (string, error) {
 	return RegisterPath(path, binPath)
 }
 
+// backupDir returns ~/.archigraph/backups/mcpreg, creating it on demand.
+func backupDir() (string, error) {
+	home, err := homeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".archigraph", "backups", "mcpreg")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// sanitizePath turns an absolute config path into a filesystem-safe token used
+// in backup file names (e.g. "/Users/x/.codeium/mcp_config.json" →
+// "Users_x_.codeium_mcp_config.json"). A short hash suffix disambiguates paths
+// that collapse to the same token.
+func sanitizePath(path string) string {
+	cleaned := filepath.ToSlash(path)
+	cleaned = strings.TrimPrefix(cleaned, "/")
+	repl := strings.NewReplacer("/", "_", ":", "_", "\\", "_", " ", "_")
+	token := repl.Replace(cleaned)
+	sum := sha256.Sum256([]byte(path))
+	return token + "-" + hex.EncodeToString(sum[:4])
+}
+
+// sidecarBackupPath is the in-place ".archigraph.bak" sidecar next to the
+// target. It is the file consulted on restore.
+func sidecarBackupPath(path string) string {
+	return path + ".archigraph.bak"
+}
+
+// backupOnce snapshots the original target file BEFORE archigraph's first
+// modification. It is a no-op if a sidecar backup already exists (so repeated
+// RegisterPath calls within one install don't clobber the pristine snapshot).
+//
+// Two copies are written:
+//   - an in-place sidecar `<path>.archigraph.bak` (consulted on restore), and
+//   - a timestamped copy under ~/.archigraph/backups/mcpreg/ (audit trail).
+//
+// If the original file does not exist, a sentinel backup is written instead so
+// that restore knows to DELETE archigraph's file rather than leave an orphan.
+func backupOnce(path string) error {
+	sidecar := sidecarBackupPath(path)
+	if _, err := os.Stat(sidecar); err == nil {
+		// Backup already taken for this install transaction.
+		return nil
+	}
+
+	orig, readErr := os.ReadFile(path)
+	absent := errors.Is(readErr, os.ErrNotExist)
+	if readErr != nil && !absent {
+		return readErr
+	}
+
+	payload := orig
+	if absent {
+		payload = []byte(backupSentinelAbsent)
+	}
+
+	if err := os.WriteFile(sidecar, payload, 0o600); err != nil {
+		return err
+	}
+
+	// Best-effort timestamped audit copy; failure here must not block install.
+	if dir, err := backupDir(); err == nil {
+		stamp := time.Now().UTC().Format(time.RFC3339)
+		stamp = strings.ReplaceAll(stamp, ":", "-")
+		audit := filepath.Join(dir, sanitizePath(path)+"-"+stamp+".json")
+		_ = os.WriteFile(audit, payload, 0o600)
+	}
+	return nil
+}
+
 // RegisterPath writes (or updates) the archigraph entry in an arbitrary
 // .claude.json file. This is the workhorse used by both Register (single
 // path) and the multi-dir install loop.
+//
+// Before its FIRST modification of a given file, RegisterPath snapshots the
+// original (via backupOnce) so a later rollback can restore it exactly — see
+// RestorePath. The merge is surgical: only mcpServers.archigraph is added or
+// updated; every other key and sibling server is preserved.
 func RegisterPath(path, binPath string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
+	}
+	if err := backupOnce(path); err != nil {
+		return "", fmt.Errorf("backup %s: %w", filepath.Base(path), err)
 	}
 	doc, err := readSettings(path)
 	if err != nil {
@@ -340,8 +431,12 @@ func Unregister(tool Tool) error {
 	return UnregisterPath(path)
 }
 
-// UnregisterPath removes the archigraph entry from an arbitrary config
-// file. Used by the multi-dir uninstall loop.
+// UnregisterPath removes ONLY the archigraph entry from an arbitrary config
+// file, preserving every other key and sibling server. Used by the multi-dir
+// uninstall loop. If removing archigraph leaves mcpServers empty, the empty
+// mcpServers object is dropped too so we never leave an orphan
+// `{"mcpServers":{}}`. Returns nil if the file or entry doesn't exist
+// (idempotent). It NEVER overwrites foreign servers or resets the file to `{}`.
 func UnregisterPath(path string) error {
 	doc, err := readSettings(path)
 	if err != nil {
@@ -355,8 +450,63 @@ func UnregisterPath(path string) error {
 		return nil
 	}
 	delete(servers, ServerName)
-	doc["mcpServers"] = servers
+	if len(servers) == 0 {
+		// Drop the now-empty mcpServers key rather than persisting an
+		// orphan `{"mcpServers":{}}`.
+		delete(doc, "mcpServers")
+	} else {
+		doc["mcpServers"] = servers
+	}
 	return writeSettings(path, doc)
+}
+
+// RestorePath reverses a RegisterPath using the pristine backup taken by
+// backupOnce. This is the rollback/de-register entry point that MUST be used
+// instead of writing `{}`:
+//
+//   - If archigraph CREATED the file (sentinel backup), the file is DELETED so
+//     no orphan `{}` / `{"mcpServers":{}}` is left behind.
+//   - If a real original was backed up, the file is restored byte-for-byte,
+//     bringing back every foreign server and unrelated key exactly.
+//   - If no backup exists (e.g. registration never ran), fall back to the
+//     surgical UnregisterPath so we still only remove archigraph's own entry.
+//
+// The sidecar backup is removed after a successful restore.
+func RestorePath(path string) error {
+	sidecar := sidecarBackupPath(path)
+	b, err := os.ReadFile(sidecar)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// No snapshot — fall back to surgical removal so we never
+			// clobber foreign servers.
+			return UnregisterPath(path)
+		}
+		return err
+	}
+
+	if string(b) == backupSentinelAbsent {
+		// Original did not exist; remove archigraph's file entirely.
+		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			return rmErr
+		}
+		_ = os.Remove(sidecar)
+		return nil
+	}
+
+	// Restore the original content verbatim.
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		return err
+	}
+	_ = os.Remove(sidecar)
+	return nil
+}
+
+// ClearBackup discards the pristine sidecar backup for a path. Call this after
+// a SUCCESSFUL install so the next install can take a fresh snapshot (and so a
+// future uninstall does not "restore" stale archigraph-containing content).
+// Idempotent: missing backups are ignored.
+func ClearBackup(path string) {
+	_ = os.Remove(sidecarBackupPath(path))
 }
 
 func readSettings(path string) (map[string]any, error) {

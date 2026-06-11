@@ -659,6 +659,209 @@ func TestInstall_SkipsAbsentZed(t *testing.T) {
 	}
 }
 
+// ── #4829: surgical de-register + backup/restore (no shared-config wipe) ──────
+
+// TestRegisterPreservesForeignServer: registering into a config that already
+// holds a FOREIGN server must add archigraph AND leave the foreign server
+// untouched.
+func TestRegisterPreservesForeignServer(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".codeium", "mcp_config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pre := `{"mcpServers":{"playwright":{"command":"/bin/playwright","args":["serve"]}}}`
+	if err := os.WriteFile(path, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+
+	b, _ := os.ReadFile(path)
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("config not valid JSON after register: %s", b)
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers["playwright"]; !ok {
+		t.Fatalf("foreign 'playwright' server was wiped: %s", b)
+	}
+	if _, ok := servers[ServerName]; !ok {
+		t.Fatalf("archigraph entry missing: %s", b)
+	}
+}
+
+// TestRestorePreservesForeignServerOnRollback: register into a config holding a
+// foreign server, then roll back via RestorePath. The foreign server must
+// survive and the file must NOT be `{}` — it must equal the original byte-wise.
+func TestRestorePreservesForeignServerOnRollback(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".codeium", "mcp_config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pre := `{"mcpServers":{"playwright":{"command":"/bin/playwright"}},"other":"keep"}`
+	if err := os.WriteFile(path, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestorePath(path); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("file missing after rollback (should be restored, not deleted): %v", err)
+	}
+	if string(b) == "{}" || string(b) == "{}\n" {
+		t.Fatalf("file was reset to empty object — the #4829 wipe regressed: %s", b)
+	}
+	if string(b) != pre {
+		t.Fatalf("rollback did not restore original byte-for-byte:\n got: %s\nwant: %s", b, pre)
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(b, &doc)
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers["playwright"]; !ok {
+		t.Fatalf("foreign 'playwright' server lost on rollback: %s", b)
+	}
+	// Backup sidecar should be cleaned up after a successful restore.
+	if _, err := os.Stat(sidecarBackupPath(path)); err == nil {
+		t.Fatalf("sidecar backup not cleaned up after restore")
+	}
+}
+
+// TestRestoreNewFileRemovesOrphan: when archigraph creates a brand-new config
+// file, rollback must DELETE it — never leave an orphan `{}` /
+// `{"mcpServers":{}}`.
+func TestRestoreNewFileRemovesOrphan(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".codeium", "windsurf", "mcp_config.json")
+
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("precondition: file should not exist yet")
+	}
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("register should have created the file: %v", err)
+	}
+
+	if err := RestorePath(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		b, _ := os.ReadFile(path)
+		t.Fatalf("orphan file left after rollback of a created file: %q", b)
+	}
+}
+
+// TestUnregisterDropsEmptyMcpServers: unregistering the sole archigraph entry
+// from a file archigraph created leaves neither an orphan `{"mcpServers":{}}`
+// nor reintroduces foreign keys.
+func TestUnregisterDropsEmptyMcpServers(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UnregisterPath(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	var doc map[string]any
+	_ = json.Unmarshal(b, &doc)
+	if _, ok := doc["mcpServers"]; ok {
+		t.Fatalf("empty mcpServers object not dropped: %s", b)
+	}
+}
+
+// TestUnregisterKeepsForeignServers: unregistering archigraph from a file with
+// a foreign sibling server keeps mcpServers and the sibling intact.
+func TestUnregisterKeepsForeignServers(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+	pre := `{"mcpServers":{"playwright":{"command":"/bin/pw"},"archigraph":{"command":"/old"}}}`
+	if err := os.WriteFile(path, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := UnregisterPath(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	var doc map[string]any
+	_ = json.Unmarshal(b, &doc)
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers["playwright"]; !ok {
+		t.Fatalf("foreign server lost on unregister: %s", b)
+	}
+	if _, ok := servers[ServerName]; ok {
+		t.Fatalf("archigraph entry still present: %s", b)
+	}
+}
+
+// TestDetectWindsurfPaths_BothCodeiumTargets asserts the dual codeium write is
+// preserved: when both ~/.codeium and ~/.codeium/windsurf exist, BOTH the
+// legacy JetBrains path and the desktop path are in the registration set.
+func TestDetectWindsurfPaths_BothCodeiumTargets(t *testing.T) {
+	home := withHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".codeium", "windsurf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	paths := DetectWindsurfPaths()
+	wantDesktop := filepath.Join(home, ".codeium", "windsurf", "mcp_config.json")
+	wantLegacy := filepath.Join(home, ".codeium", "mcp_config.json")
+
+	var gotDesktop, gotLegacy bool
+	for _, p := range paths {
+		switch p {
+		case wantDesktop:
+			gotDesktop = true
+		case wantLegacy:
+			gotLegacy = true
+		}
+	}
+	if !gotDesktop {
+		t.Errorf("desktop codeium path missing from registration set: %v", paths)
+	}
+	if !gotLegacy {
+		t.Errorf("legacy codeium path missing from registration set: %v", paths)
+	}
+}
+
+// TestRestoreFallsBackToSurgicalWhenNoBackup: if no sidecar backup exists,
+// RestorePath must still remove only archigraph (never wipe foreign servers).
+func TestRestoreFallsBackToSurgicalWhenNoBackup(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+	pre := `{"mcpServers":{"playwright":{"command":"/bin/pw"},"archigraph":{"command":"/old"}}}`
+	if err := os.WriteFile(path, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No RegisterPath call → no sidecar backup.
+	if err := RestorePath(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if string(b) == "{}" || string(b) == "{}\n" {
+		t.Fatalf("restore-without-backup wiped the file: %s", b)
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(b, &doc)
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers["playwright"]; !ok {
+		t.Fatalf("foreign server lost in fallback restore: %s", b)
+	}
+}
+
 // TestInstall_SkipsAbsentHost is a table-driven test checking that each new
 // host's Detect function returns empty when its parent directory is absent.
 func TestInstall_SkipsAbsentHost(t *testing.T) {

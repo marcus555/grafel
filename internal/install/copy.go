@@ -310,6 +310,15 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 		RegisteredPaths: registeredPaths,
 	}
 	result.MCPPaths = registeredPaths
+	// Step 3 succeeded for every target: discard the pristine backups so the
+	// next install snapshots fresh and a later uninstall won't restore stale
+	// archigraph-containing content. (Rollback only fires on FAILURE, before
+	// this point.)
+	if !opts.DryRun {
+		for _, cfgPath := range registeredPaths {
+			mcpreg.ClearBackup(cfgPath)
+		}
+	}
 	completedSteps = append(completedSteps, 3)
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -668,10 +677,12 @@ func rollbackSkillsCopy(opts CopyOptions, state *State) {
 	}
 }
 
-// rollbackMCPRegistration removes the archigraph entry from any .claude.json
-// files that were registered during step 3.
+// rollbackMCPRegistration reverses step 3 by RESTORING each touched config
+// file from the pristine backup taken before archigraph's first write. This
+// brings back any foreign mcpServers entries verbatim and deletes files
+// archigraph created — it NEVER resets a shared config to `{}` (see #4829).
 func rollbackMCPRegistration(_ CopyOptions, state *State) {
 	for _, cfgPath := range state.MCP.RegisteredPaths {
-		_ = mcpreg.UnregisterPath(cfgPath)
+		_ = mcpreg.RestorePath(cfgPath)
 	}
 }
