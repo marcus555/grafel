@@ -184,6 +184,26 @@ func Synthesize(doc *graph.Document) Stats {
 		}
 	}
 
+	// #4699 — internal Python module roots. The Python catch-all in
+	// classifyExternal (pyExternalPackageRoot) needs to distinguish a
+	// genuinely-internal same-repo import that failed to resolve (still a
+	// fidelity bug) from a third-party pip package (NOT a bug). We derive
+	// the set of top-level package roots owned by this repo from the
+	// SourceFile of every indexed Python entity, applying the same
+	// source-root stripping the Python extractor's filePathToModule uses
+	// (src/, lib/, app/). An unresolved non-relative import whose root is
+	// NOT in this set is, by construction, an external pip dependency.
+	internalPyRoots := make(map[string]bool)
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if e.Language != "python" || e.SourceFile == "" {
+			continue
+		}
+		if root := pythonFileRoot(e.SourceFile); root != "" {
+			internalPyRoots[root] = true
+		}
+	}
+
 	// First pass — collect every unique external name we want to
 	// synthesise. The placeholder carries a subtype hint
 	// ("package"/"function") but the language field is left empty:
@@ -243,7 +263,7 @@ func Synthesize(doc *graph.Document) Stats {
 			continue
 		}
 
-		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, lang, entityFile[rel.FromID], fileImports[entityFile[rel.FromID]], rel.Properties)
+		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, lang, entityFile[rel.FromID], fileImports[entityFile[rel.FromID]], rel.Properties, internalPyRoots)
 		if !ok {
 			continue
 		}
@@ -500,7 +520,7 @@ func SynthesizeDBEntities(doc *graph.Document) Stats {
 // Returns ("", "", false) when the stub doesn't look external — those
 // are left untouched and continue to count as "unmatched" in the
 // resolver stats.
-func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool, relProps map[string]string) (canonical, subtype string, ok bool) {
+func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool, relProps map[string]string, internalPyRoots map[string]bool) (canonical, subtype string, ok bool) {
 	if stub == "" {
 		return "", "", false
 	}
@@ -1208,6 +1228,37 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 	// as follow-ups.
 	if (lang == "javascript" || lang == "typescript") && relKind == string(types.RelationshipKindImports) {
 		if pkg, ok := jsExternalPackageRoot(stub, relProps); ok {
+			return pkg, "package", true
+		}
+	}
+
+	// #4699 — Python bare-root external (pip) packages. The Python instance
+	// of the cross-ecosystem program started by #4695 (TS/JS). By the time a
+	// Python IMPORTS edge reaches this point its ToID is a raw dotted-module
+	// stub: the in-tree resolver (which binds internal imports to hex IDs via
+	// the source_module + imported_name reverse index BEFORE ext-synthesis)
+	// has already had its chance, and the Python extractor's static allowlist
+	// (pythonKnownExternalRoots) didn't fire. A non-relative import whose
+	// top-level package root is NOT a module owned by this repo is — by
+	// construction — a third-party pip dependency (pendulum, structlog,
+	// rest_framework, celery, pydantic, …). pip packages are correctly NOT
+	// indexed, so route them to an ext:<root> placeholder (external_package
+	// disposition) instead of leaving a bug-extractor stub that inflates the
+	// import-bug count and depresses the fidelity badge.
+	//
+	// Crucially, this does NOT mask a genuinely-internal unresolved import: a
+	// same-repo module path (root ∈ internalPyRoots) is rejected here and
+	// keeps counting as a fidelity bug, so real under-linking still surfaces.
+	// The internalPyRoots set is derived in Synthesize from the SourceFile of
+	// every indexed Python entity. The static pythonKnownExternalRoots
+	// allowlist can never keep pace with PyPI; this branch is the catch-all
+	// that trusts the in-tree resolver's "didn't resolve internally" signal,
+	// gated to IMPORTS (so it never swallows ambiguous bare CALLS/REFERENCES
+	// targets) and to lang=="python". Mirrors jsExternalPackageRoot (#4695);
+	// per-language siblings: #4700 (Java), #4701 (Ruby), #4702 (Go), #4703
+	// (Rust), #4704 (.NET).
+	if lang == "python" && relKind == string(types.RelationshipKindImports) {
+		if pkg, ok := pyExternalPackageRoot(stub, relProps, internalPyRoots); ok {
 			return pkg, "package", true
 		}
 	}
@@ -2066,6 +2117,138 @@ func isNpmSegment(s string) bool {
 		case c >= 'A' && c <= 'Z':
 		case c >= '0' && c <= '9':
 		case c == '_' || c == '-' || c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// pythonFileRoot returns the top-level package root for a Python source
+// file path, applying the same source-root stripping the Python
+// extractor's filePathToModule uses (src/, lib/, app/). Used by
+// Synthesize to build the set of internal module roots owned by the repo.
+//
+//	"shop/order/views.py"     → "shop"
+//	"src/api/handlers.py"     → "api"
+//	"manage.py"               → "manage"
+//
+// Returns "" for an empty or non-Python-looking path.
+func pythonFileRoot(path string) string {
+	s := strings.TrimSpace(path)
+	if s == "" {
+		return ""
+	}
+	// Normalise to forward slashes (archigraph entity refs already do this,
+	// but be defensive for Windows-shaped inputs).
+	s = strings.ReplaceAll(s, "\\", "/")
+	// Strip well-known source-root prefixes (mirrors filePathToModule /
+	// resolve.sourceRootPrefixes). Only one prefix is stripped, matching
+	// the extractor.
+	for _, prefix := range []string{"src/", "lib/", "app/"} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimPrefix(s, prefix)
+			break
+		}
+	}
+	// Leading "./" or "/" — drop so the first real segment is the root.
+	s = strings.TrimPrefix(s, "./")
+	s = strings.TrimPrefix(s, "/")
+	if s == "" {
+		return ""
+	}
+	root := s
+	if i := strings.IndexByte(root, '/'); i > 0 {
+		root = root[:i]
+	}
+	// Strip a trailing ".py" when the file sits at the repo root (no
+	// directory), e.g. "manage.py" → "manage".
+	root = strings.TrimSuffix(root, ".py")
+	return root
+}
+
+// pyExternalPackageRoot derives the canonical pip package root for a
+// Python IMPORTS edge that survived in-tree resolution, returning
+// (root, true) when the import's top-level package is a third-party pip
+// dependency rather than a same-repo module (#4699).
+//
+// The raw dotted module is read from relProps["source_module"] when present
+// (the Python extractor stamps it there) and falls back to the dotted stub
+// (the IMPORTS edge ToID is the module path) otherwise.
+//
+// Resolution:
+//   - "" / "." / relative (".foo", "..pkg")  → reject (relative imports are
+//     resolved to absolute form upstream; any residual dot-prefix is
+//     in-tree and must keep its bug disposition).
+//   - root segment ∈ internalPyRoots          → reject (genuinely-internal
+//     module that failed to resolve — STILL a fidelity bug, never masked).
+//   - otherwise                                → first dot-segment, lowercased
+//     ("celery.app.task" → "celery", "rest_framework" → "rest_framework").
+//
+// The root must be a legal Python identifier segment; anything else
+// (whitespace, path separators, structural-ref residue) is rejected so
+// malformed stubs still surface as bugs.
+func pyExternalPackageRoot(stub string, relProps map[string]string, internalPyRoots map[string]bool) (string, bool) {
+	spec := stub
+	if relProps != nil {
+		if sm := strings.TrimSpace(relProps["source_module"]); sm != "" {
+			spec = sm
+		}
+	}
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return "", false
+	}
+	// Relative imports (`from . import x`, `from ..pkg import y`) are
+	// resolved to absolute dotted form by the extractor, but defend against
+	// any residual dot-prefix — those are in-tree, never external.
+	if strings.HasPrefix(spec, ".") {
+		return "", false
+	}
+	// Path/namespace separators or structural-ref residue mean this isn't a
+	// clean Python dotted module — leave it as a bug.
+	if strings.ContainsAny(spec, "/\\:") {
+		return "", false
+	}
+	root := spec
+	if i := strings.IndexByte(root, '.'); i > 0 {
+		root = root[:i]
+	}
+	if !isPyImportSegment(root) {
+		return "", false
+	}
+	// Genuinely-internal module that failed to resolve — keep it a bug.
+	// Match on the lowercased root too, so a case-variant internal package
+	// can't slip through as external.
+	if internalPyRoots != nil {
+		if internalPyRoots[root] || internalPyRoots[strings.ToLower(root)] {
+			return "", false
+		}
+	}
+	// Parity with the Python extractor's ext: convention (pythonKnownExternalRoots
+	// lookup is case-folded) and the lowercase ext:<pkg> placeholder used
+	// across ecosystems.
+	return strings.ToLower(root), true
+}
+
+// isPyImportSegment reports whether s is a legal top-level Python package
+// identifier segment: starts with a letter or underscore, followed by
+// letters, digits, or underscores. Hyphens (legal in PyPI distribution
+// names but NOT in import names) are rejected — the import root is always a
+// valid Python identifier.
+func isPyImportSegment(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c == '_':
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
 		default:
 			return false
 		}

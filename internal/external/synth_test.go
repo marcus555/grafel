@@ -8,6 +8,24 @@ import (
 	"github.com/cajasmota/archigraph/internal/resolve"
 )
 
+// isBugEdgeToID mirrors internal/mcp.isBugEdgeToID for #4699 fixtures: a
+// ToID that is neither a 16-char hex entity ID nor an ext:-prefixed external
+// reference is an unresolved stub that counts as a fidelity bug. Duplicated
+// here because internal/mcp can't be imported from internal/external tests
+// (import-cycle risk); kept in lockstep with the canonical definition.
+func isBugEdgeToID(toID string) bool {
+	if toID == "" {
+		return false
+	}
+	if len(toID) == 16 && isHexID(toID) {
+		return false
+	}
+	if strings.HasPrefix(toID, "ext:") {
+		return false
+	}
+	return true
+}
+
 // assertCrossLangGate is the canonical structural assertion for the
 // per-language gate at classification time (issue #516). For each
 // (name, otherLang) pair it verifies the gate's actual runtime
@@ -421,6 +439,100 @@ func TestSynthesize_JSRelativeImportNotExternal(t *testing.T) {
 		Relationships: []graph.Relationship{
 			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "src.b", Kind: "IMPORTS",
 				Properties: map[string]string{"language": "typescript", "import_path": "./b"}},
+		},
+	}
+	Synthesize(doc)
+	for _, r := range doc.Relationships {
+		if strings.HasPrefix(r.ToID, "ext:") {
+			t.Errorf("relative import wrongly externalised: ToID=%q", r.ToID)
+		}
+	}
+}
+
+// TestSynthesize_PyExternalPackages_Fixture is Fixture A for #4699: a Python
+// file importing third-party pip packages whose roots are NOT on the static
+// pythonKnownExternalRoots allowlist (rest_framework, celery, pydantic) must be
+// routed to ext:<package> placeholders (disposition external_package) rather
+// than left as bug-extractor stubs. The only indexed Python entity lives under
+// the "shop" package, so none of these roots are internal — they are pip deps.
+func TestSynthesize_PyExternalPackages_Fixture(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "shop/views.py", Language: "python", SourceFile: "shop/views.py"},
+		},
+		Relationships: []graph.Relationship{
+			// from rest_framework import serializers
+			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "rest_framework.serializers", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "python", "source_module": "rest_framework", "imported_name": "serializers"}},
+			// from celery import shared_task
+			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "celery.shared_task", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "python", "source_module": "celery", "imported_name": "shared_task"}},
+			// import pydantic
+			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "pydantic", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "python", "source_module": "pydantic", "imported_name": "pydantic"}},
+		},
+	}
+	Synthesize(doc)
+
+	want := map[string]string{
+		"rel-1": "ext:rest_framework",
+		"rel-2": "ext:celery",
+		"rel-3": "ext:pydantic",
+	}
+	for _, r := range doc.Relationships {
+		if exp, ok := want[r.ID]; ok && r.ToID != exp {
+			t.Errorf("%s ToID=%q, want %q", r.ID, r.ToID, exp)
+		}
+	}
+	// Control: none of these may remain a bug-extractor stub.
+	for _, r := range doc.Relationships {
+		if isBugEdgeToID(r.ToID) {
+			t.Errorf("%s wrongly counts as a fidelity bug: ToID=%q", r.ID, r.ToID)
+		}
+	}
+}
+
+// TestSynthesize_PyInternalUnresolvedStillBug is Fixture B for #4699 (the
+// control): a genuinely-internal same-repo import that failed to resolve must
+// STILL count as a fidelity bug — the external-package catch-all must NOT mask
+// real under-linking. Here "shop" is an indexed internal package, so an
+// unresolved `from shop.missing import Thing` keeps its bug disposition.
+func TestSynthesize_PyInternalUnresolvedStillBug(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "shop/views.py", Language: "python", SourceFile: "shop/views.py"},
+			{ID: "bbbbbbbbbbbbbbbb", Name: "shop/models.py", Language: "python", SourceFile: "shop/models.py"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "shop.missing.Thing", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "python", "source_module": "shop.missing", "imported_name": "Thing"}},
+		},
+	}
+	Synthesize(doc)
+	for _, r := range doc.Relationships {
+		if r.ID != "rel-1" {
+			continue
+		}
+		if strings.HasPrefix(r.ToID, "ext:") {
+			t.Errorf("internal unresolved import wrongly externalised: ToID=%q", r.ToID)
+		}
+		if !isBugEdgeToID(r.ToID) {
+			t.Errorf("internal unresolved import should remain a fidelity bug, ToID=%q", r.ToID)
+		}
+	}
+}
+
+// TestSynthesize_PyRelativeImportNotExternal confirms the #4699 branch does
+// NOT externalise a residual relative-import source_module — a dot-prefixed
+// module is project-internal and must keep its bug disposition.
+func TestSynthesize_PyRelativeImportNotExternal(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "shop/views.py", Language: "python", SourceFile: "shop/views.py"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: ".sibling.helper", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "python", "source_module": ".sibling", "imported_name": "helper"}},
 		},
 	}
 	Synthesize(doc)
