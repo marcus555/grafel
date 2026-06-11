@@ -384,3 +384,112 @@ func TestNest_EffectiveGuard_ExplicitPublic(t *testing.T) {
 		t.Fatalf("got %s/%s, want nestjs/public", fw, p.Kind)
 	}
 }
+
+// --- #4675: DRF EFFECTIVE permission precedence (method ▸ class ▸ global) -----
+//
+// The DRF analog of the NestJS effective-guard fix. The resolver must resolve
+// the most-specific permission: a per-action `@action(permission_classes=…)`
+// override or a `get_permissions` per-action arm ▸ the class permission_classes
+// ▸ the global REST_FRAMEWORK DEFAULT_PERMISSION_CLASSES.
+
+// (A) ViewSet class permission_classes=[IsAuthenticated] with an
+// @action(permission_classes=[AllowAny]). The extractor stamps the per-action
+// `permission_classes` onto the action endpoint, so the action resolves PUBLIC
+// while a sibling (carrying the inherited class value) resolves authenticated.
+func TestDRF_ActionPermissionClasses_OverridesClass(t *testing.T) {
+	reg := NewRegistry()
+	// The @action override endpoint: permission_classes=[AllowAny] (per-action).
+	action, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "permission_classes": "AllowAny",
+	}, Action: "ping"})
+	if fw != "django-drf" {
+		t.Fatalf("framework=%s, want django-drf", fw)
+	}
+	if action.Kind != KindPublic {
+		t.Fatalf("action: got %s, want public (@action(permission_classes=[AllowAny]) overrides class)", action.Kind)
+	}
+	// A sibling action that inherits the class default: the extractor stamps the
+	// CLASS permission_classes onto its endpoint (=[IsAuthenticated]).
+	sib, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "has_permission_classes": "true", "permission_classes": "IsAuthenticated",
+	}, Action: "list"})
+	if sib.Kind != KindAuthenticated {
+		t.Fatalf("sibling: got %s, want authenticated (inherited class default)", sib.Kind)
+	}
+}
+
+// (B) get_permissions with `if self.action == 'x': return [AllowAny()]` else the
+// class default → action x is public (method-level arm), others get the else
+// class/default arm.
+func TestDRF_GetPermissions_PerActionPublic_ElseClass(t *testing.T) {
+	src := `
+def get_permissions(self):
+    if self.action == "open":
+        return [AllowAny()]
+    else:
+        return [IsAuthenticated()]
+`
+	reg := NewRegistry()
+	open, fw := reg.Resolve(Signal{
+		Props:  map[string]string{"has_get_permissions": "true"},
+		Source: src, Action: "open",
+	})
+	if fw != "django-drf" {
+		t.Fatalf("framework=%s, want django-drf", fw)
+	}
+	if open.Kind != KindPublic {
+		t.Fatalf("action open: got %s, want public (per-action arm)", open.Kind)
+	}
+	other, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"has_get_permissions": "true"},
+		Source: src, Action: "list",
+	})
+	if other.Kind != KindAuthenticated {
+		t.Fatalf("action list: got %s, want authenticated (else/class arm)", other.Kind)
+	}
+}
+
+// (C) No class permission_classes and no get_permissions, but a global
+// REST_FRAMEWORK DEFAULT_PERMISSION_CLASSES=[IsAuthenticated] → endpoints resolve
+// authenticated via the global default.
+func TestDRF_GlobalDefault_AppliesWhenNoMethodOrClass(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "drf_default_permission_classes": "IsAuthenticated",
+	}})
+	if fw != "django-drf" {
+		t.Fatalf("framework=%s, want django-drf", fw)
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (global DEFAULT_PERMISSION_CLASSES fallback)", p.Kind)
+	}
+}
+
+// Empty `permission_classes=[]` (extractor stamps NO prop) must fall through to
+// the global default, NOT resolve public — the empty-vs-AllowAny distinction.
+func TestDRF_EmptyPermissionClasses_FallsToGlobal(t *testing.T) {
+	reg := NewRegistry()
+	// No permission_classes prop (empty list ⇒ absent), only a global default.
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "drf_default_permission_classes": "IsAuthenticated",
+	}, Action: "list"})
+	if p.Kind == KindPublic {
+		t.Fatalf("empty permission_classes=[] resolved PUBLIC; §4675 says it falls to the global default")
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (global default)", p.Kind)
+	}
+}
+
+// Class permission_classes wins over the global default (precedence level 2 > 3).
+func TestDRF_ClassOverridesGlobalDefault(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "has_permission_classes": "true",
+		"permission_classes":             "AllowAny",
+		"drf_default_permission_classes": "IsAuthenticated",
+	}})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (class permission_classes=[AllowAny] overrides global IsAuthenticated)", p.Kind)
+	}
+}
