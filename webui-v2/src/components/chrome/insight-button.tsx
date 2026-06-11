@@ -63,6 +63,7 @@ export function InsightButton() {
             human={insight.human}
             agent={insight.agent}
             storageKey={insight.storageKey}
+            alwaysExpanded
           />
         </div>
       </PopoverContent>
