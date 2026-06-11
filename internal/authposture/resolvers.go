@@ -82,22 +82,29 @@ func NewRegistry() *Registry {
 		springSecurityResolver{}, // #4708 — @PreAuthorize/@Secured/@RolesAllowed
 		fastAPIResolver{},        // #4709 — Depends(auth)/Security scopes
 		expressResolver{},        // #4710 — passport/requireAuth/role middleware
+		// Implemented (framework auth-resolver wave #4538/#4540/#4541/#4542).
+		railsResolver{},   // #4538 — before_action / Pundit / CanCanCan
+		flaskResolver{},   // #4540 — decorators / before_request
+		laravelResolver{}, // #4541 — middleware / Gates / Policies
+		aspnetResolver{},  // #4542 — [Authorize] / [AllowAnonymous] / policies
 		// Stubs — registry members so the shape is fixed; each returns
 		// ok=false until its follow-up ticket lands. NOT flagship-only.
-		stubResolver{name: "rails"},         // ref #4419 — Pundit/CanCanCan/before_action
-		stubResolver{name: "flask"},         // ref #4419 — decorators/before_request
-		stubResolver{name: "laravel"},       // ref #4419 — middleware/Gates/Policies
-		stubResolver{name: "aspnet"},        // ref #4419 — [Authorize]/policies
 		stubResolver{name: "go-middleware"}, // ref #4419 — middleware chains
 		stubResolver{name: "phoenix"},       // ref #4419 — plugs
 	}}
 }
 
 // Resolve runs the registry over a signal, preferring a resolver whose Name
-// matches sig.Framework when that hint is present, else first-ok wins.
+// matches the framework hint when present, else first-ok wins. The hint is read
+// from the dedicated Signal.Framework field OR the "framework" property (the
+// engine stamps it as a property; the MCP tool also lifts it into the field).
 func (r *Registry) Resolve(sig Signal) (Posture, string) {
 	// Honour an explicit framework hint first, if any resolver claims it.
-	if fw := strings.ToLower(strings.TrimSpace(sig.Framework)); fw != "" {
+	hint := strings.TrimSpace(sig.Framework)
+	if hint == "" {
+		hint = strings.TrimSpace(sig.Props["framework"])
+	}
+	if fw := strings.ToLower(hint); fw != "" {
 		for _, res := range r.resolvers {
 			if frameworkMatches(res.Name(), fw) {
 				if p, ok := res.Resolve(sig); ok {
