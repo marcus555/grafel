@@ -246,8 +246,9 @@ func TestRegistry_NestRequireActionDecoratorFallback(t *testing.T) {
 func TestRegistry_StubsRegisteredButDecline(t *testing.T) {
 	reg := NewRegistry()
 	fws := reg.Frameworks()
-	// spring-security (#4708), fastapi (#4709) and express (#4710) are now
-	// implemented members; the remaining follow-up frameworks stay stubs.
+	// spring-security (#4708), fastapi (#4709), express (#4710), and now rails
+	// (#4538), flask (#4540), laravel (#4541), aspnet (#4542) are implemented
+	// members; only go-middleware and phoenix stay stubs.
 	want := []string{"aspnet", "django-drf", "express", "fastapi", "flask", "go-middleware", "laravel", "nestjs", "phoenix", "rails", "spring-security"}
 	if len(fws) != len(want) {
 		t.Fatalf("frameworks=%v, want %v", fws, want)
@@ -257,8 +258,8 @@ func TestRegistry_StubsRegisteredButDecline(t *testing.T) {
 			t.Fatalf("frameworks=%v, want %v", fws, want)
 		}
 	}
-	// A still-unimplemented framework (rails) signal → unknown / no resolver.
-	p, fw := reg.Resolve(Signal{Props: map[string]string{"pundit_policy": "AdminPolicy"}})
+	// A still-unimplemented framework (phoenix plug) signal → unknown / no resolver.
+	p, fw := reg.Resolve(Signal{Props: map[string]string{"phoenix_plug": "EnsureAuth"}})
 	if fw != "" || p.Kind != KindUnknown {
 		t.Fatalf("unimplemented framework resolved as %s/%s, want unknown/none", fw, p.Kind)
 	}
@@ -638,5 +639,297 @@ func TestSpring_E2E_ClassRoleVsOracle_AndMethodOverrideLooser(t *testing.T) {
 	}})
 	if d := Diff(over, oracle); d.Verdict != VerdictLooser {
 		t.Fatalf("override verdict=%s detail=%s, want looser (permitAll opened an authenticated endpoint)", d.Verdict, d.Detail)
+	}
+}
+
+// --- #4538: Rails (before_action + Pundit/CanCanCan) -------------------------
+
+// (A) PROTECTED: class before_action :authenticate_user! → authenticated.
+func TestRails_BeforeActionAuthenticate_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "rails"},
+		Source: "class PostsController < ApplicationController\n  before_action :authenticate_user!\n  def index; end\nend",
+	})
+	if fw != "rails" {
+		t.Fatalf("framework=%s, want rails", fw)
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (before_action :authenticate_user!)", p.Kind)
+	}
+}
+
+// (A2) Pundit authorize @x, :update? → action (policy) grant.
+func TestRails_PunditAuthorize_ActionGrant(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "rails"},
+		Source: "def update\n  @post = Post.find(params[:id])\n  authorize @post, :update?\nend",
+	})
+	if p.Kind != KindAction || p.Literal != "update" {
+		t.Fatalf("got %s/%q, want action/update (Pundit authorize)", p.Kind, p.Literal)
+	}
+}
+
+// (A3) CanCanCan authorize! :destroy → action grant. require_admin → role admin.
+func TestRails_CanCanCanAndAdmin(t *testing.T) {
+	reg := NewRegistry()
+	cc, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "rails"},
+		Source: "def destroy\n  authorize! :destroy, @post\nend"})
+	if cc.Kind != KindAction || cc.Literal != "destroy" {
+		t.Fatalf("got %s/%q, want action/destroy (CanCanCan authorize!)", cc.Kind, cc.Literal)
+	}
+	adm, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "rails"},
+		Source: "class AdminController < ApplicationController\n  before_action :require_admin\nend"})
+	if adm.Kind != KindRole || adm.Literal != "admin" {
+		t.Fatalf("got %s/%q, want role/admin (before_action :require_admin)", adm.Kind, adm.Literal)
+	}
+}
+
+// (B) PUBLIC OVERRIDE: skip_before_action :authenticate_user! → public.
+func TestRails_SkipBeforeAction_Public(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "rails"},
+		Source: "class PublicController < ApplicationController\n  skip_before_action :authenticate_user!, only: [:index]\nend",
+	})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (skip_before_action override)", p.Kind)
+	}
+}
+
+// (B2) Reconciled auth_required=false (engine resolved an only:-scoped skip) → public.
+func TestRails_ReconciledSkipPublic(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "rails", "auth_required": "false", "auth_method": "skip_before_action",
+	}})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (reconciled skip_before_action)", p.Kind)
+	}
+}
+
+// --- #4540: Flask (decorators / before_request) ------------------------------
+
+// (A) PROTECTED: @login_required → authenticated.
+func TestFlask_LoginRequired_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "flask"},
+		Source: "@app.route('/dash')\n@login_required\ndef dash():\n    return render()",
+	})
+	if fw != "flask" {
+		t.Fatalf("framework=%s, want flask", fw)
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (@login_required)", p.Kind)
+	}
+}
+
+// (A2) @roles_required('admin') → role; @permission_required('export') → action.
+func TestFlask_RolesAndPermission(t *testing.T) {
+	reg := NewRegistry()
+	r, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "flask"},
+		Source: "@roles_required('admin')\ndef admin_view(): pass"})
+	if r.Kind != KindRole || r.Literal != "admin" {
+		t.Fatalf("got %s/%q, want role/admin (@roles_required)", r.Kind, r.Literal)
+	}
+	pr, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "flask"},
+		Source: "@permission_required('export')\ndef export_view(): pass"})
+	if pr.Kind != KindAction || pr.Literal != "export" {
+		t.Fatalf("got %s/%q, want action/export (@permission_required)", pr.Kind, pr.Literal)
+	}
+}
+
+// (B) PUBLIC: a Flask view with no auth decorator (auth_required=false) → public.
+func TestFlask_NoDecorator_Public(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "flask", "auth_required": "false",
+	}})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (no auth decorator)", p.Kind)
+	}
+}
+
+// (B2) before_request hook scope → authenticated default for the blueprint.
+func TestFlask_BeforeRequestScope_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "flask", "auth_required": "true", "auth_method": "before_request",
+	}})
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (before_request scope)", p.Kind)
+	}
+}
+
+// --- #4541: Laravel (middleware / Gates / Policies) --------------------------
+
+// (A) PROTECTED: ->middleware('auth:sanctum') → authenticated.
+func TestLaravel_AuthMiddleware_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "laravel"},
+		Source: "Route::get('/profile', [ProfileController::class, 'show'])->middleware('auth:sanctum');",
+	})
+	if fw != "laravel" {
+		t.Fatalf("framework=%s, want laravel", fw)
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (->middleware('auth:sanctum'))", p.Kind)
+	}
+}
+
+// (A2) role:admin middleware → role; can:update → action; authorize() → action.
+func TestLaravel_RoleAndCanAndGate(t *testing.T) {
+	reg := NewRegistry()
+	role, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "laravel"},
+		Source: "Route::get('/admin', 'A@i')->middleware('role:editor');"})
+	if role.Kind != KindRole || role.Literal != "editor" {
+		t.Fatalf("got %s/%q, want role/editor", role.Kind, role.Literal)
+	}
+	can, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "laravel"},
+		Source: "Route::put('/post/{p}', 'P@u')->middleware('can:update,post');"})
+	if can.Kind != KindAction || can.Literal != "update" {
+		t.Fatalf("got %s/%q, want action/update (can:)", can.Kind, can.Literal)
+	}
+	gate, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "laravel"},
+		Source: "public function update(Post $post) {\n  $this->authorize('update', $post);\n}"})
+	if gate.Kind != KindAction || gate.Literal != "update" {
+		t.Fatalf("got %s/%q, want action/update ($this->authorize)", gate.Kind, gate.Literal)
+	}
+}
+
+// (B) PUBLIC OVERRIDE: ->withoutMiddleware('auth') → public.
+func TestLaravel_WithoutMiddleware_Public(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "laravel"},
+		Source: "Route::get('/open', 'O@i')->withoutMiddleware('auth');",
+	})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (->withoutMiddleware('auth'))", p.Kind)
+	}
+}
+
+// (B2) No auth middleware (auth_required=false) → public.
+func TestLaravel_NoMiddleware_Public(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "laravel", "auth_required": "false",
+	}})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (no auth middleware)", p.Kind)
+	}
+}
+
+// --- #4542: ASP.NET Core ([Authorize] / [AllowAnonymous] / policies) ---------
+
+// (A) PROTECTED: method [Authorize(Roles="Admin")] → role Admin.
+func TestAspnet_AuthorizeRoles_Role(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "aspnet"},
+		Source: "[Authorize(Roles = \"Admin,Manager\")]\npublic IActionResult Edit() { }",
+	})
+	if fw != "aspnet" {
+		t.Fatalf("framework=%s, want aspnet", fw)
+	}
+	if p.Kind != KindRole || p.Literal != "Admin" {
+		t.Fatalf("got %s/%q, want role/Admin", p.Kind, p.Literal)
+	}
+}
+
+// (A2) [Authorize(Policy="CanEdit")] → policy/role grant on CanEdit.
+func TestAspnet_AuthorizePolicy(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "aspnet"},
+		Source: "[Authorize(Policy = \"CanEdit\")]\npublic IActionResult Save() { }",
+	})
+	if p.Kind != KindRole || p.Literal != "CanEdit" {
+		t.Fatalf("got %s/%q, want role/CanEdit (policy)", p.Kind, p.Literal)
+	}
+}
+
+// (B) PUBLIC OVERRIDE: method [AllowAnonymous] over class [Authorize] → public.
+// (C) PRECEDENCE: the class carries [Authorize] but the method [AllowAnonymous]
+// wins (most-specific).
+func TestAspnet_AllowAnonymous_OverridesClassAuthorize(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework":              "aspnet",
+		"allow_anonymous":        "true",
+		"aspnet_class_authorize": "[Authorize]",
+	}})
+	if fw != "aspnet" {
+		t.Fatalf("framework=%s, want aspnet", fw)
+	}
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (method [AllowAnonymous] overrides class [Authorize])", p.Kind)
+	}
+	// A sibling action with NO method attribute inherits the class [Authorize].
+	sib, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":              "aspnet",
+		"aspnet_class_authorize": "[Authorize]",
+	}})
+	if sib.Kind != KindAuthenticated {
+		t.Fatalf("sibling: got %s, want authenticated (inherited class [Authorize])", sib.Kind)
+	}
+}
+
+// (C2) Source-level precedence: an action body carrying BOTH a class-context
+// [Authorize] and a method [AllowAnonymous] resolves public.
+func TestAspnet_SourceAllowAnonymousWins(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "aspnet"},
+		Source: "[AllowAnonymous]\npublic IActionResult Ping() { }",
+	})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public ([AllowAnonymous] method)", p.Kind)
+	}
+}
+
+// (D) GLOBAL: a configured FallbackPolicy (RequireAuthenticatedUser) → authenticated
+// default when no method/class attribute covers the action.
+func TestAspnet_GlobalFallbackPolicy_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":              "aspnet",
+		"aspnet_fallback_policy": "RequireAuthenticatedUser",
+	}})
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (global FallbackPolicy)", p.Kind)
+	}
+}
+
+// --- E2E: each framework's posture diffs correctly against a Django oracle ----
+
+// A Rails authenticated handler vs a Django page oracle is LOOSER (the RBAC
+// regression class the diff exists to catch).
+func TestRails_E2E_AuthenticatedVsOraclePage_Looser(t *testing.T) {
+	reg := NewRegistry()
+	oracle, _ := reg.Resolve(Signal{
+		Props: map[string]string{"has_get_permissions": "true"}, Source: clientViewSetGetPerms, Action: "approve",
+	}) // → page client_admin
+	v3, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "rails"},
+		Source: "before_action :authenticate_user!"})
+	if d := Diff(v3, oracle); d.Verdict != VerdictLooser {
+		t.Fatalf("verdict=%s detail=%s, want looser (Rails authenticated vs oracle page)", d.Verdict, d.Detail)
+	}
+}
+
+// An ASP.NET [AllowAnonymous] override vs a Django authenticated oracle is LOOSER.
+func TestAspnet_E2E_PublicVsOracleAuthenticated_Looser(t *testing.T) {
+	reg := NewRegistry()
+	oracle, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "has_permission_classes": "true", "permission_classes": "IsAuthenticated",
+	}})
+	v3, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "aspnet", "allow_anonymous": "true", "aspnet_class_authorize": "[Authorize]",
+	}})
+	if d := Diff(v3, oracle); d.Verdict != VerdictLooser {
+		t.Fatalf("verdict=%s detail=%s, want looser ([AllowAnonymous] opened an authenticated endpoint)", d.Verdict, d.Detail)
 	}
 }
