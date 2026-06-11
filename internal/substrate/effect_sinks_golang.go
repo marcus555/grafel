@@ -46,12 +46,48 @@ var goHTTPRe = regexp.MustCompile(
 		`|\b(?:client|httpClient|c)\s*\.\s*(?:Do|Get|Post|Head|PostForm)\s*\(`,
 )
 
-// goDBReadRe matches database/sql + GORM + sqlx read primitives.
+// goDBReadRe matches the DISTINCTIVE database/sql + GORM + sqlx read
+// primitives — names that don't collide with ordinary method calls on a
+// non-DB receiver, so they're safe to bare-match anywhere. GORM `.Where` is a
+// distinctive query-builder refinement (the layered-repo read entry point —
+// `r.db.Where(...).Find(&xs)`); it's bare-matched here too. The sqlx `.Get(&` /
+// `.Select(&` forms are kept for the canonical destination-pointer shape.
+//
+// The ambiguous sqlx terminals `.Get` / `.Select` / `.Query*` WITHOUT a `&`
+// destination (e.g. a fluent `r.db.Get(ctx, id)` wrapper, or `.Select(cols)` as
+// a column projection) collide with map getters / generic selectors, so they
+// are credited db_read ONLY on a DB-typed receiver by goDBTypedReadMatches
+// (#4692 receiver-typed read credit, mirroring the Python #4691 model).
 var goDBReadRe = regexp.MustCompile(
 	`\.\s*(?:Query|QueryContext|QueryRow|QueryRowContext)\s*\(` +
-		`|\.\s*(?:Find|First|Last|Take|Pluck|Count|Scan|FindInBatches|Distinct|Select)\s*\(` +
+		`|\.\s*(?:Find|First|Last|Take|Pluck|Count|Scan|FindInBatches|Distinct|Where)\s*\(` +
 		`|\.\s*Get\s*\(\s*&` + // sqlx convention: db.Get(&dest, ...)
 		`|\.\s*Select\s*\(\s*&`, // sqlx convention: db.Select(&dest, ...)
+)
+
+// --- #4692 Go DB receiver-typed read credit (ambiguous terminals) ---
+//
+// goDBAmbiguousVerbs collide with non-DB method names (a map/cache `.Get`, a
+// column `.Select`, a builder `.First`), so they are credited db_read ONLY when
+// the receiver is known to be a `*gorm.DB` / `*sqlx.DB` / `*sqlx.Tx` handle —
+// the layered-repository read shape `r.db.First(&u, id)` / `r.db.Get(ctx,id)`.
+const goDBAmbiguousVerbs = `Get|Select|Query|QueryRow|First|Find|Take|Where|Scan|Pluck`
+
+// goDBHandleTypedRe seeds the set of DB-typed names. Group 1 captures the name
+// from the recurring shapes:
+//   - `db *gorm.DB` / `db *sqlx.DB` / `db *sqlx.Tx` / `db *sql.DB`  (params/fields)
+//   - `db := gorm.Open(...)` / `sqlx.Connect(...)` / `sqlx.Open(...)`
+//   - `db.Model(&X{})` chains return *gorm.DB — the receiver `db` is typed
+var goDBHandleTypedRe = regexp.MustCompile(
+	`\b([A-Za-z_]\w*)\s+\*?\s*(?:gorm\.DB|sqlx\.DB|sqlx\.Tx|sql\.DB|sql\.Tx|bun\.DB|ent\.Client)\b` +
+		`|\b([A-Za-z_]\w*)\s*:?=\s*(?:gorm\s*\.\s*Open|sqlx\s*\.\s*(?:Connect|ConnectContext|Open|MustConnect|NewDb)|sql\s*\.\s*Open|bun\s*\.\s*NewDB)\s*\(`,
+)
+
+// goDBStructFieldRe types the struct field a repository holds its handle in —
+// `db *gorm.DB` / `DB *sqlx.DB` inside a struct — so `r.db.First(...)` resolves
+// (the receiver token is the field name). Group 1 = field name.
+var goDBStructFieldRe = regexp.MustCompile(
+	`(?m)^\s*([A-Za-z_]\w*)\s+\*?\s*(?:gorm\.DB|sqlx\.DB|sqlx\.Tx|sql\.DB|sql\.Tx|bun\.DB|ent\.Client)\b`,
 )
 
 // goDBWriteRe matches database/sql + GORM + sqlx write primitives.
@@ -91,11 +127,73 @@ func sniffEffectsGo(content string) []EffectMatch {
 	var out []EffectMatch
 	out = appendGoMatches(out, content, headers, goHTTPRe, EffectHTTPOut, "http.Client.Do/Get/Post", 1.0)
 	out = appendGoMatches(out, content, headers, goDBReadRe, EffectDBRead, "sql.Query/GORM.Find/sqlx.Get", 0.85)
+	out = append(out, goDBTypedReadMatches(content, headers)...)
 	out = appendGoMatches(out, content, headers, goDBWriteRe, EffectDBWrite, "sql.Exec/GORM.Create/Save", 0.85)
 	out = appendGoMatches(out, content, headers, goFSReadRe, EffectFSRead, "os.Open/ReadFile", 1.0)
 	out = appendGoMatches(out, content, headers, goFSWriteRe, EffectFSWrite, "os.Create/WriteFile", 1.0)
 	out = appendGoMatches(out, content, headers, goMutationRe, EffectMutation, "recv.field=", 0.6)
 	return out
+}
+
+// goDBTypedReadMatches implements the #4692 receiver-typed read credit for Go.
+// It collects the set of DB-typed handle names (params/fields/locals declared or
+// assigned as *gorm.DB / *sqlx.DB / sql.DB / ...), then emits db_read for each
+// ambiguous read terminal invoked on one of those handles — either as a bare
+// receiver (`db.Get(ctx,id)`) or as a struct field selector (`r.db.First(&u)`,
+// `s.DB.Select(&xs)`). An ambiguous verb on an untyped receiver (a map's `.Get`,
+// a builder's `.Select`) earns no credit — the false-positive guard is preserved.
+func goDBTypedReadMatches(content string, headers []funcHeader) []EffectMatch {
+	typed := collectGoDBHandleNames(content)
+	if len(typed) == 0 {
+		return nil
+	}
+	var out []EffectMatch
+	seen := map[int]bool{}
+	emit := func(off int) {
+		if seen[off] {
+			return
+		}
+		seen[off] = true
+		line := lineOfOffset(content, off)
+		out = append(out, EffectMatch{
+			Function:   nearestHeader(headers, line),
+			Line:       line,
+			Effect:     EffectDBRead,
+			Sink:       "sqlx/gorm.read.typed",
+			Confidence: 0.85,
+		})
+	}
+	for name := range typed {
+		// Bare receiver `<name>.<verb>(` and field selector `.<name>.<verb>(`.
+		re := regexp.MustCompile(`(?:\b|\.)` + regexp.QuoteMeta(name) + `\s*\.\s*(?:` + goDBAmbiguousVerbs + `)\s*\(`)
+		for _, m := range re.FindAllStringIndex(content, -1) {
+			emit(m[0])
+		}
+	}
+	return out
+}
+
+// collectGoDBHandleNames returns the set of names (params, struct fields, locals)
+// known to hold a *gorm.DB / *sqlx.DB / sql.DB / bun.DB / ent.Client handle.
+func collectGoDBHandleNames(content string) map[string]bool {
+	typed := map[string]bool{}
+	add := func(s string) {
+		if s != "" {
+			typed[s] = true
+		}
+	}
+	for _, m := range goDBHandleTypedRe.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 3 {
+			add(m[1])
+			add(m[2])
+		}
+	}
+	for _, m := range goDBStructFieldRe.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 2 {
+			add(m[1])
+		}
+	}
+	return typed
 }
 
 func scanGoFuncHeaders(content string) []funcHeader {
