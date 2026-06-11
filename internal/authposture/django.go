@@ -1,5 +1,32 @@
 // django.go — the Django DRF auth-posture resolver, encoding the §10
-// get_permissions DECODE CONTRACT (ticket #4422) exactly.
+// get_permissions DECODE CONTRACT (ticket #4422) exactly, plus the EFFECTIVE
+// permission precedence (ticket #4675 — the DRF analog of the NestJS
+// effective-guard fix #4667/#4676).
+//
+// EFFECTIVE PERMISSION PRECEDENCE (most-specific wins, mirroring how DRF itself
+// resolves a request's permissions — #4675):
+//
+//	1. METHOD/ACTION level — a `@action(detail=…, permission_classes=[X])`
+//	   decorator on a ViewSet extra-action, OR the per-action arm of a branchy
+//	   `get_permissions(self)` keyed on `self.action`. Applies to THAT action
+//	   only; siblings keep the class default. (DRF resolves `get_permissions`
+//	   per request, and the @action kwarg overrides the class attribute for that
+//	   route.) NOTE the framework asymmetry: an APIView `get`/`post` method
+//	   CANNOT carry its own `permission_classes` (APIView is class-scoped), so for
+//	   an APIView the class value is already the effective one — only ViewSet
+//	   @action carries a method-level override.
+//	2. CLASS level — the ViewSet/APIView `permission_classes = [...]` attribute
+//	   (or the else/default arm of `get_permissions`). Applies to actions without
+//	   their own override.
+//	3. GLOBAL default — REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"], harvested as
+//	   the `drf_default_permission_classes` Signal prop. Applies when NEITHER a
+//	   method nor a class permission is specified.
+//
+// The empty-vs-AllowAny distinction is load-bearing for the precedence:
+//   - `permission_classes=[AllowAny]` ▸ PUBLIC, overriding the global default.
+//   - `permission_classes=[]` (empty) ▸ NO explicit grant → falls through to the
+//     GLOBAL default (NOT public). The extractor stamps no `permission_classes`
+//     prop for an empty list, so "absent prop" naturally means "fall to global".
 //
 // The oracle's authorization for a ViewSet action lives in a branchy
 // get_permissions(self) override that returns a different permission list per
@@ -79,30 +106,53 @@ func (d djangoDRFResolver) Resolve(sig Signal) (Posture, bool) {
 		sig.hasProp("has_permission_classes") ||
 		sig.prop("permission_classes") != "" ||
 		sig.prop("get_permissions_classes") != "" ||
+		sig.prop("drf_default_permission_classes") != "" ||
 		looksLikeGetPermissions(sig.Source)
 	if !isDRF {
 		return Posture{}, false
 	}
 
-	// Prefer the §10 branch decode when we have a get_permissions body AND an
-	// action to resolve for — that is the precise, branch-aware path.
+	// (1) METHOD/ACTION level — most specific, wins over class + global (#4675).
+	//
+	// (1a) The branchy `get_permissions(self)` per-action decode IS a method-level
+	// override (it returns a different list per self.action). The §10 decoder
+	// attributes the effective grant to sig.Action; its else/default arm is the
+	// CLASS-level fallthrough for un-named actions.
 	if looksLikeGetPermissions(sig.Source) {
 		if p, ok := decodeGetPermissions(sig.Source, sig.Action); ok {
 			return p, true
 		}
 	}
-
-	// Fallback: class-attribute permission_classes (no branchy override). This
-	// is the flat DRF posture, decoded from the comma-joined class list the
-	// extractor stamps (get_permissions_classes or permission_classes).
-	return decodePermissionClasses(d.classList(sig)), true
-}
-
-func (djangoDRFResolver) classList(sig Signal) string {
-	if v := sig.prop("get_permissions_classes"); v != "" {
-		return v
+	// (1b) An `@action(..., permission_classes=[X])` decorator override. The
+	// action endpoint entity carries the per-action `permission_classes` the
+	// extractor stamped from the decorator kwarg; it overrides the class default
+	// for THAT action only. (Siblings without the decorator carry no
+	// `permission_classes` prop and fall through to class/global below.) An empty
+	// `permission_classes=[]` stamps NO prop, so it correctly does NOT match here
+	// and falls to the global default — the empty-vs-AllowAny distinction.
+	if v := sig.prop("permission_classes"); v != "" {
+		return decodePermissionClasses(v), true
 	}
-	return sig.prop("permission_classes")
+
+	// (2) CLASS level — the ViewSet/APIView class-attribute permission list the
+	// extractor stamps (get_permissions_classes when a non-branchy get_permissions
+	// referenced classes, else the class permission_classes attribute, already
+	// handled at (1b)).
+	if v := sig.prop("get_permissions_classes"); v != "" {
+		return decodePermissionClasses(v), true
+	}
+
+	// (3) GLOBAL default — REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"]. Applies
+	// only when neither a method (1) nor a class (2) permission was specified.
+	if v := sig.prop("drf_default_permission_classes"); v != "" {
+		p := decodePermissionClasses(v)
+		p.Detail = "global DEFAULT_PERMISSION_CLASSES: " + v + " (" + string(p.Kind) + ")"
+		return p, true
+	}
+
+	// Recognised as DRF but no method/class/global permission resolved → unknown
+	// (never false-public).
+	return Posture{Kind: KindUnknown, Detail: "DRF endpoint with no resolvable permission_classes / get_permissions / global default"}, true
 }
 
 // looksLikeGetPermissions reports whether src is a get_permissions method body.
