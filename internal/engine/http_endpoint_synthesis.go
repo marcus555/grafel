@@ -950,6 +950,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// aiohttp / urllib / session-style HTTP client calls.
 		// Now emits FETCHES edges at extraction time.
 		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
+		// Consumer side (#3608, epic #3607): Python `gql` package GraphQL
+		// operations. Maps each `gql("query/mutation/subscription { <field> }")`
+		// document to the canonical http:GRAPHQL:/graphql/<Root>/<field> shape so
+		// it cross-links to the GraphQL server records via the Name-based HTTP
+		// linker — mirroring the JS/TS, Dart and Swift GraphQL client passes.
+		// Gated on a `gql(` marker so it no-ops on every other Python file.
+		synthesizePyGraphQLClient(string(content), emitClientRuntime)
 		// SOAP + JSON-RPC (epic #3628): zeep `client.service.<Op>()` SOAP calls
 		// and xmlrpc/jsonrpc `register_function` producers + `ServerProxy(...)`
 		// client calls, keyed http:SOAP:/soap/... and http:JSONRPC:/jsonrpc/...
