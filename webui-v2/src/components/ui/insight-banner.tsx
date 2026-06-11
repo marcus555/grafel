@@ -25,6 +25,13 @@ export interface InsightBannerProps {
    * key so a user who collapses one banner sees them collapsed everywhere.
    */
   storageKey?: string;
+  /**
+   * When true, the banner always renders its two-column content with no
+   * collapse/show-insight toggle. Used where an outer control (e.g. the
+   * breadcrumb InsightButton popover) is already the sole show/hide toggle,
+   * so an inner one would be redundant.
+   */
+  alwaysExpanded?: boolean;
 }
 
 const STORAGE_PREFIX = "ag.insightBanner.collapsed";
@@ -57,8 +64,8 @@ function writeCollapsed(storageKey: string | undefined, collapsed: boolean) {
  * in localStorage) so power users can reclaim vertical space. Replaces the
  * separate {@link ScreenDescription} + {@link AgentUsage} pair.
  */
-export function InsightBanner({ human, agent, storageKey }: InsightBannerProps) {
-  const [collapsed, setCollapsed] = useState(() => readCollapsed(storageKey));
+export function InsightBanner({ human, agent, storageKey, alwaysExpanded = false }: InsightBannerProps) {
+  const [collapsed, setCollapsed] = useState(() => !alwaysExpanded && readCollapsed(storageKey));
 
   const setAndPersist = useCallback(
     (next: boolean) => {
@@ -68,7 +75,7 @@ export function InsightBanner({ human, agent, storageKey }: InsightBannerProps) 
     [storageKey],
   );
 
-  if (collapsed) {
+  if (collapsed && !alwaysExpanded) {
     return (
       <div className="mb-3 max-w-4xl">
         <button
@@ -86,15 +93,17 @@ export function InsightBanner({ human, agent, storageKey }: InsightBannerProps) 
 
   return (
     <div className="relative mb-3 w-full overflow-hidden rounded-lg border border-border bg-surface">
-      <button
-        type="button"
-        onClick={() => setAndPersist(true)}
-        aria-label="Collapse insight banner"
-        title="Collapse"
-        className="absolute right-1.5 top-1.5 z-10 rounded-md p-1 text-text-4 transition-colors hover:bg-surface-2 hover:text-text-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
-      >
-        <X size={14} />
-      </button>
+      {!alwaysExpanded && (
+        <button
+          type="button"
+          onClick={() => setAndPersist(true)}
+          aria-label="Collapse insight banner"
+          title="Collapse"
+          className="absolute right-1.5 top-1.5 z-10 rounded-md p-1 text-text-4 transition-colors hover:bg-surface-2 hover:text-text-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+        >
+          <X size={14} />
+        </button>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2">
         {/* LEFT — human */}
