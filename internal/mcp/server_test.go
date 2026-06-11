@@ -609,6 +609,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_auth_posture_diff",
 		// #4425 cross-group stub detector (effects-contrast heuristic).
 		"archigraph_stub_detector",
+		// #4424 cross-group branch-aware response-shape parity (oracle vs v3).
+		"archigraph_response_shape_diff",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -706,8 +708,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_literal_parity (#4421 cross-group ConstantSet value-set parity).
 	// +1 archigraph_auth_posture_diff (#4422 cross-group auth-posture parity).
 	// +1 archigraph_stub_detector (#4425 cross-group stub effects-contrast heuristic).
-	if got := len(allRegisteredTools); got != 62 {
-		t.Errorf("expected 62 registered tools, got %d — update this count if tools are added/removed (added archigraph_stub_detector #4425 cross-group stub detector)", got)
+	// +1 archigraph_response_shape_diff (#4424 cross-group branch-aware response-shape parity).
+	if got := len(allRegisteredTools); got != 63 {
+		t.Errorf("expected 63 registered tools, got %d — update this count if tools are added/removed (added archigraph_response_shape_diff #4424 cross-group response-shape diff)", got)
 	}
 }
 
@@ -3241,7 +3244,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		// test group "g"; with no endpoint definitions in this fixture the handler
 		// returns an empty-results payload, still exercising the wrapper +
 		// elapsed_ms trailer.
-		"archigraph_stub_detector": {"group_v3": "g", "group_oracle": "g"},
+		"archigraph_stub_detector":       {"group_v3": "g", "group_oracle": "g"},
+		"archigraph_response_shape_diff": {"group_oracle": "g", "group_v3": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3286,8 +3290,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 62 {
-		t.Errorf("expected 62 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_stub_detector #4425 cross-group stub detector)", len(tools))
+	if len(tools) != 63 {
+		t.Errorf("expected 63 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_response_shape_diff #4424 cross-group response-shape diff)", len(tools))
 	}
 
 	for _, st := range tools {

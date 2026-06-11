@@ -644,6 +644,21 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
 	), s.wrap("archigraph_stub_detector", s.handleStubDetector))
 
+	// #4424 (epic #4419 capability E — the LAST parity diff tool) — cross-group
+	// branch-aware RESPONSE-shape parity. Per joined oracle↔v3 endpoint, aligns
+	// response branches by HTTP status and diffs the per-status field set
+	// (only_in_oracle / only_in_v3 / type / optionality mismatch), reporting
+	// status_set_drift for a status one side lacks. Composes the shared endpoint
+	// join (#4550) + effective_contract per-branch shapes (#4601/#4423) + DTO
+	// field membership (#4635) + canonical-key alignment (#4664). Verdict
+	// equivalent|drift|unresolved. Required: group_oracle, group_v3. Optional
+	// (undeclared per #1639): endpoint, format.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_response_shape_diff",
+		mcpapi.WithDescription("Cross-group branch-aware response-shape parity diff per endpoint (oracle vs v3)."),
+		mcpapi.WithString("group_oracle", mcpapi.Required()),
+		mcpapi.WithString("group_v3", mcpapi.Required()),
+	), s.wrap("archigraph_response_shape_diff", s.handleResponseShapeDiff))
+
 	// #2772 — Phase 2B taint flow / security findings. Returns
 	// SecurityFinding records emitted by the taint-flow pass:
 	// source→...→sink paths through the CALLS graph that lack an
