@@ -451,7 +451,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_whoami", s.handleWhoami))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
-		mcpapi.WithDescription("Return source for a node; accepts id, qualified_name, or label."),
+		mcpapi.WithDescription("Source for a node (id/qname/label). Opt-in: start_line/end_line/max_lines."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(8)), // #2828: was 20
 		mcpapi.WithAny("group"),

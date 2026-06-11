@@ -2309,33 +2309,17 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 		abs = filepath.Join(lr.Path, e.SourceFile)
 	}
 
-	// Bound the requested span (#1614). Synthetic / shadow / route entities
-	// frequently carry end_line<=start_line or start_line==0, which previously
-	// caused get_source to emit the entire file. Clamp a degenerate span to a
-	// fixed fallback window, and ALWAYS apply a hard max-lines cap so the
-	// returned chunk can never be a whole-file dump regardless of the recorded
-	// span.
-	const fallbackSpan = 60  // lines, when end<=start or either is 0
-	const hardMaxLines = 200 // absolute cap on emitted source lines
-
-	startLine := e.StartLine
-	endLine := e.EndLine
-	if startLine < 1 {
-		startLine = 1
-	}
-	if endLine <= startLine || e.StartLine == 0 || e.EndLine == 0 {
-		endLine = startLine + fallbackSpan
-	}
-
-	start := startLine - contextLines
-	if start < 1 {
-		start = 1
-	}
-	end := endLine + contextLines
-	// Hard cap: never emit more than hardMaxLines.
-	if end-start+1 > hardMaxLines {
-		end = start + hardMaxLines - 1
-	}
+	// #2828 / #1614 — bound the requested span and SIGNAL any truncation.
+	// computeSourceSpan clamps a degenerate span (synthetic/shadow/route
+	// entities frequently carry end<=start or a 0 bound, which previously
+	// emitted the whole file), applies the caller's opt-in start_line/end_line
+	// range and max_lines head cap, and enforces the absolute hard-max ceiling
+	// so a single call can never be a whole-file dump. The returned sourceSpan
+	// records whether the emitted window is a strict prefix of the available
+	// span so we can append a precise "request lines X-Y" continuation hint
+	// instead of the pre-#2828 SILENT 200-line clamp ([no-silent-caps]).
+	sp := computeSourceSpan(e, readSourceWindowOpts(req, contextLines))
+	start, end := sp.start, sp.end
 
 	// #1678: bound the file I/O with a hard deadline. The daemon owns fsnotify
 	// watchers on every indexed source tree; under certain macOS conditions a
@@ -2367,7 +2351,10 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 		if out.err != nil {
 			return mcpapi.NewToolResultError(out.err.Error()), nil
 		}
-		return mcpapi.NewToolResultText(out.text), nil
+		// #2828: append the continuation hint only when a window was actually
+		// clamped (truncationMarker returns "" otherwise, so the common-case
+		// payload is unchanged).
+		return mcpapi.NewToolResultText(out.text + sp.truncationMarker(prefixedID(lr.Repo, e.ID))), nil
 	case <-readCtx.Done():
 		return mcpapi.NewToolResultError(fmt.Sprintf(
 			"get_source: read timed out after 5s on %s (file may be on a stalled filesystem or watched-path kernel stall); node_id=%s",
@@ -2381,25 +2368,13 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 // main get_source path) and returns the body text. Used by the #3833 MRO
 // redirect to read an in-repo base class's defining body.
 func readInheritedBody(ctx context.Context, abs string, e *graph.Entity, contextLines int) (string, error) {
-	const fallbackSpan = 60
-	const hardMaxLines = 200
-
-	startLine := e.StartLine
-	endLine := e.EndLine
-	if startLine < 1 {
-		startLine = 1
-	}
-	if endLine <= startLine || e.StartLine == 0 || e.EndLine == 0 {
-		endLine = startLine + fallbackSpan
-	}
-	start := startLine - contextLines
-	if start < 1 {
-		start = 1
-	}
-	end := endLine + contextLines
-	if end-start+1 > hardMaxLines {
-		end = start + hardMaxLines - 1
-	}
+	// #2828: reuse the shared span policy (degenerate-span clamp + hard ceiling)
+	// for the inherited-body redirect. The inherited path does not accept the
+	// per-call start_line/end_line/max_lines opt-ins (the caller targeted the
+	// subclass member, not the resolved base span), so only context_lines is
+	// passed.
+	sp := computeSourceSpan(e, sourceWindowOpts{contextLines: contextLines})
+	start, end := sp.start, sp.end
 
 	readCtx, readCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer readCancel()

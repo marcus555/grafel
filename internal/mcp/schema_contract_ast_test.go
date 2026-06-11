@@ -111,6 +111,13 @@ var intentionalGaps = []intentionalGap{
 
 	// archigraph_get_source: legacy alias node_id — deprecated, intentionally undeclared.
 	{"archigraph_get_source", "node_id", "deprecated alias for entity_id, intentionally undeclared"},
+	// archigraph_get_source: #2828 opt-in precise-slicing controls — read off the
+	// request map per the #1639 token-ceiling pattern (declaring them would bloat
+	// the handshake). start_line/end_line take an explicit range; max_lines heads
+	// the emitted line count. All optional; absence = legacy entity-span behaviour.
+	{"archigraph_get_source", "start_line", "#2828 / #1639 token-ceiling: opt-in explicit line range, undeclared"},
+	{"archigraph_get_source", "end_line", "#2828 / #1639 token-ceiling: opt-in explicit line range, undeclared"},
+	{"archigraph_get_source", "max_lines", "#2828 / #1639 token-ceiling: opt-in head cap, undeclared"},
 
 	// archigraph_patterns: action-specific args for sub-actions (query, record, get,
 	// reject, promote) that are undeclared in the schema to stay under the token-ceiling
@@ -234,6 +241,7 @@ var sharedHelpers = map[string]bool{
 	"emitActivity":           true,
 	"argMinConfidence":       true, // #2769 Phase 1C — shared min_confidence reader
 	"includeWants":           true, // #4423 — shared opt-in facet reader (include declared on archigraph_effects)
+	"readSourceWindowOpts":   true, // #2828 — get_source slicing reader; start_line/end_line/max_lines allow-listed under archigraph_get_source
 }
 
 // argFuncNames is the set of arg-reader function names to match in the AST.
