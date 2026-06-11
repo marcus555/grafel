@@ -249,6 +249,12 @@ func RunDev(opts DevOptions) (*DevResult, error) {
 		RegisteredPaths: registeredPaths,
 	}
 	result.MCPPaths = registeredPaths
+	// Step 3 succeeded: discard pristine backups (see copy.go rationale).
+	if !opts.DryRun {
+		for _, cfgPath := range registeredPaths {
+			mcpreg.ClearBackup(cfgPath)
+		}
+	}
 	completedSteps = append(completedSteps, 3)
 
 	// ─────────────────────────────────────────────────────────────────────────
