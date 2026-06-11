@@ -58,11 +58,55 @@ var rubyHTTPRe = regexp.MustCompile(
 		`|\bopen-uri\b`,
 )
 
-// rubyDBReadRe matches ActiveRecord and raw read primitives.
+// rubyDBReadRe matches the DISTINCTIVE ActiveRecord read terminals plus raw
+// read primitives. These names do NOT collide with Enumerable on a plain
+// Array/Hash (`.where`/`.find_by`/`.pluck`/`.exists?`/`.includes`/... are
+// ActiveRecord-specific), so they are safe to bare-match on any receiver.
+//
+// The AMBIGUOUS Enumerable-colliding terminals (`first`/`last`/`find`/`all`/
+// `count`/`select`/`take`/`any?`/`many?`/`none?`) are NOT here — they fire on
+// plain collections too (`items.first(3)`, `list.select { ... }`,
+// `h.find { ... }`), which would be false db_read. They are credited ONLY on a
+// Model-class / relation-typed receiver by rubyARReadMatches (#4692
+// receiver-typed read credit, mirroring the Python #4691 model).
 var rubyDBReadRe = regexp.MustCompile(
-	`\.\s*(?:where|find|find_by|find_each|find_in_batches|all|first|last|pluck|count|exists\?|any\?|many\?|none\?|take|select|joins|includes|preload|eager_load|references|distinct|order|group|having|limit|offset)\s*[\(.]` +
+	`\.\s*(?:where|find_by|find_each|find_in_batches|pluck|exists\?|joins|includes|preload|eager_load|references|distinct|group|having|offset)\s*[\(.]` +
 		`|\.\s*find\s*\(\s*[A-Za-z_0-9:]` +
 		`|\bconnection\s*\.\s*(?:execute|exec_query|select_all|select_one|select_value|select_values|select_rows)\s*\(`,
+)
+
+// --- #4692 ActiveRecord receiver-typed read credit (ambiguous terminals) ---
+//
+// rubyARAmbiguousVerbs collide with Enumerable, so they are credited db_read
+// ONLY when the receiver is a Model class (capitalised constant followed by a
+// read terminal) or a relation-typed local (assigned from a Model/relation read
+// op). On a plain Array/Hash they stay pure, preserving the false-positive guard.
+const rubyARAmbiguousVerbs = `first|last|find|all|count|select|take|any\?|many\?|none\?`
+
+// rubyARModelReadRe credits the ambiguous terminals when invoked directly on a
+// Model class constant — `User.first`, `Account.find(id)`, `Order.all`,
+// `Invoice.count`. A bare capitalised constant receiver immediately followed by
+// an ambiguous read verb is the canonical ActiveRecord class-method read; plain
+// locals (lowercase) are excluded so `items.first` stays pure.
+var rubyARModelReadRe = regexp.MustCompile(
+	`\b[A-Z][A-Za-z0-9_]*(?:::[A-Z][A-Za-z0-9_]*)*\s*\.\s*(?:` + rubyARAmbiguousVerbs + `)\s*[\(.\s]`,
+)
+
+// rubyARRelationFromModelRe seeds relation-typed locals assigned from a Model
+// CONSTANT read op — `rel = User.where(...)`, `scope = Account.all`. Group 1 =
+// assigned name. (Receiver is a capitalised constant: an unambiguous AR root.)
+var rubyARRelationFromModelRe = regexp.MustCompile(
+	`(?m)^\s*([a-z_]\w*)\s*=\s*[A-Z][A-Za-z0-9_:]*\s*\.\s*` +
+		`(?:where|find_by|joins|includes|preload|eager_load|references|distinct|group|having|order|limit|offset|all|none)\s*[\(.]`,
+)
+
+// rubyARRelationChainRe propagates relation typing across reassignment from an
+// already-typed name — `q = q.where(...)`, `scoped = rel.order(:id)`. Group 1 =
+// assigned name, group 2 = source receiver name (checked against the typed set
+// in a fixpoint loop).
+var rubyARRelationChainRe = regexp.MustCompile(
+	`(?m)^\s*([a-z_]\w*)\s*=\s*([a-z_]\w*)\s*\.\s*` +
+		`(?:where|joins|includes|preload|eager_load|references|distinct|group|having|order|limit|offset|all|none|select|merge)\s*[\(.]`,
 )
 
 // rubyDBWriteRe matches ActiveRecord and raw write primitives.
@@ -161,6 +205,7 @@ func sniffEffectsRuby(content string) []EffectMatch {
 	var out []EffectMatch
 	out = appendRubyMatches(out, content, headers, rubyHTTPRe, EffectHTTPOut, "Net::HTTP/HTTParty/Faraday", 1.0)
 	out = appendRubyMatches(out, content, headers, rubyDBReadRe, EffectDBRead, "activerecord.read", 0.85)
+	out = append(out, rubyARReadMatches(content, headers)...)
 	out = appendRubyMatches(out, content, headers, rubyDBWriteRe, EffectDBWrite, "activerecord.write", 0.85)
 	out = appendRubyRawDriverSQL(out, content, headers)
 	out = appendRubySequelDatasetWrites(out, content, headers)
@@ -169,6 +214,65 @@ func sniffEffectsRuby(content string) []EffectMatch {
 	out = appendRubyMatches(out, content, headers, rubyProcessRe, EffectFSWrite, "Process.spawn/system", 0.9)
 	out = appendRubyMatches(out, content, headers, rubyMutationRe, EffectMutation, "@ivar=", 0.7)
 	return out
+}
+
+// rubyARReadMatches implements the #4692 receiver-typed read credit for Ruby.
+// It emits db_read for (a) ambiguous AR terminals on a Model CONSTANT receiver
+// (`User.first`/`Order.all`) and (b) ambiguous terminals on a relation-typed
+// local (seeded from a Model-constant read op, propagated across reassignment
+// to a fixpoint). An ambiguous terminal on a plain Array/Hash local (untyped)
+// earns no credit — the Enumerable false-positive guard is preserved.
+func rubyARReadMatches(content string, headers []funcHeader) []EffectMatch {
+	var out []EffectMatch
+	emit := func(off int) {
+		line := lineOfOffset(content, off)
+		out = append(out, EffectMatch{
+			Function:   nearestHeader(headers, line),
+			Line:       line,
+			Effect:     EffectDBRead,
+			Sink:       "activerecord.read.relation",
+			Confidence: 0.85,
+		})
+	}
+	for _, m := range rubyARModelReadRe.FindAllStringIndex(content, -1) {
+		emit(m[0])
+	}
+	for name := range collectRubyRelationNames(content) {
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\.\s*(?:` + rubyARAmbiguousVerbs + `)\s*[\(.\s]`)
+		for _, m := range re.FindAllStringIndex(content, -1) {
+			emit(m[0])
+		}
+	}
+	return out
+}
+
+// collectRubyRelationNames returns the set of local names known to hold an
+// ActiveRecord relation. Seeds from `<name> = Model.<read-op>(...)` and
+// iterates `<name> = <typed>.<read-op>(...)` to a fixpoint.
+func collectRubyRelationNames(content string) map[string]bool {
+	typed := map[string]bool{}
+	for _, m := range rubyARRelationFromModelRe.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 2 && m[1] != "" {
+			typed[m[1]] = true
+		}
+	}
+	chains := rubyARRelationChainRe.FindAllStringSubmatch(content, -1)
+	for {
+		changed := false
+		for _, m := range chains {
+			if len(m) < 3 {
+				continue
+			}
+			if typed[m[2]] && !typed[m[1]] {
+				typed[m[1]] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return typed
 }
 
 func scanRubyFuncHeaders(content string) []funcHeader {
