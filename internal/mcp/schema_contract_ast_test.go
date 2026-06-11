@@ -184,6 +184,13 @@ var intentionalGaps = []intentionalGap{
 	{"archigraph_auth_posture_diff", "endpoint", "#4422 token ceiling pattern — optional endpoint substring filter"},
 	{"archigraph_auth_posture_diff", "format", "#4422 token ceiling pattern — optional terse|full output"},
 
+	// archigraph_response_shape_diff: optional narrowing args undeclared for token
+	// budget (#4424 / #1639 pattern). The two required args (group_oracle,
+	// group_v3) ARE declared; endpoint narrows to one "VERB /path", format toggles
+	// terse|full output.
+	{"archigraph_response_shape_diff", "endpoint", "#4424 token ceiling pattern — optional single-endpoint filter"},
+	{"archigraph_response_shape_diff", "format", "#4424 token ceiling pattern — optional terse|full output"},
+
 	// archigraph_stub_detector: optional single-endpoint filter undeclared for
 	// token budget (#4425 / #1639 pattern). The two required args (group_v3,
 	// group_oracle) ARE declared; endpoint narrows to one "VERB /path".
