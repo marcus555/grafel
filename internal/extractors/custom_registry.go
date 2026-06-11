@@ -15,6 +15,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/custom/erlang"
 	_ "github.com/cajasmota/archigraph/internal/custom/fsharp"
 	_ "github.com/cajasmota/archigraph/internal/custom/golang"
+	_ "github.com/cajasmota/archigraph/internal/custom/groovy"
 	_ "github.com/cajasmota/archigraph/internal/custom/java"
 	_ "github.com/cajasmota/archigraph/internal/custom/javascript"
 	_ "github.com/cajasmota/archigraph/internal/custom/kotlin"
