@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -145,6 +146,51 @@ func resolveEnvRebuildConcurrency() int {
 	return defaultRebuildConcurrency()
 }
 
+// resolveDaemonGOMAXPROCS returns the GOMAXPROCS the daemon process should run
+// at, given the host core count and the ARCHIGRAPH_DAEMON_GOMAXPROCS env var
+// (#5135). It returns 0 when no cap should be applied (env unset/invalid or the
+// requested value is >= the host core count, in which case the Go default is
+// already correct and we leave it untouched).
+//
+// This is the NATIVE in-process knob: it bounds the daemon's own Go runtime
+// parallelism (in-process extraction/reindex, GC, algorithm passes) WITHOUT
+// requiring the generic GOMAXPROCS env var (which is fine, but undocumented and
+// easy to confuse with the per-subprocess ARCHIGRAPH_EXTRACT_GOMAXPROCS cap).
+//
+// Tradeoff (documented in docs/settings.md): because query handling shares the
+// same process, lowering this also lowers the ceiling on concurrent query
+// throughput. It is the right knob when the daemon's OWN in-process indexing
+// (ARCHIGRAPH_SUBPROC_EXTRACT unset/0) is the CPU source; when the subprocess
+// extractor is enabled, prefer ARCHIGRAPH_EXTRACT_GOMAXPROCS / _CONCURRENCY,
+// which throttle the children without touching query latency.
+func resolveDaemonGOMAXPROCS(hostCPU int) int {
+	n := envPositiveInt2("ARCHIGRAPH_DAEMON_GOMAXPROCS")
+	if n <= 0 {
+		return 0
+	}
+	if hostCPU > 0 && n >= hostCPU {
+		// Already at/above the Go default — nothing to cap.
+		return 0
+	}
+	return n
+}
+
+// envPositiveInt2 reads a strictly-positive integer from the named env var,
+// returning 0 when unset, empty, non-numeric, or <= 0. (Mirrors the helper in
+// internal/daemon/extract; duplicated here to avoid an import cycle / exporting
+// an internal helper for one call site.)
+func envPositiveInt2(name string) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
 // runDaemon is the long-running mode of the archigraph binary. It is
 // wired into the CLI as a hidden `archigraph daemon` subcommand —
 // users normally reach it via `archigraph start`, which forks this
@@ -165,6 +211,17 @@ func runDaemon(argv []string) error {
 	// Always log so future heap regressions are diagnosable.
 	gcLog := log.New(os.Stderr, "archigraph-daemon: ", log.LstdFlags|log.Lmicroseconds)
 	gcLog.Printf("gc-tune: GOGC=50 (override=%v)", gcOverride)
+
+	// #5135: native in-process GOMAXPROCS cap. ARCHIGRAPH_DAEMON_GOMAXPROCS
+	// bounds the daemon's own Go-runtime parallelism (in-process extraction,
+	// reindex, GC, algorithm passes) without needing the generic GOMAXPROCS
+	// env var. Only applied when set, valid, and below the host core count;
+	// otherwise the Go default (= host cores) is left untouched. See
+	// docs/settings.md for the query-latency tradeoff.
+	if gmp := resolveDaemonGOMAXPROCS(runtime.NumCPU()); gmp > 0 {
+		prev := runtime.GOMAXPROCS(gmp)
+		gcLog.Printf("cpu-tune: ARCHIGRAPH_DAEMON_GOMAXPROCS=%d applied (was %d, host=%d)", gmp, prev, runtime.NumCPU())
+	}
 
 	// Parse daemon-only flags. The root cobra command has flag parsing
 	// disabled for "daemon" so we own the argv. Unknown flags exit
@@ -641,6 +698,9 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 		WithPrintSkipped(args.PrintSkipped),
 		WithAdditionalSkipDirs(args.AdditionalSkipDirs),
 		WithExportJSON(args.ExportJSON),
+		// #5135: an `archigraph index` RPC is an explicit user-triggered
+		// foreground index — run it at the higher rebuild CPU cap.
+		WithInteractive(true),
 	}
 	// Capture stats into a local buffer when the caller asked for them.
 	// setCapturedStats is a tiny package-level swap (Phase A serializes
@@ -680,6 +740,11 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 // per-repo indexes complete.
 func makeDaemonRebuildFunc(concurrency int) daemon.RebuildFunc {
 	indexFn := func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error {
+		// #5135: a rebuild RPC is an explicit, user-triggered foreground
+		// rebuild — run it at the higher ARCHIGRAPH_REBUILD_GOMAXPROCS cap
+		// instead of the throttled background extract cap. WithInteractive is
+		// prepended so an explicit opts override (if any) still wins.
+		opts = append([]IndexOption{WithInteractive(true)}, opts...)
 		return Index(repoPath, outPath, repoTag, skipPasses, pretty, jsonStats, opts...)
 	}
 	linksFn := func(group string) error {

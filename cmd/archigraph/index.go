@@ -202,6 +202,15 @@ type Indexer struct {
 	// it stays empty and module.Derive's per-package rollup applies.
 	singleModuleLabel string
 
+	// interactive marks this index run as an explicit, user-triggered
+	// foreground rebuild (`archigraph rebuild` / `archigraph index`) rather
+	// than a background watch/churn-triggered reindex (#5135). It is forwarded
+	// to the subprocess extract coordinator (when ARCHIGRAPH_SUBPROC_EXTRACT=1)
+	// so the foreground rebuild runs at the higher ARCHIGRAPH_REBUILD_GOMAXPROCS
+	// cap (default = host cores) instead of the throttled background
+	// ARCHIGRAPH_EXTRACT_GOMAXPROCS cap (default 2). Wired via WithInteractive.
+	interactive bool
+
 	// coverageCfg is the per-group coverage-ingestion config (#5061/#5036).
 	// Zero value means "discover the default report path" (coverage/lcov.info);
 	// a populated Config honors its explicit report_paths globs. The coverage
@@ -331,6 +340,17 @@ func WithIncremental(stateDir string) IndexOption {
 // (#5037) runs. Pass --skip-pass=coverage to disable the whole pass.
 func WithCoverage(cfg coverage.Config) IndexOption {
 	return func(i *Indexer) { i.coverageCfg = cfg }
+}
+
+// WithInteractive marks an index run as an explicit, user-triggered foreground
+// rebuild rather than a background watch/churn-triggered reindex (#5135). When
+// true (and ARCHIGRAPH_SUBPROC_EXTRACT=1), the subprocess extract coordinator
+// runs at the higher ARCHIGRAPH_REBUILD_GOMAXPROCS cap (default = host cores)
+// and wider fan-out, instead of the throttled background extract cap (default
+// ARCHIGRAPH_EXTRACT_GOMAXPROCS=2). Set by the daemon's rebuild RPC path and by
+// the `archigraph index` CLI; left false on the scheduler's reactive reindex.
+func WithInteractive(enabled bool) IndexOption {
+	return func(i *Indexer) { i.interactive = enabled }
 }
 
 type indexerStats struct {
@@ -921,6 +941,9 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			BatchSize:   subprocBatchSize(),
 			SkipPasses:  skipPassNames(i.skipPasses),
 			Stderr:      os.Stderr,
+			// #5135: foreground rebuilds run at the higher rebuild cap;
+			// background scheduler reindexes stay throttled.
+			Interactive: i.interactive,
 		})
 		if cerr != nil {
 			trk.Fail(cerr.Error())

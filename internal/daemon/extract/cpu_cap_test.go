@@ -81,3 +81,86 @@ func TestEnvPositiveInt(t *testing.T) {
 		t.Errorf("unset var: envPositiveInt() = %d, want 0", got)
 	}
 }
+
+// TestRebuildGOMAXPROCS verifies the #5135 explicit-rebuild cap and its
+// override. Foreground rebuilds run at host speed by default (= NumCPU), and
+// ARCHIGRAPH_REBUILD_GOMAXPROCS overrides the per-child value.
+func TestRebuildGOMAXPROCS(t *testing.T) {
+	wantDefault := runtime.NumCPU()
+	if wantDefault < 1 {
+		wantDefault = 1
+	}
+	if got := rebuildGOMAXPROCS(); got != wantDefault {
+		t.Fatalf("default rebuildGOMAXPROCS() = %d, want host cores %d", got, wantDefault)
+	}
+
+	t.Setenv("ARCHIGRAPH_REBUILD_GOMAXPROCS", "6")
+	if got := rebuildGOMAXPROCS(); got != 6 {
+		t.Fatalf("override rebuildGOMAXPROCS() = %d, want 6", got)
+	}
+
+	// Non-positive / garbage → host-cores default.
+	t.Setenv("ARCHIGRAPH_REBUILD_GOMAXPROCS", "0")
+	if got := rebuildGOMAXPROCS(); got != wantDefault {
+		t.Fatalf("zero override ignored: rebuildGOMAXPROCS() = %d, want %d", got, wantDefault)
+	}
+	t.Setenv("ARCHIGRAPH_REBUILD_GOMAXPROCS", "garbage")
+	if got := rebuildGOMAXPROCS(); got != wantDefault {
+		t.Fatalf("garbage override ignored: rebuildGOMAXPROCS() = %d, want %d", got, wantDefault)
+	}
+}
+
+// TestChildGOMAXPROCSSplit is the core #5135 proof: the SAME env settings yield
+// the LOW background cap for a watch/churn reindex and the HIGH rebuild cap for
+// an explicit foreground rebuild, dispatched purely on CoordinatorConfig.Interactive.
+func TestChildGOMAXPROCSSplit(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_EXTRACT_GOMAXPROCS", "2")
+	t.Setenv("ARCHIGRAPH_REBUILD_GOMAXPROCS", "9")
+
+	bg := CoordinatorConfig{Interactive: false}.childGOMAXPROCS()
+	if bg != 2 {
+		t.Fatalf("background childGOMAXPROCS() = %d, want 2 (extract cap)", bg)
+	}
+
+	fg := CoordinatorConfig{Interactive: true}.childGOMAXPROCS()
+	if fg != 9 {
+		t.Fatalf("interactive childGOMAXPROCS() = %d, want 9 (rebuild cap)", fg)
+	}
+
+	if bg >= fg {
+		t.Fatalf("expected background cap (%d) < interactive cap (%d)", bg, fg)
+	}
+}
+
+// TestInteractiveConcurrency verifies the #5135 fan-out split: an explicit
+// rebuild fans out to NumCPU subprocesses while a background reindex stays at
+// the conservative NumCPU/2-capped-at-4 default — unless an explicit
+// CoordinatorConfig.Concurrency or ARCHIGRAPH_EXTRACT_CONCURRENCY ceiling is set.
+func TestInteractiveConcurrency(t *testing.T) {
+	// No env override: interactive fans wider than background.
+	bg := CoordinatorConfig{Interactive: false}.concurrency()
+	fg := CoordinatorConfig{Interactive: true}.concurrency()
+
+	wantFG := runtime.NumCPU()
+	if wantFG < 1 {
+		wantFG = 1
+	}
+	if fg != wantFG {
+		t.Fatalf("interactive concurrency() = %d, want host cores %d", fg, wantFG)
+	}
+	if runtime.NumCPU() > 8 && !(fg > bg) {
+		t.Fatalf("expected interactive concurrency (%d) > background (%d) on a >8-core host", fg, bg)
+	}
+
+	// An operator-set ceiling (ARCHIGRAPH_EXTRACT_CONCURRENCY) is honored on
+	// BOTH paths — even interactive rebuilds respect a contended-host cap.
+	t.Setenv("ARCHIGRAPH_EXTRACT_CONCURRENCY", "1")
+	if got := (CoordinatorConfig{Interactive: true}).concurrency(); got != 1 {
+		t.Fatalf("interactive should honor ARCHIGRAPH_EXTRACT_CONCURRENCY ceiling: got %d, want 1", got)
+	}
+
+	// An explicit config field still wins over everything.
+	if got := (CoordinatorConfig{Interactive: true, Concurrency: 3}).concurrency(); got != 3 {
+		t.Fatalf("explicit Concurrency should win: got %d, want 3", got)
+	}
+}
