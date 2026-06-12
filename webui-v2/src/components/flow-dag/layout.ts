@@ -559,6 +559,16 @@ function elkDirection(direction: FlowDagDirection): ElkDirection {
  * @param onToggle   inline-expand toggle handler (keyed by instance id)
  * @param hasOutEdge source ids with ≥1 out-edge (leaf-vs-truncated, #4561)
  * @param shape      optional node-shape/spacing overrides (flowchart-ready, #4819)
+ * @param measuredHeights #4887: real per-instance card heights (instanceId → px),
+ *   measured by React Flow after the first paint. The card has a FIXED width
+ *   (NODE_W) but its height grows with content (2-line names, signature, doc,
+ *   effect badges). ELK lays out and routes edges against the box height it is
+ *   given, so if that box is shorter than the rendered card, the centered ports
+ *   land ABOVE the card's true bottom — in VERTICAL (TB→DOWN) the edge then docks
+ *   off-center (the long-standing #4882/#4887 vertical bug). Feeding the measured
+ *   height back makes the ELK box equal the rendered card, so the bottom/top
+ *   centered ports sit exactly on the card's mid-sides. Absent on the first pass
+ *   (nothing measured yet) → falls back to NODE_H.
  */
 export async function layoutTreeElk(
   instances: TreeInstance[],
@@ -567,6 +577,7 @@ export async function layoutTreeElk(
   onToggle: (instanceId: string) => void,
   hasOutEdge?: Set<string>,
   shape?: FlowDagElkShape,
+  measuredHeights?: Map<string, number>,
 ): Promise<{ nodes: FlowDagNode[]; edges: FlowDagEdge[] }> {
   const renderedParents = new Set<string>();
   for (const inst of instances) {
@@ -600,11 +611,21 @@ export async function layoutTreeElk(
   const w = shape?.nodeWidth ?? NODE_W;
   const h = shape?.nodeHeight ?? NODE_H;
 
+  // #4887: per-instance box height — the REAL measured card height when we have
+  // it, else the nominal NODE_H. ELK's centered top/bottom ports are placed at
+  // y=0 and y=boxHeight, so the box must equal the rendered card for the
+  // vertical (TB) edge to dock on the true mid-side. (The card width is fixed,
+  // so horizontal docking was already correct.)
+  const heightFor = (id: string): number => {
+    const m = measuredHeights?.get(id);
+    return m && Number.isFinite(m) && m > 0 ? m : h;
+  };
+
   // Flat node list — the unfolded tree has no compound containment.
   const elkNodes: ElkLayoutNode[] = instances.map((inst) => ({
     id: inst.id,
     width: w,
-    height: h,
+    height: heightFor(inst.id),
     lane: depthById.get(inst.id) ?? 0,
   }));
   const elkEdges: ElkLayoutEdge[] = rfEdges.map((e) => ({
@@ -629,9 +650,14 @@ export async function layoutTreeElk(
   });
 
   // ELK positions are top-left already (flat graph → parent-relative == absolute).
+  // Stamp the laid-out height (the measured card height when known) so React
+  // Flow's node box matches the box ELK routed the centered ports against (#4887).
   for (const node of rfNodes) {
     const p = positions.get(node.id);
-    if (p) node.position = { x: p.x, y: p.y };
+    if (p) {
+      node.position = { x: p.x, y: p.y };
+      node.height = heightFor(node.id);
+    }
   }
 
   // Attach ELK's orthogonal route to each edge (#4843). The flat tree puts every
