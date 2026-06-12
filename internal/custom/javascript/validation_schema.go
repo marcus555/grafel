@@ -137,7 +137,7 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			name := src[m[2]:m[3]]
 			openParen := m[1] - 1 // header ends at the `(` of `.object(`
 			body := balancedObjectBody(src, openParen)
-			fields := extractSchemaFields(sd.field, body)
+			fields := extractSchemaFields(sd.field, body, sd.lib)
 			if len(fields) == 0 {
 				// A schema with no statically-detectable scalar fields (dynamic /
 				// computed). Still emit the schema entity, but it carries no
@@ -349,23 +349,230 @@ type schemaField struct {
 	name       string
 	typ        string
 	validators []string
-	optional   bool
+	// validations carries the terse chain-constraint chips for zod/joi/yup
+	// schema fields (`MaxLength:120`, `Email`, `Min:0`, `Required`, …), folded
+	// from the field's method chain by parseChainConstraints (#4976) and stamped
+	// onto the field member's Properties["validations"] for the ShapeTree.
+	validations []string
+	optional    bool
 }
 
 // extractSchemaFields pulls `name: lib.<kind>()` field declarations out of a
-// schema object body, normalizing the kind to a scalar type.
-func extractSchemaFields(re *regexp.Regexp, body string) []schemaField {
+// schema object body, normalizing the kind to a scalar type. For each field it
+// also captures the method chain that follows the factory (e.g.
+// `z.string().max(120).email()`) and folds the recognised chain constraints
+// into terse validation chips (`MaxLength:120`, `Email`, …) consistent with the
+// class-validator chip format (#4858 / #4976) so the ShapeTree renders them
+// identically for schema-based validators.
+func extractSchemaFields(re *regexp.Regexp, body string, lib string) []schemaField {
 	var fields []schemaField
 	seen := make(map[string]bool)
-	for _, m := range re.FindAllStringSubmatch(body, -1) {
-		name := m[1]
+	for _, m := range re.FindAllStringSubmatchIndex(body, -1) {
+		name := body[m[2]:m[3]]
 		if seen[name] {
 			continue
 		}
 		seen[name] = true
-		fields = append(fields, schemaField{name: name, typ: normalizeScalar(m[2])})
+		kind := body[m[4]:m[5]]
+		// The chain begins at the factory call's opening `(` (one char before the
+		// match end) and runs to the end of this field's value (the next
+		// top-level comma in the object body, or EOF).
+		chain := fieldChain(body, m[1]-1)
+		chips := parseChainConstraints(lib, kind, chain)
+		optional := chainIsOptional(lib, kind, chips, chain)
+		fields = append(fields, schemaField{
+			name: name, typ: normalizeScalar(kind), validations: chips, optional: optional,
+		})
 	}
 	return fields
+}
+
+// fieldChain returns the schema-field value text starting at the factory call's
+// opening `(` (openParenIdx) and ending at the next comma that sits at the same
+// brace/paren/bracket depth as the field declaration (i.e. the separator
+// between this field and the next), or end of body. This isolates a single
+// field's full method chain — `z.string().min(2).max(120)` — from its
+// siblings so the chain parser only sees this field's constraints.
+func fieldChain(body string, openParenIdx int) string {
+	if openParenIdx < 0 || openParenIdx >= len(body) {
+		return ""
+	}
+	depth := 0
+	for i := openParenIdx; i < len(body); i++ {
+		switch body[i] {
+		case '(', '{', '[':
+			depth++
+		case ')', '}', ']':
+			depth--
+		case ',':
+			if depth <= 0 {
+				return body[openParenIdx:i]
+			}
+		}
+	}
+	return body[openParenIdx:]
+}
+
+// chainMethodRe matches a `.method(args)` or `.method` link in a schema method
+// chain. Group 1 = method name, group 2 = the raw argument list (may be empty
+// or absent for property-style links like zod `.optional` is always a call, but
+// kept permissive).
+var chainMethodRe = regexp.MustCompile(`\.\s*([A-Za-z_]\w*)\s*(?:\(([^()]*)\))?`)
+
+// zodChainChips maps a zod chain method to a terse constraint chip. A "" target
+// means the method carries a single scalar arg folded as `Chip:<arg>`; methods
+// not present here are ignored (kept terse).
+var zodChainChips = map[string]string{
+	"email": "Email", "uuid": "UUID", "url": "Url", "regex": "Pattern",
+	"int": "Int", "positive": "Positive", "negative": "Negative",
+	"nonempty": "NotEmpty", "cuid": "Cuid", "datetime": "DateTime", "ip": "IP",
+}
+
+// zodScalarArgChips: zod chain methods whose first scalar arg is folded into
+// the chip text — `.max(120)` → `MaxLength:120` (for string/array) but the
+// label is normalized below.
+var zodScalarArgChips = map[string]string{
+	"max": "Max", "min": "Min", "length": "Length", "gt": "GreaterThan",
+	"gte": "Min", "lt": "LessThan", "lte": "Max", "multipleof": "MultipleOf",
+}
+
+// joiChainChips: joi chain methods that carry no scalar bound (flag-style).
+var joiChainChips = map[string]string{
+	"required": "Required", "email": "Email", "uuid": "UUID", "guid": "UUID",
+	"uri": "Url", "pattern": "Pattern", "regex": "Pattern", "integer": "Int",
+	"positive": "Positive", "negative": "Negative",
+}
+
+// joiScalarArgChips: joi chain methods whose first scalar arg is folded.
+var joiScalarArgChips = map[string]string{
+	"max": "Max", "min": "Min", "length": "Length", "greater": "GreaterThan",
+	"less": "LessThan",
+}
+
+// yupChainChips: yup chain methods that carry no scalar bound.
+var yupChainChips = map[string]string{
+	"required": "Required", "email": "Email", "uuid": "UUID", "url": "Url",
+	"matches": "Pattern", "positive": "Positive", "negative": "Negative",
+	"integer": "Int",
+}
+
+// yupScalarArgChips: yup chain methods whose first scalar arg is folded.
+var yupScalarArgChips = map[string]string{
+	"max": "Max", "min": "Min", "length": "Length",
+}
+
+// parseChainConstraints walks a schema field's method chain and returns the
+// recognised constraints as terse chips in source order (e.g.
+// `["MaxLength:120","Email"]`). The label set is normalized across zod/joi/yup
+// so the ShapeTree renders schema constraints with the same chip vocabulary as
+// class-validator: `Min`/`Max`/`Length`/`Email`/`Pattern`/`Required`/… For
+// `min`/`max`/`length` the chip is `MinLength`/`MaxLength` when the field is a
+// string or array (length bound) and `Min`/`Max` for numeric kinds — matching
+// the class-validator `@MinLength`/`@Min` split.
+func parseChainConstraints(lib, kind, chain string) []string {
+	var flags map[string]string
+	var args map[string]string
+	switch lib {
+	case "zod":
+		flags, args = zodChainChips, zodScalarArgChips
+	case "joi":
+		flags, args = joiChainChips, joiScalarArgChips
+	case "yup":
+		flags, args = yupChainChips, yupScalarArgChips
+	default:
+		return nil
+	}
+	lengthKind := isLengthKind(normalizeScalar(kind))
+	var out []string
+	seen := make(map[string]bool)
+	for _, m := range chainMethodRe.FindAllStringSubmatch(chain, -1) {
+		method := strings.ToLower(m[1])
+		arg := strings.TrimSpace(m[2])
+		if label, ok := args[method]; ok {
+			// Split Min/Max into MinLength/MaxLength for string/array bounds so the
+			// chip matches the class-validator vocabulary.
+			if lengthKind {
+				switch label {
+				case "Min":
+					label = "MinLength"
+				case "Max":
+					label = "MaxLength"
+				case "Length":
+					label = "Length"
+				}
+			}
+			chip := label
+			if v := firstChainScalar(arg); v != "" {
+				chip = label + ":" + v
+			}
+			if !seen[chip] {
+				seen[chip] = true
+				out = append(out, chip)
+			}
+			continue
+		}
+		if label, ok := flags[method]; ok {
+			if !seen[label] {
+				seen[label] = true
+				out = append(out, label)
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// isLengthKind reports whether a normalized scalar kind measures a length bound
+// (string / array) rather than a numeric magnitude, so `min`/`max` map to
+// `MinLength`/`MaxLength` vs `Min`/`Max`.
+func isLengthKind(kind string) bool {
+	return kind == "string" || kind == "array"
+}
+
+// firstChainScalar returns a single numeric/string scalar from a chain method's
+// raw argument list, or "" for empty / compound args (objects, regex literals,
+// multiple args) so those chips stay bare.
+func firstChainScalar(arg string) string {
+	if arg == "" {
+		return ""
+	}
+	if strings.ContainsAny(arg, ",{}[]") {
+		return ""
+	}
+	arg = strings.TrimSpace(arg)
+	// Numeric literal.
+	if numericLiteralRe.MatchString(arg) {
+		return arg
+	}
+	// Simple quoted string → drop quotes.
+	if len(arg) >= 2 && (arg[0] == '\'' || arg[0] == '"' || arg[0] == '`') {
+		return strings.Trim(arg, "'\"`")
+	}
+	return ""
+}
+
+var numericLiteralRe = regexp.MustCompile(`^-?\d+(?:\.\d+)?$`)
+
+// chainIsOptional reports whether a schema field is declared optional via its
+// chain — zod `.optional()`/`.nullish()`, joi without `.required()`, yup
+// without `.required()`. Joi/yup default to optional unless `.required()` is
+// present; zod defaults to required unless `.optional()`/`.nullish()` present.
+func chainIsOptional(lib, kind string, chips []string, chain string) bool {
+	hasRequired := false
+	for _, c := range chips {
+		if c == "Required" {
+			hasRequired = true
+		}
+	}
+	switch lib {
+	case "zod":
+		return strings.Contains(chain, ".optional(") || strings.Contains(chain, ".nullish(")
+	case "joi", "yup":
+		return !hasRequired
+	}
+	return false
 }
 
 // cvFieldDecoratorsRe captures the full run of decorators preceding a property
@@ -575,6 +782,15 @@ func emitSchemaFieldMembers(owner *types.EntityRecord, fields []schemaField, lib
 		}
 		if len(annots) > 0 {
 			setProps(&child, "validators", strings.Join(annots, " "))
+		}
+		// Issue #4976: fold zod/joi/yup chain constraints into the per-field
+		// `validations` chip list (comma-joined) so the ShapeTree renders schema
+		// constraints (`MaxLength:120`, `Email`, `Min:0`, `Required`, …) with the
+		// same chip format as class-validator (#4858). class-validator DTO fields
+		// get their `validations` chips from the tree-sitter pass
+		// (class_validator_fields.go); the schema-chain libraries get them here.
+		if len(f.validations) > 0 {
+			setProps(&child, "validations", strings.Join(f.validations, ","))
 		}
 		owner.Relationships = append(owner.Relationships,
 			containsFieldEdge(owner.Name, child.ID, f.name, library))
