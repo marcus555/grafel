@@ -96,6 +96,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// the matching module-table component.
 	walkLua(root, file, imports, moduleTableIdx, &entities)
 
+	// Pass 4 (#4911) — recognise the Lua metatable OOP idiom over the
+	// module-table Components just emitted: promote class tables
+	// (`T.__index = T`, `setmetatable({}, {__index=Parent})`) to
+	// Subtype="class" and attach EXTENDS edges to their parent table.
+	applyOOP(file, moduleTableIdx, entities)
+
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "lua")
 	extractor.TagEntitiesLanguage(entities, "lua")
