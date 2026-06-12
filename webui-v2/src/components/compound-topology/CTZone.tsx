@@ -54,7 +54,15 @@ function CTZoneImpl({ data }: NodeProps) {
   // inside its parent (#4866). depth 0 = outermost.
   const outer = (d.depth ?? 0) === 0;
   const fill = `color-mix(in srgb, ${color} ${outer ? 6 : 10}%, transparent)`;
-  const borderColor = `color-mix(in srgb, ${color} ${outer ? 55 : 70}%, var(--border-strong))`;
+  let borderColor = `color-mix(in srgb, ${color} ${outer ? 55 : 70}%, var(--border-strong))`;
+
+  // Cross-link highlight (Model 2): a zone that contains the cross-linked
+  // counterpart of the node selected in the other lens gets an accent frame so
+  // the user can see WHERE in this lens' hierarchy the counterpart lives.
+  const hl = d.highlight;
+  const hlColor = hl === "primary" ? "var(--accent)" : hl === "linked" ? "var(--info)" : "";
+  if (hlColor) borderColor = hlColor;
+  const dim = d.dimmed && (!hl || hl === "none");
 
   return (
     <div
@@ -68,9 +76,13 @@ function CTZoneImpl({ data }: NodeProps) {
         backgroundColor: d.collapsed
           ? `color-mix(in srgb, ${color} 14%, var(--surface-2))`
           : fill,
-        boxShadow: d.collapsed
-          ? undefined
-          : "inset 0 0 0 1px color-mix(in srgb, var(--surface) 55%, transparent)",
+        boxShadow: hlColor
+          ? `0 0 0 2px color-mix(in srgb, ${hlColor} 35%, transparent)`
+          : d.collapsed
+            ? undefined
+            : "inset 0 0 0 1px color-mix(in srgb, var(--surface) 55%, transparent)",
+        opacity: dim ? 0.4 : 1,
+        transition: "opacity 0.15s, border-color 0.15s",
       }}
       title={`${d.label} (${d.kind}) · ${d.nodeCount} node${d.nodeCount === 1 ? "" : "s"}`}
     >

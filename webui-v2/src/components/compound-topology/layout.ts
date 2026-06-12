@@ -83,11 +83,25 @@ export const TIER_ORDER: CompoundTier[] = [
   "external",
 ];
 
+/**
+ * Cross-link highlight state for a node/zone (Model 2, #4810). When a node is
+ * selected in one lens, its counterpart(s) in the other lens are tinted:
+ *   - "primary" — the same entity (identity cross-link, the strongest link).
+ *   - "linked"  — an entity joined to the selection by a real typed edge.
+ *   - "none"    — not part of the current cross-link set (rendered dimmed when
+ *                 any selection is active).
+ */
+export type CTHighlight = "primary" | "linked" | "none";
+
 export interface CTNodeData {
   label: string;
   kind: string;
   tier: CompoundTier;
   repo: string;
+  /** Cross-link highlight state (Model 2). Undefined ⇒ no selection active. */
+  highlight?: CTHighlight;
+  /** True when a selection is active anywhere (drives dimming of "none"). */
+  dimmed?: boolean;
   [key: string]: unknown;
 }
 
@@ -106,6 +120,11 @@ export interface CTZoneData {
   depth: number;
   /** Toggles collapse for this zone id. */
   onToggle: (zoneId: string) => void;
+  /** Cross-link highlight state (Model 2) — set when this zone contains the
+   *  cross-linked counterpart of the node selected in the other lens. */
+  highlight?: CTHighlight;
+  /** True when a selection is active anywhere (drives dimming of "none"). */
+  dimmed?: boolean;
   [key: string]: unknown;
 }
 

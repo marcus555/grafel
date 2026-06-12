@@ -22,6 +22,7 @@ import {
   LayoutList,
   ArrowUpRight,
   Network as NetworkIcon,
+  Link2 as Link2Icon,
 } from "lucide-react";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -33,7 +34,7 @@ import type { InsightValue } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
-import { CompoundTopology } from "@/components/compound-topology";
+import { CompoundTopology, CrossLinkedTopology } from "@/components/compound-topology";
 import {
   useTopology,
   useTopologyDetail,
@@ -1731,7 +1732,7 @@ export default function TopologyScreen() {
     | "scheduled";
   const channelParam = searchParams.get("channel");
 
-  const [viewMode, setViewMode] = useState<"map" | "list" | "arch">("map");
+  const [viewMode, setViewMode] = useState<"map" | "list" | "arch" | "crosslink">("map");
   const [search, setSearch] = useState("");
   const [activeBrokers, setActiveBrokers] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(channelParam);
@@ -2060,11 +2061,32 @@ export default function TopologyScreen() {
                 <NetworkIcon size={13} />
                 Architecture
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("crosslink")}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 h-7 text-xs border-l border-border transition-colors",
+                  viewMode === "crosslink"
+                    ? "bg-surface-2 text-text"
+                    : "text-text-3 hover:bg-surface",
+                )}
+                aria-pressed={viewMode === "crosslink"}
+                title="Cross-linked lenses — select a node to highlight its infra↔code counterpart (Model 2)"
+              >
+                <Link2Icon size={13} />
+                Cross-link
+              </button>
             </div>
           </div>
 
           {/* Workspace */}
-          {viewMode === "arch" ? (
+          {viewMode === "crosslink" ? (
+            /* Cross-linked lenses (Model 2, #4810) — Infra | Code side-by-side;
+               select a node to highlight its counterpart in the other lens. */
+            <div className="flex flex-1 min-h-0">
+              <CrossLinkedTopology groupId={groupId} className="flex-1 min-w-0" />
+            </div>
+          ) : viewMode === "arch" ? (
             /* Architecture diagram (Model 1, #4810/#4811) — compound zones +
                tier lanes + collapsible zones, independent of the broker
                channel filters above. Takes the full canvas. */
