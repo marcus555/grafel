@@ -62,6 +62,16 @@ func extractTypeMembers(
 		if mi.typ != "" {
 			sig = mi.name + ": " + mi.typ
 		}
+		props := map[string]string{
+			"member_name":  mi.name,
+			"member_type":  mi.typ,
+			"parent_class": owner,
+		}
+		// #5049: stamp DataAnnotations validation chips so the dashboard
+		// ShapeTree renders them (Properties["validations"], comma-joined).
+		if len(mi.validations) > 0 {
+			props["validations"] = strings.Join(mi.validations, ",")
+		}
 		ents = append(ents, types.EntityRecord{
 			Name:       dotted,
 			Kind:       "SCOPE.Schema",
@@ -71,11 +81,7 @@ func extractTypeMembers(
 			StartLine:  line,
 			EndLine:    line,
 			Signature:  sig,
-			Properties: map[string]string{
-				"member_name":  mi.name,
-				"member_type":  mi.typ,
-				"parent_class": owner,
-			},
+			Properties: props,
 		})
 		rels = append(rels, types.RelationshipRecord{
 			ToID: extractor.BuildSchemaFieldStructuralRef("fsharp", filePath, dotted),
@@ -87,9 +93,10 @@ func extractTypeMembers(
 
 // memberInfo holds a parsed DU case / record field.
 type memberInfo struct {
-	name       string
-	typ        string // payload type (DU `of T`) or field type annotation
-	lineOffset int    // line offset relative to the type declaration start
+	name        string
+	typ         string   // payload type (DU `of T`) or field type annotation
+	lineOffset  int      // line offset relative to the type declaration start
+	validations []string // #5049: DataAnnotations chips from preceding [<...>] attributes
 }
 
 // parseRecordFields parses the body of an F# record type, returning one entry
@@ -98,12 +105,26 @@ type memberInfo struct {
 // tolerated.
 func parseRecordFields(body string) []memberInfo {
 	var out []memberInfo
+	// #5049: DataAnnotations attributes (`[<Required>]`) precede the field they
+	// decorate, often on their own line(s). Accumulate the raw attribute lines
+	// seen since the last field and attach them to the next field parsed.
+	var pendingAttrs []string
 	for lineNo, raw := range strings.Split(body, "\n") {
 		line := raw
 		// Strip the enclosing braces so a single-line `{ X: int; Y: int }`
 		// degrades to a `;`-separated field list.
 		line = strings.ReplaceAll(line, "{", "")
 		line = strings.ReplaceAll(line, "}", "")
+		// A line that carries an attribute group but no field declaration is a
+		// standalone attribute line — remember it for the next field. A line
+		// that carries both (`[<Required>] Email: string`) is handled inline:
+		// fsValidationChips reads the `[<...>]` prefix off the same raw line.
+		hasAttr := strings.Contains(line, "[<")
+		hasField := strings.ContainsRune(line, ':')
+		if hasAttr && !hasField {
+			pendingAttrs = append(pendingAttrs, line)
+			continue
+		}
 		for _, seg := range strings.Split(line, ";") {
 			seg = strings.TrimSpace(seg)
 			if seg == "" {
@@ -116,10 +137,29 @@ func parseRecordFields(body string) []memberInfo {
 			}
 			name := strings.TrimSpace(seg[:colon])
 			typ := strings.TrimSpace(seg[colon+1:])
+			// An inline attribute prefix (`[<Required>] Email`) leaks into the
+			// name; collect its chips, then strip it off the field name.
+			var inlineAttrs []string
+			if strings.Contains(name, "[<") {
+				inlineAttrs = []string{name}
+				if gt := strings.LastIndex(name, ">]"); gt >= 0 {
+					name = strings.TrimSpace(name[gt+2:])
+				}
+			}
 			if !isFieldName(name) {
 				continue
 			}
-			out = append(out, memberInfo{name: name, typ: typ, lineOffset: lineNo})
+			mi := memberInfo{name: name, typ: typ, lineOffset: lineNo}
+			if attrs := append(append([]string{}, pendingAttrs...), inlineAttrs...); len(attrs) > 0 {
+				mi.validations = fsValidationChips(attrs)
+			}
+			out = append(out, mi)
+			pendingAttrs = nil
+		}
+		// A non-attribute, non-field line (blank / comment) clears any dangling
+		// attributes so they don't bind to a far-away field.
+		if !hasAttr && !hasField {
+			pendingAttrs = nil
 		}
 	}
 	return out

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # F#
 
-**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 1
+**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 2
 
 Back to [summary](../summary.md).
 
@@ -40,3 +40,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [F#](../detail/lang.fsharp.core.md) | [language](../by-category/language.md) | 🟢 | |
+
+### Validation
+
+| Name | Testing | Other capabilities | Notes |
+|---|---|---|---|
+| [DataAnnotations (F# records)](../detail/lang.fsharp.validation.dataannotations.md) | 🔴 0/1 | 🟡 2/4 | |

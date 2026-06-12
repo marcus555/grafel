@@ -692,6 +692,102 @@ type Person = {
 	}
 }
 
+// TestFSharp_DataAnnotationsValidations — #5049: DataAnnotations attributes
+// preceding a record field are collected into Properties["validations"]
+// (comma-joined chips) so the dashboard ShapeTree renders constraint chips —
+// mirroring the Java/TS/Python field-validation support.
+func TestFSharp_DataAnnotationsValidations(t *testing.T) {
+	src := `module Dto
+
+type CreateUserDto = {
+    [<Required>]
+    [<EmailAddress>]
+    Email: string
+
+    [<StringLength(120)>]
+    [<MinLength(2)>]
+    Name: string
+
+    [<Required; Range(1, 5)>]
+    Rating: int
+
+    [<RegularExpression("^[0-9]+$")>]
+    Code: string
+
+    Note: string
+}
+`
+	ents := runFSharp(t, src, "dto.fs")
+
+	cases := []struct {
+		name, want string
+	}{
+		{"CreateUserDto.Email", "Required,Email"},
+		{"CreateUserDto.Name", "MaxLength:120,MinLength:2"},
+		{"CreateUserDto.Rating", "Required,Range:1..5"},
+		{"CreateUserDto.Code", "Pattern"},
+	}
+	for _, c := range cases {
+		fe := fsFind(ents, c.name, "SCOPE.Schema")
+		if fe == nil {
+			t.Fatalf("expected field %q", c.name)
+		}
+		if got := fe.Properties["validations"]; got != c.want {
+			t.Errorf("field %q validations=%q, want %q", c.name, got, c.want)
+		}
+	}
+
+	// A field with no attributes must NOT carry a validations property.
+	if fe := fsFind(ents, "CreateUserDto.Note", "SCOPE.Schema"); fe == nil {
+		t.Fatal("expected field CreateUserDto.Note")
+	} else if _, ok := fe.Properties["validations"]; ok {
+		t.Errorf("Note should have no validations, got %q", fe.Properties["validations"])
+	}
+}
+
+// TestFSharp_InlineValidationAttribute — #5049: an attribute on the SAME line as
+// the field (`[<Required>] Email: string`) is still collected, and the leading
+// attribute is stripped off the field name.
+func TestFSharp_InlineValidationAttribute(t *testing.T) {
+	src := `module Dto
+
+type LoginDto = {
+    [<Required>] Username: string
+}
+`
+	ents := runFSharp(t, src, "login.fs")
+	fe := fsFind(ents, "LoginDto.Username", "SCOPE.Schema")
+	if fe == nil {
+		t.Fatalf("expected field LoginDto.Username (attr should be stripped off name)")
+	}
+	if got := fe.Properties["validations"]; got != "Required" {
+		t.Errorf("Username validations=%q, want Required", got)
+	}
+	if mt := fe.Properties["member_type"]; mt != "string" {
+		t.Errorf("Username member_type=%q, want string", mt)
+	}
+}
+
+// TestFSharp_NonValidationAttributesIgnored — #5049: non-validation attributes
+// (`[<CLIMutable>]`, `[<JsonProperty>]`) never leak into the validations chips.
+func TestFSharp_NonValidationAttributesIgnored(t *testing.T) {
+	src := `module Dto
+
+type Config = {
+    [<CLIMutable>]
+    Host: string
+}
+`
+	ents := runFSharp(t, src, "config.fs")
+	fe := fsFind(ents, "Config.Host", "SCOPE.Schema")
+	if fe == nil {
+		t.Fatalf("expected field Config.Host")
+	}
+	if v, ok := fe.Properties["validations"]; ok {
+		t.Errorf("Host should have no validation chips, got %q", v)
+	}
+}
+
 // TestFSharp_DUCases — #4942: DU CASES are emitted as individual
 // SCOPE.Schema/du_case sub-entities, with payload types captured from `of T`.
 func TestFSharp_DUCases(t *testing.T) {
