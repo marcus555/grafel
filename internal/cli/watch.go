@@ -17,6 +17,60 @@ import (
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
+// watchBackoffConfig tunes the standalone watcher's failure handling
+// (issue #5140). When the daemon is unreachable the watcher must NOT
+// tight-loop and spam its err log forever (that, together with a stale
+// orphan process, was a primary driver of the observed CPU runaway).
+// Instead it backs off exponentially and exits after maxConsecutive
+// consecutive failures so a watcher whose daemon was restarted dies
+// rather than busy-looping.
+type watchBackoffConfig struct {
+	// base is the first backoff sleep after a failure.
+	base time.Duration
+	// max caps the per-failure backoff sleep.
+	max time.Duration
+	// maxConsecutive is the number of back-to-back failures after which
+	// the watcher gives up and exits. Zero means "never die" (only used
+	// by tests that want to exercise the sleep schedule in isolation).
+	maxConsecutive int
+}
+
+func defaultWatchBackoff() watchBackoffConfig {
+	return watchBackoffConfig{
+		base:           2 * time.Second,
+		max:            60 * time.Second,
+		maxConsecutive: 10,
+	}
+}
+
+// activeWatchBackoff is the backoff policy runWatch uses. It is a var
+// (not a constant call) so tests can substitute a fast schedule without
+// waiting out the production exponential delays.
+var activeWatchBackoff = defaultWatchBackoff
+
+// backoffSleep returns the sleep duration for the Nth (1-based)
+// consecutive failure: base * 2^(failures-1), capped at max. A
+// failures count <= 1 yields the base delay.
+func (c watchBackoffConfig) backoffSleep(failures int) time.Duration {
+	d := c.base
+	for i := 1; i < failures; i++ {
+		d *= 2
+		if d >= c.max {
+			return c.max
+		}
+	}
+	if d > c.max {
+		return c.max
+	}
+	return d
+}
+
+// shouldDie reports whether the watcher has hit its consecutive-failure
+// ceiling and must exit. maxConsecutive == 0 disables the ceiling.
+func (c watchBackoffConfig) shouldDie(failures int) bool {
+	return c.maxConsecutive > 0 && failures >= c.maxConsecutive
+}
+
 // indexViaDaemon calls the daemon's Index RPC for one repo. Returns
 // the canonical "daemon not running" error so the watcher loop's log
 // line is identical to what `archigraph index` would print.
@@ -77,7 +131,20 @@ func runWatch(repo, group string, interval time.Duration) error {
 	// graph.json across the groups we care about. When any value
 	// changes between ticks, we re-run the link passes for the affected
 	// group(s).
+	//
+	// NOTE (issue #5140): this is a *staleness/cross-repo-link* signal
+	// only. The watcher deliberately does NOT treat a graph.json mtime
+	// bump as a source change that re-triggers a repo reindex — the
+	// daemon writes <repo>/.archigraph/graph.json as the OUTPUT of every
+	// index, and reading that write back as an input would form a
+	// self-reinforcing reindex loop. The repo reindex below is driven
+	// purely by the poll tick (and, in Phase B, by the daemon's own
+	// fsnotify watcher, which already excludes <repo>/.archigraph/ via
+	// watch.ShouldSkipPath).
 	graphMtimes := snapshotGraphMtimes(repo, group)
+
+	backoff := activeWatchBackoff()
+	consecutiveFailures := 0
 
 	for {
 		select {
@@ -89,10 +156,30 @@ func runWatch(repo, group string, interval time.Duration) error {
 			// RPC client. Phase B will retire this subcommand entirely
 			// once the daemon's fsnotify loop is wired in.
 			if err := indexViaDaemon(repo); err != nil {
-				fmt.Fprintf(os.Stderr, "archigraph watch: index failed: %v\n", err)
+				consecutiveFailures++
+				fmt.Fprintf(os.Stderr, "archigraph watch: index failed (%d/%d): %v\n",
+					consecutiveFailures, backoff.maxConsecutive, err)
+				// Backoff + die (issue #5140): a watcher whose daemon was
+				// restarted (or is permanently gone) must not tight-loop
+				// and spam its err log forever. Exit after N consecutive
+				// failures so an orphaned watcher reaps itself.
+				if backoff.shouldDie(consecutiveFailures) {
+					return fmt.Errorf("archigraph watch: giving up after %d consecutive index failures (last: %w)",
+						consecutiveFailures, err)
+				}
+				sleep := backoff.backoffSleep(consecutiveFailures)
+				select {
+				case <-stop:
+					return nil
+				case <-time.After(sleep):
+				}
+				continue
 			}
+			consecutiveFailures = 0
 			// 2. Detect any cross-repo graph.json mtime changes and
-			// re-run link passes for the affected groups.
+			// re-run link passes for the affected groups. (Staleness
+			// signal only — see the note above; this does not re-trigger
+			// a reindex of `repo` itself.)
 			changed := detectGraphChanges(repo, group, graphMtimes)
 			for _, g := range changed {
 				if activeHooks.RunLinks == nil {
