@@ -110,6 +110,33 @@ func TestSkipDirsExtended(t *testing.T) {
 	}
 }
 
+// TestShouldSkipPath_ArchigraphSelfWrites is the #5140 regression guard:
+// the daemon writes its own outputs (graph.json, graph.fb, logs/*) under
+// <repo>/.archigraph/. A watch event on any of those MUST be dropped by
+// ShouldSkipPath so writing the index output never reads back as a repo
+// source change and re-triggers a reindex (the self-reinforcing loop).
+// A real source file under the repo MUST still pass through.
+func TestShouldSkipPath_ArchigraphSelfWrites(t *testing.T) {
+	cases := map[string]bool{
+		// daemon self-writes — must be skipped
+		"/repo/.archigraph/graph.json":           true,
+		"/repo/.archigraph/graph.fb":             true,
+		"/repo/.archigraph/logs/watcher.err.log": true,
+		"/repo/.archigraph/logs/index.log":       true,
+		".archigraph/graph.json":                 true,
+		"nested/pkg/.archigraph/graph.json":      true,
+		// real source — must NOT be skipped
+		"/repo/src/x.ts":          false,
+		"/repo/internal/cli/a.go": false,
+		"/repo/pkg/main.py":       false,
+	}
+	for p, wantSkip := range cases {
+		if got := ShouldSkipPath(p); got != wantSkip {
+			t.Errorf("ShouldSkipPath(%q) = %v, want %v", p, got, wantSkip)
+		}
+	}
+}
+
 // TestGitignoreRespected verifies that ShouldSkipDirGitignore respects
 // a root .gitignore file.
 func TestGitignoreRespected(t *testing.T) {

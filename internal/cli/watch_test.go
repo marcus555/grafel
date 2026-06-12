@@ -143,3 +143,87 @@ func TestRunWatch_TriggersLinksHookOnGraphChange(t *testing.T) {
 		t.Fatalf("expected RunLinks hook to fire once for group 'g', got %v", called)
 	}
 }
+
+// TestWatchBackoff_SleepSchedule verifies the standalone watcher's
+// exponential backoff schedule (issue #5140): the Nth consecutive
+// failure sleeps base*2^(N-1), capped at max.
+func TestWatchBackoff_SleepSchedule(t *testing.T) {
+	c := watchBackoffConfig{base: 1 * time.Second, max: 8 * time.Second, maxConsecutive: 10}
+	cases := []struct {
+		failures int
+		want     time.Duration
+	}{
+		{1, 1 * time.Second},
+		{2, 2 * time.Second},
+		{3, 4 * time.Second},
+		{4, 8 * time.Second},
+		{5, 8 * time.Second},  // capped
+		{99, 8 * time.Second}, // still capped, no overflow
+	}
+	for _, tc := range cases {
+		if got := c.backoffSleep(tc.failures); got != tc.want {
+			t.Errorf("backoffSleep(%d) = %s, want %s", tc.failures, got, tc.want)
+		}
+	}
+}
+
+// TestWatchBackoff_ShouldDie verifies the consecutive-failure ceiling:
+// the watcher exits (rather than tight-looping) once it has hit
+// maxConsecutive back-to-back daemon-unreachable failures (issue #5140).
+func TestWatchBackoff_ShouldDie(t *testing.T) {
+	c := watchBackoffConfig{base: time.Second, max: time.Minute, maxConsecutive: 3}
+	for _, tc := range []struct {
+		failures int
+		want     bool
+	}{
+		{0, false},
+		{1, false},
+		{2, false},
+		{3, true},
+		{4, true},
+	} {
+		if got := c.shouldDie(tc.failures); got != tc.want {
+			t.Errorf("shouldDie(%d) = %v, want %v", tc.failures, got, tc.want)
+		}
+	}
+
+	// maxConsecutive == 0 disables the ceiling entirely.
+	never := watchBackoffConfig{base: time.Second, max: time.Minute, maxConsecutive: 0}
+	if never.shouldDie(1000) {
+		t.Fatal("maxConsecutive==0 must never trigger shouldDie")
+	}
+}
+
+// TestRunWatch_BacksOffAndDiesWhenDaemonUnreachable is an end-to-end
+// check that runWatch returns (exits) after the consecutive-failure
+// ceiling instead of looping forever when the daemon is not running
+// (issue #5140). No live daemon is started; Dial fails fast.
+func TestRunWatch_BacksOffAndDiesWhenDaemonUnreachable(t *testing.T) {
+	home := withSandboxHome(t)
+	repo := filepath.Join(home, "repos", "solo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Substitute a fast backoff so the test finishes in well under a
+	// second while still exercising the real backoff+die loop.
+	prev := activeWatchBackoff
+	activeWatchBackoff = func() watchBackoffConfig {
+		return watchBackoffConfig{base: time.Millisecond, max: 5 * time.Millisecond, maxConsecutive: 3}
+	}
+	t.Cleanup(func() { activeWatchBackoff = prev })
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runWatch(repo, "", 5*time.Millisecond)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected runWatch to return a give-up error, got nil")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("runWatch did not exit after repeated daemon-unreachable failures (issue #5140 regression)")
+	}
+}
