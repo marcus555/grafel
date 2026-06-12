@@ -55,6 +55,20 @@ type CoordinatorConfig struct {
 	// Stderr receives subprocess stderr (logs, progress). When nil the
 	// coordinator discards it.
 	Stderr io.Writer
+
+	// Interactive marks this extraction as an explicit, user-triggered
+	// foreground rebuild (e.g. `archigraph rebuild` / `archigraph index`)
+	// rather than a background watch/churn-triggered reindex (#5135).
+	//
+	// The #5134 CPU cap (a low per-subprocess GOMAXPROCS, default 2) exists
+	// to stop continuous background reindexes from saturating a shared host.
+	// But applying that same low cap to an EXPLICIT rebuild makes the thing
+	// the user is actively waiting on needlessly slow. When Interactive is
+	// true the coordinator uses the higher ARCHIGRAPH_REBUILD_GOMAXPROCS cap
+	// (default = host core count) and the rebuild fan-out concurrency, so the
+	// foreground rebuild runs fast; only the throttled background path keeps
+	// the conservative ARCHIGRAPH_EXTRACT_GOMAXPROCS=2 default.
+	Interactive bool
 }
 
 func (c CoordinatorConfig) concurrency() int {
@@ -65,8 +79,19 @@ func (c CoordinatorConfig) concurrency() int {
 	// ARCHIGRAPH_EXTRACT_CONCURRENCY caps the number of concurrent extract
 	// subprocesses. Used to throttle the daemon on shared/contended machines
 	// where a high-churn repo (merge-every-few-minutes) would otherwise drive
-	// continuous full-reindex fan-out (#3648).
+	// continuous full-reindex fan-out (#3648). It applies to BOTH paths — an
+	// operator-set ceiling on contended hosts is honored even for explicit
+	// rebuilds.
 	if n := envPositiveInt("ARCHIGRAPH_EXTRACT_CONCURRENCY"); n > 0 {
+		return n
+	}
+	// #5135: explicit foreground rebuilds fan out wider (the user is waiting
+	// on them); background churn reindexes stay at the conservative cap.
+	if c.Interactive {
+		n := runtime.NumCPU()
+		if n < 1 {
+			n = 1
+		}
 		return n
 	}
 	n := runtime.NumCPU() / 2
@@ -92,11 +117,43 @@ func (c CoordinatorConfig) concurrency() int {
 //	ARCHIGRAPH_EXTRACT_GOMAXPROCS overrides the per-child value.
 //	Default: 2 (so 4 children × 2 = ~8 worker threads worst-case, vs the
 //	         previous unbounded 4 × hostCores).
+//
+// #5135: this is the BACKGROUND (watch/churn-triggered) cap. Explicit
+// foreground rebuilds use childGOMAXPROCS() with Interactive=true, which
+// resolves the higher ARCHIGRAPH_REBUILD_GOMAXPROCS instead.
 func extractGOMAXPROCS() int {
 	if n := envPositiveInt("ARCHIGRAPH_EXTRACT_GOMAXPROCS"); n > 0 {
 		return n
 	}
 	return 2
+}
+
+// rebuildGOMAXPROCS returns the per-subprocess GOMAXPROCS cap for an EXPLICIT,
+// user-triggered foreground rebuild (#5135). The user is actively waiting on
+// these, so they should run at host speed — only background churn reindexes
+// are throttled by the conservative extractGOMAXPROCS() default.
+//
+//	ARCHIGRAPH_REBUILD_GOMAXPROCS overrides the per-child value.
+//	Default: host core count (runtime.NumCPU()), i.e. effectively uncapped.
+func rebuildGOMAXPROCS() int {
+	if n := envPositiveInt("ARCHIGRAPH_REBUILD_GOMAXPROCS"); n > 0 {
+		return n
+	}
+	n := runtime.NumCPU()
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// childGOMAXPROCS resolves the per-subprocess GOMAXPROCS cap for THIS
+// extraction, dispatching on whether it is an interactive foreground rebuild
+// or a throttled background reindex (#5135).
+func (c CoordinatorConfig) childGOMAXPROCS() int {
+	if c.Interactive {
+		return rebuildGOMAXPROCS()
+	}
+	return extractGOMAXPROCS()
 }
 
 // envPositiveInt reads a strictly-positive integer from the named env var.
@@ -250,7 +307,7 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 	// Per-subprocess GOMAXPROCS cap (#3648). Computed once; applied to every
 	// child's environment so the Go runtime in each extract subprocess does not
 	// scale its thread pool to the full host core count.
-	childGOMAXPROCS := strconv.Itoa(extractGOMAXPROCS())
+	childGOMAXPROCS := strconv.Itoa(cfg.childGOMAXPROCS())
 	childEnv := append(os.Environ(), "GOMAXPROCS="+childGOMAXPROCS)
 	var wg sync.WaitGroup
 	var firstErr error
