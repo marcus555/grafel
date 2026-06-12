@@ -280,6 +280,115 @@ class AssistantConfig {
 	}
 }
 
+// prompt_template_extraction template-variable resolution (#5013, parity with
+// Java langchain4j): @SystemMessage/@UserMessage inline templates have their
+// {{var}} placeholders resolved against @V("var") / un-annotated fun params,
+// emitting template_var.* properties + DEPENDS_ON edges to the bound params.
+func TestLangChain4jPromptTemplateVars(t *testing.T) {
+	src := `
+interface Assistant {
+    @SystemMessage("You are a {{role}} assistant for {{company}}.")
+    @UserMessage("Answer the question {{question}} in {{lang}}.")
+    fun chat(@V("role") position: String, @V("company") org: String, question: String, @V("lang") language: String): String
+}
+`
+	e, ok := extreg.Get("custom_kotlin_langchain4j")
+	if !ok {
+		t.Fatal("extractor custom_kotlin_langchain4j not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("Assistant.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+
+	find := func(name string) *types.EntityRecord {
+		for i := range ents {
+			if ents[i].Kind == "SCOPE.Pattern" && ents[i].Name == name {
+				return &ents[i]
+			}
+		}
+		return nil
+	}
+
+	sys := find("chat.system_message")
+	if sys == nil {
+		t.Fatal("expected chat.system_message prompt pattern")
+	}
+	// {{role}} -> @V("role") position ; {{company}} -> @V("company") org
+	if got := sys.Properties["template_var.role"]; got != "position" {
+		t.Errorf("system role binding: got %q, want %q", got, "position")
+	}
+	if got := sys.Properties["template_var.company"]; got != "org" {
+		t.Errorf("system company binding: got %q, want %q", got, "org")
+	}
+	if got := sys.Properties["template_var_count"]; got != "2" {
+		t.Errorf("system template_var_count: got %q, want 2", got)
+	}
+	sysEdges := map[string]string{}
+	for _, r := range sys.Relationships {
+		if r.Kind != "DEPENDS_ON" {
+			t.Errorf("expected DEPENDS_ON edge, got %s", r.Kind)
+		}
+		sysEdges[r.Properties["template_var"]] = r.ToID
+	}
+	if sysEdges["role"] != "position" || sysEdges["company"] != "org" {
+		t.Errorf("system DEPENDS_ON edges = %v, want role->position, company->org", sysEdges)
+	}
+
+	usr := find("chat.user_message")
+	if usr == nil {
+		t.Fatal("expected chat.user_message prompt pattern")
+	}
+	// {{question}} -> un-annotated param question (bind by name)
+	if got := usr.Properties["template_var.question"]; got != "question" {
+		t.Errorf("user question binding: got %q, want %q", got, "question")
+	}
+	// {{lang}} -> @V("lang") language
+	if got := usr.Properties["template_var.lang"]; got != "language" {
+		t.Errorf("user lang binding: got %q, want %q", got, "language")
+	}
+}
+
+// PromptTemplate.from("...{{var}}...") programmatic templates (#5013) record
+// placeholders as template variables with no resolvable param binding.
+func TestLangChain4jPromptTemplateFrom(t *testing.T) {
+	src := `
+class PromptFactory {
+    fun build(): PromptTemplate {
+        val greeting = PromptTemplate.from("Hello {{name}}, welcome to {{place}}!")
+        return greeting
+    }
+}
+`
+	e, _ := extreg.Get("custom_kotlin_langchain4j")
+	ents, err := e.Extract(context.Background(), fi("PromptFactory.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	var pt *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Pattern" && ents[i].Name == "greeting.prompt_template" {
+			pt = &ents[i]
+		}
+	}
+	if pt == nil {
+		t.Fatal("expected greeting.prompt_template SCOPE.Pattern")
+	}
+	if pt.Properties["provenance"] != "INFERRED_FROM_LANGCHAIN4J_PROMPT_TEMPLATE" {
+		t.Errorf("wrong provenance: %s", pt.Properties["provenance"])
+	}
+	if got := pt.Properties["template_vars"]; got != "name,place" {
+		t.Errorf("template_vars: got %q, want %q", got, "name,place")
+	}
+	// No surrounding fun params, so placeholders bind to nothing and emit no edges.
+	if got := pt.Properties["template_var.name"]; got != "" {
+		t.Errorf("expected unbound name var, got %q", got)
+	}
+	if len(pt.Relationships) != 0 {
+		t.Errorf("expected no DEPENDS_ON edges for programmatic template, got %d", len(pt.Relationships))
+	}
+}
+
 // confidence_overlay (#4974, parity with Java #3093): the langchain4j extractor
 // stamps a top-level EntityRecord.Confidence directly. All entities are regex
 // pattern matches, so the stamped value is BaseConfidence(SourceRegexPattern)=0.7.

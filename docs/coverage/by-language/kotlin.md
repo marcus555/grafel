@@ -61,7 +61,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain4J (Kotlin)](../detail/lang.kotlin.framework.langchain4j.md) | 🟢 4/4 | |
+| [LangChain4J (Kotlin)](../detail/lang.kotlin.framework.langchain4j.md) | ✅ 4/4 | |
 
 
 ## ORMs
