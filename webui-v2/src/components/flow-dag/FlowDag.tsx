@@ -35,6 +35,8 @@ import {
   Controls,
   MiniMap,
   ReactFlowProvider,
+  useReactFlow,
+  useNodesInitialized,
   type Node as RFNode,
   type NodeTypes,
   type EdgeTypes,
@@ -444,6 +446,18 @@ function FlowDagInner({
   const [elkLaid, setElkLaid] = useState<{ nodes: FlowDagRFNode[]; edges: FlowDagRFEdge[] }>(EMPTY);
   const [elkLaidOut, setElkLaidOut] = useState(false);
   const elkRunId = useRef(0);
+
+  // #4887: the FlowDag card has a fixed width but a content-driven HEIGHT (long
+  // names wrap, signature/doc/effect rows appear). ELK routes the centered
+  // top/bottom ports against the box height we hand it, so a first pass using the
+  // nominal NODE_H leaves vertical edges docking above the taller rendered card.
+  // After React Flow measures the painted cards we feed the REAL heights back and
+  // re-run ELK once, so the centered ports land on the card's true mid-sides in
+  // both orientations. `measuredHeights` is undefined on the first pass.
+  const [measuredHeights, setMeasuredHeights] = useState<Map<string, number> | undefined>(undefined);
+  const { getNodes } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
+
   useEffect(() => {
     if (engine !== "elk") return;
     if (!unfold) {
@@ -460,6 +474,8 @@ function FlowDagInner({
       expanded,
       onToggleExpand,
       unfold.hasOutEdge,
+      undefined,
+      measuredHeights,
     )
       .then((res) => {
         if (cancelled || myRun !== elkRunId.current) return;
@@ -477,7 +493,42 @@ function FlowDagInner({
     return () => {
       cancelled = true;
     };
-  }, [engine, unfold, direction, expanded, onToggleExpand, EMPTY]);
+  }, [engine, unfold, direction, expanded, onToggleExpand, measuredHeights, EMPTY]);
+
+  // The layout inputs (tree shape / direction / inline-expand) change the cards'
+  // measured heights, so drop the stale measurements when they do — the next ELK
+  // pass runs against NODE_H, then this effect re-measures and refines once.
+  useEffect(() => {
+    setMeasuredHeights(undefined);
+  }, [unfold, direction, expanded]);
+
+  // After ELK lays out and React Flow paints + measures the cards, read each
+  // card's real height and, if any differs from what the last ELK pass assumed,
+  // commit them so the layout effect re-runs once with true heights (#4887).
+  useEffect(() => {
+    if (engine !== "elk" || !elkLaidOut || !nodesInitialized || !unfold) return;
+    const next = new Map<string, number>();
+    for (const n of getNodes()) {
+      const m = n.measured?.height;
+      if (typeof m === "number" && Number.isFinite(m) && m > 0) next.set(n.id, m);
+    }
+    if (next.size === 0) return;
+    // Compare against the heights the current layout used (measuredHeights, or
+    // the nominal box when unmeasured). Re-commit only on a meaningful change so
+    // we converge in ONE refinement and never loop.
+    let changed = false;
+    for (const [id, h] of next) {
+      const prev = measuredHeights?.get(id);
+      if (prev == null || Math.abs(prev - h) > 0.5) {
+        changed = true;
+        break;
+      }
+    }
+    if (changed) setMeasuredHeights(next);
+    // getNodes is stable; measuredHeights intentionally read, not depended on, to
+    // avoid an extra pass — convergence is gated by the `changed` check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, elkLaidOut, nodesInitialized, unfold, getNodes]);
 
   const laidOut = engine === "dagre" ? tidyLaid : elkLaid;
   // True while ELK is still computing its first layout for the current inputs.

@@ -462,6 +462,72 @@ describe("layoutTreeElk (#4827)", () => {
     expect(starts[1].x).toBeCloseTo(starts[0].x, 1);
     expect(starts[1].y).toBeCloseTo(starts[0].y, 1);
   });
+
+  // #4887 regression guard. The card has a FIXED width but a content-driven
+  // HEIGHT. Before this fix ELK always used the nominal NODE_H, so the centered
+  // bottom/top ports landed at y = box-bottom — ABOVE the taller rendered card —
+  // and vertical edges docked off the card's true mid-side. Passing the REAL
+  // measured heights back into layoutTreeElk must place the ports at each card's
+  // ACTUAL mid-side, in BOTH orientations. (Horizontal docks on the fixed-width
+  // X axis, so it was already centered, but we assert it stays centered too.)
+  const TALL = 150; // a card taller than NODE_H (long name + signature + effects)
+  const measured = (ids: string[]) => new Map(ids.map((id) => [id, TALL]));
+
+  it("docks edges on each card's MEASURED mid-side — TB (vertical, #4887)", async () => {
+    const { instances, hasOutEdge } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("a", "c")],
+    );
+    const heights = measured(instances.map((i) => i.id));
+    const { nodes: rf, edges } = await layoutTreeElk(
+      instances, "TB", new Set(), () => {}, hasOutEdge, undefined, heights,
+    );
+    const byId = new Map(rf.map((nd) => [nd.id, nd]));
+    // The laid-out node box height must equal the measured card height, so the
+    // visible card bottom/top coincide with the dock points.
+    for (const nd of rf) expect(nd.height).toBeCloseTo(TALL, 1);
+    for (const ed of edges) {
+      const pts = (ed.data as { elkPoints?: { x: number; y: number }[] }).elkPoints!;
+      const src = byId.get(ed.source)!;
+      const tgt = byId.get(ed.target)!;
+      const start = pts[0];
+      const end = pts[pts.length - 1];
+      // Source leaves the bottom-edge MID-point of its real (tall) box…
+      expect(start.x).toBeCloseTo(src.position.x + (src.width ?? 0) / 2, 1);
+      expect(start.y).toBeCloseTo(src.position.y + TALL, 1);
+      // …and enters the child's top-edge mid-point.
+      expect(end.x).toBeCloseTo(tgt.position.x + (tgt.width ?? 0) / 2, 1);
+      expect(end.y).toBeCloseTo(tgt.position.y, 1);
+    }
+  });
+
+  it("docks edges on each card's MEASURED mid-side — LR (horizontal, #4887)", async () => {
+    const { instances, hasOutEdge } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("a", "c")],
+    );
+    const heights = measured(instances.map((i) => i.id));
+    const { nodes: rf, edges } = await layoutTreeElk(
+      instances, "LR", new Set(), () => {}, hasOutEdge, undefined, heights,
+    );
+    const byId = new Map(rf.map((nd) => [nd.id, nd]));
+    for (const nd of rf) expect(nd.height).toBeCloseTo(TALL, 1);
+    for (const ed of edges) {
+      const pts = (ed.data as { elkPoints?: { x: number; y: number }[] }).elkPoints!;
+      const src = byId.get(ed.source)!;
+      const tgt = byId.get(ed.target)!;
+      const start = pts[0];
+      const end = pts[pts.length - 1];
+      // Source leaves the right-edge mid-point of its real (tall) box…
+      expect(start.x).toBeCloseTo(src.position.x + (src.width ?? 0), 1);
+      expect(start.y).toBeCloseTo(src.position.y + TALL / 2, 1);
+      // …and enters the child's left-edge mid-point.
+      expect(end.x).toBeCloseTo(tgt.position.x, 1);
+      expect(end.y).toBeCloseTo(tgt.position.y + TALL / 2, 1);
+    }
+  });
 });
 
 describe("layoutTree leaf vs truncated (#4561)", () => {
