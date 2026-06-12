@@ -156,10 +156,23 @@ func (e *actixWebExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		add(ent)
 	}
 
-	// 5. web::Json<T>/Path<T>/Query<T>/Form<T>/Data<T> extractors -> SCOPE.Schema
+	// 5. web::Json<T>/Path<T>/Query<T>/Form<T> request-shape extractors -> SCOPE.Schema.
+	//    web::Data<T> is special-cased: it is actix's application-data DI
+	//    container (registered via App::app_data(web::Data::new(T))) injected
+	//    into the handler, so it is emitted as a di_injection_point pattern
+	//    (mechanism=data) rather than a request-shape schema.
 	for _, m := range reActixExtractor.FindAllStringSubmatchIndex(src, -1) {
 		extKind := src[m[2]:m[3]]
 		typeParam := src[m[4]:m[5]]
+		if extKind == "Data" {
+			ent := makeEntity("data:"+typeParam, "SCOPE.Pattern", "di_injection_point", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "actix_web", "di_framework", "actix_web",
+				"provenance", "INFERRED_FROM_ACTIX_DATA",
+				"extractor_kind", extKind, "type_param", typeParam,
+				"injected_type", typeParam, "mechanism", "data")
+			add(ent)
+			continue
+		}
 		name := extKind + "<" + typeParam + ">"
 		ent := makeEntity(name, "SCOPE.Schema", "", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "actix_web", "provenance", "INFERRED_FROM_ACTIX_EXTRACTOR",

@@ -175,21 +175,30 @@ func (e *axumExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		add(ent)
 	}
 
-	// 4. State<T> -> SCOPE.Pattern
+	// 4. State<T> -> SCOPE.Pattern(di_injection_point)
+	// axum State<T> is a DI extractor: the shared application state T is
+	// injected into the handler from the Router's .with_state(T). Stamp it as a
+	// di_injection_point so DI tooling surfaces it (mechanism=state), keeping
+	// the legacy state_type prop for back-compat.
 	for _, m := range reAxumState.FindAllStringSubmatchIndex(src, -1) {
 		stateType := src[m[2]:m[3]]
-		ent := makeEntity("state:"+stateType, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "axum", "provenance", "INFERRED_FROM_AXUM_STATE",
-			"state_type", stateType)
+		ent := makeEntity("state:"+stateType, "SCOPE.Pattern", "di_injection_point", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "axum", "di_framework", "axum",
+			"provenance", "INFERRED_FROM_AXUM_STATE",
+			"state_type", stateType, "injected_type", stateType, "mechanism", "state")
 		add(ent)
 	}
 
-	// 5. Extension<T> -> SCOPE.Pattern
+	// 5. Extension<T> -> SCOPE.Pattern(di_injection_point)
+	// axum Extension<T> injects a request-scoped value placed by an
+	// Extension/AddExtensionLayer middleware into the handler — a DI injection
+	// point (mechanism=extension), legacy extension_type prop retained.
 	for _, m := range reAxumExtension.FindAllStringSubmatchIndex(src, -1) {
 		extType := src[m[2]:m[3]]
-		ent := makeEntity("extension:"+extType, "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "axum", "provenance", "INFERRED_FROM_AXUM_EXTENSION",
-			"extension_type", extType)
+		ent := makeEntity("extension:"+extType, "SCOPE.Pattern", "di_injection_point", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "axum", "di_framework", "axum",
+			"provenance", "INFERRED_FROM_AXUM_EXTENSION",
+			"extension_type", extType, "injected_type", extType, "mechanism", "extension")
 		add(ent)
 	}
 

@@ -313,3 +313,69 @@ rocket::build().mount("/api", routes![get_user, create_user]);
 		t.Error("expected POST /api/users (data= kwarg tolerated, mount composed)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// DI injection points (#4921): axum State<T>/Extension<T>, actix web::Data<T>
+// ---------------------------------------------------------------------------
+
+// axum State<T> and Extension<T> handler args are DI injection points.
+func TestAxumStateExtensionDIInjection(t *testing.T) {
+	src := `
+async fn handler(
+    State(pool): State<AppState>,
+    Extension(user): Extension<CurrentUser>,
+) -> String { String::new() }
+`
+	ents := extract(t, "custom_rust_axum", fi("h.rs", "rust", src))
+
+	st, ok := findEntity(ents, "SCOPE.Pattern", "state:AppState")
+	if !ok {
+		t.Fatal("expected state:AppState injection-point entity")
+	}
+	if st.Subtype != "di_injection_point" {
+		t.Errorf("State subtype = %q, want di_injection_point", st.Subtype)
+	}
+	if st.Props["injected_type"] != "AppState" || st.Props["mechanism"] != "state" || st.Props["di_framework"] != "axum" {
+		t.Errorf("State props = %v", st.Props)
+	}
+
+	ex, ok := findEntity(ents, "SCOPE.Pattern", "extension:CurrentUser")
+	if !ok {
+		t.Fatal("expected extension:CurrentUser injection-point entity")
+	}
+	if ex.Subtype != "di_injection_point" {
+		t.Errorf("Extension subtype = %q, want di_injection_point", ex.Subtype)
+	}
+	if ex.Props["injected_type"] != "CurrentUser" || ex.Props["mechanism"] != "extension" {
+		t.Errorf("Extension props = %v", ex.Props)
+	}
+}
+
+// actix web::Data<T> is a DI injection point; web::Json<T> stays a request shape.
+func TestActixDataDIInjection(t *testing.T) {
+	src := `
+async fn handler(db: web::Data<DbPool>, body: web::Json<CreateUser>) -> impl Responder {
+    HttpResponse::Ok()
+}
+`
+	ents := extract(t, "custom_rust_actix_web", fi("h.rs", "rust", src))
+
+	d, ok := findEntity(ents, "SCOPE.Pattern", "data:DbPool")
+	if !ok {
+		t.Fatal("expected data:DbPool injection-point entity")
+	}
+	if d.Subtype != "di_injection_point" {
+		t.Errorf("Data subtype = %q, want di_injection_point", d.Subtype)
+	}
+	if d.Props["injected_type"] != "DbPool" || d.Props["mechanism"] != "data" || d.Props["di_framework"] != "actix_web" {
+		t.Errorf("Data props = %v", d.Props)
+	}
+
+	// Json stays a request-shape schema, NOT a DI injection point.
+	if _, ok := findEntity(ents, "SCOPE.Pattern", "data:CreateUser"); ok {
+		t.Error("web::Json must not be emitted as a DI injection point")
+	}
+	if !containsEntity(ents, "SCOPE.Schema", "Json<CreateUser>") {
+		t.Error("expected Json<CreateUser> request-shape schema")
+	}
+}
