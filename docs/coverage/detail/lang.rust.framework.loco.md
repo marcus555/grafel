@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-14` | 5008 | `internal/custom/rust/ntex_loco_shuttle.go`<br>`internal/custom/rust/ntex_loco_shuttle_test.go` | #5008: Loco.rs controller route producer — Routes::new().add("/p", get(h).post(h2)) axum-style method routers (one endpoint per verb) composed with .prefix("/api"); gated on a `loco_rs` token. Path params normalised to {id}; .prefix -> SCOPE.Component. Value-asserted: TestLocoRouteChain (+ wrong-language + no-match no-ops). Non-Routing cells inherited from the shared rust passes. |
 | Handler attribution | ✅ `full` | `2026-06-14` | 5008 | `internal/custom/rust/ntex_loco_shuttle.go`<br>`internal/custom/rust/ntex_loco_shuttle_test.go` | #5008: handler_name captured per verb in a Loco method router; asserted by TestLocoRouteChain. |
 | Route extraction | ✅ `full` | `2026-06-14` | 5008 | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/ntex_loco_shuttle.go`<br>`internal/custom/rust/ntex_loco_shuttle_test.go` | #5008: Loco .prefix("/api") composition + {id} normalisation. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

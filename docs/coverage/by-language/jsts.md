@@ -26,19 +26,19 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 6/11 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 10/13 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 8/13 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 9/12 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 24/24 | 🟡 10/12 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 6/11 | |
+| [Express](../detail/lang.jsts.framework.express.md) | 🟡 6/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 10/13 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 8/13 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 4/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 9/12 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 24/24 | 🟡 10/12 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 4/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
 | [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/5 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 17/24 | 🟡 2/13 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 8/13 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 5/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 8/13 | |
 | [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 4/6 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 17/24 | 🟡 2/13 | |
 
 

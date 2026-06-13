@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [nim](../by-language/nim.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_jester.go`<br>`internal/engine/httproutes/canonicalize.go` | Jester routes:-block verb entries and Prologue app.get/addRoute registrations synthesized to canonical http_endpoint_definition via synthesizeJester/synthesizePrologue (#4749) with @id->{id} (FrameworkJester) and {id} (FrameworkPrologue) canonicalisation; value-asserting tests in http_endpoint_jester_test.go. Honest follow-ups: Jester re"..." regex routes, multi-verb headers, Prologue cross-call group/prefix mounts. |
 | Handler attribution | 🟢 `partial` | `2026-06-11` | 4749 | `internal/engine/http_endpoint_jester.go` | Endpoints emitted with handlerKind=Controller; Jester routes: blocks and Prologue verb methods use inline/anonymous handler bodies, so a same-named handler IMPLEMENTS edge is bound only when the resolver finds one — full named-handler attribution is a follow-up. |
 | Route extraction | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_jester.go` | Static Jester/Prologue verb+path routes recovered by synthesizeJester/synthesizePrologue (#4749); interpolated/concatenated paths dropped (honest). |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

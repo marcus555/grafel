@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [clojure](../by-language/clojure.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_clojure.go`<br>`internal/engine/http_endpoint_clojure_test.go`<br>`internal/engine/httproutes/canonicalize.go` | #4749 (epic #4615 tail): synthesizeClojureRoutes (http_endpoint_clojure.go) emits canonical http_endpoint_definition entities from Reitit data routes (["/users/:id" {:get get-user :post create-user}]) — one endpoint per :verb in the route-data map; verb-less {:handler h} maps emit an ANY mount. Colon params canonicalised to {id} via FrameworkClojure (canonicalizeColonParams). Proven by TestClojure_ReititRoutes. Context/prefix nesting not yet threaded onto inner routes (documented follow-up). |
 | Handler attribution | 🟢 `partial` | — | 4749 | `internal/engine/http_endpoint_clojure.go`<br>`internal/engine/http_endpoint_clojure_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Reitit route-data :verb handler is a symbol ref; route emitted with empty handler ref and bound by same-name when present. Symbol-to-defn binding not yet wired — honest partial. |
 | Route extraction | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_clojure.go`<br>`internal/engine/http_endpoint_clojure_test.go`<br>`internal/engine/httproutes/canonicalize.go` | #4749 (epic #4615 tail): synthesizeClojureRoutes (http_endpoint_clojure.go) emits canonical http_endpoint_definition entities from Reitit data routes (["/users/:id" {:get get-user :post create-user}]) — one endpoint per :verb in the route-data map; verb-less {:handler h} maps emit an ANY mount. Colon params canonicalised to {id} via FrameworkClojure (canonicalizeColonParams). Proven by TestClojure_ReititRoutes. Context/prefix nesting not yet threaded onto inner routes (documented follow-up). |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go` | Synthesizes verb GRAPHQL endpoints from resolver impl blocks; Schema::build root captured as SCOPE.Service |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go` | handler_name=<Root>.<field> attributed per resolver method |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go` | Each #[Object] impl Query/Mutation/Subscription resolver method becomes a GRAPHQL endpoint at /graphql/<Root>/<field>; operation kind derived from impl root |
+| Websocket route extraction | — `not_applicable` | `2026-06-14` | — | — | #4965: GraphQL/gRPC/OpenAPI-doc/service-abstraction framework with no HTTP WebSocket-upgrade route surface (WS, if used, is provided by the host HTTP framework, not this layer). |
 
 ### View
 

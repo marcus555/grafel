@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_ruby_graperoda_producer.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/ruby/frameworks/grape.yaml` | #4417: Grape block routes (get ':id' do ... end inside resource/namespace prefix blocks) synthesize one http_endpoint_definition per verb block via synthesizeGrape; resource/namespace prefixes compose into the path (/users/{id}). The anonymous block handler signals refKind=inlineHandlerRefKind so makeEmit stamps the endpoint + same-file IMPLEMENTS bridge (mirrors Sinatra #4385). |
 | Handler attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_ruby_graperoda_producer.go`<br>`internal/engine/http_endpoint_synthesis.go` | #4417: each Grape verb block is an anonymous inline handler; synthesizeGrape signals inlineHandlerRefKind so the endpoint bridges to a synthesized <inline VERB /path> Operation via a same-file IMPLEMENTS edge (no graph island). |
 | Route extraction | ✅ `full` | `2026-06-11` | — | `internal/custom/ruby/grape_deep.go`<br>`internal/engine/http_endpoint_ruby_graperoda_producer.go` | #4417: synthesizeGrape walks resource/namespace/group prefix blocks composing the route path, emitting an http_endpoint_definition per verb block; complements the SCOPE-entity route extraction in grape_deep.go. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

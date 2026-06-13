@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | graphene.ObjectType Query/Mutation/Subscription root classes; resolve_<field> methods and graphene.<X>(...) class-attribute fields -> http:GRAPHQL:/graphql/<Root>/<field>, identical shape to Strawberry/gqlgen. synthesizeGraphene. |
 | Handler attribution | ✅ `full` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | resolve_<field> method is the handler; source_handler=SCOPE.Operation:<Root>.resolve_<field> rebinds to a HANDLES edge. Default-resolver fields (no method) emitted honest-partial with the conventional resolver name. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Operation endpoints synthesised from root-class fields; field name is the snake_case attribute (no name mangling). Dynamic/programmatically-named fields not resolved (honest-partial). |
+| Websocket route extraction | — `not_applicable` | `2026-06-14` | — | — | #4965: GraphQL/gRPC/OpenAPI-doc/service-abstraction framework with no HTTP WebSocket-upgrade route surface (WS, if used, is provided by the host HTTP framework, not this layer). |
 
 ### View
 

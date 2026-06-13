@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [clojure](../by-language/clojure.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_clojure.go`<br>`internal/engine/http_endpoint_clojure_test.go`<br>`internal/engine/httproutes/canonicalize.go` | #4749 (epic #4615 tail): synthesizeClojureRoutes (http_endpoint_clojure.go) emits canonical http_endpoint_definition entities from Compojure verb macros ((GET "/users/:id" [] handler), (POST ...), inside (defroutes app ...)); colon path params (:id) canonicalised to {id} via FrameworkClojure (canonicalizeColonParams). Proven by TestClojure_CompojureRoutes. Handler attribution is partial — trailing handler symbol not yet bound to its defn entity (route emitted with empty handler ref, resolver binds by same-name when present). |
 | Handler attribution | 🟢 `partial` | — | 4749 | `internal/engine/http_endpoint_clojure.go`<br>`internal/engine/http_endpoint_clojure_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Route emitted with empty handler ref; resolver binds by same-name handler when present. Trailing-form handler symbol not yet bound to its defn entity — honest partial. |
 | Route extraction | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_clojure.go`<br>`internal/engine/http_endpoint_clojure_test.go`<br>`internal/engine/httproutes/canonicalize.go` | #4749 (epic #4615 tail): synthesizeClojureRoutes (http_endpoint_clojure.go) emits canonical http_endpoint_definition entities from Compojure verb macros ((GET "/users/:id" [] handler), (POST ...), inside (defroutes app ...)); colon path params (:id) canonicalised to {id} via FrameworkClojure (canonicalizeColonParams). Proven by TestClojure_CompojureRoutes. Handler attribution is partial — trailing handler symbol not yet bound to its defn entity (route emitted with empty handler ref, resolver binds by same-name when present). |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

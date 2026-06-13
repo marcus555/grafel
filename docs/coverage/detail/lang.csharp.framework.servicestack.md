@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3962: synthesizeServiceStack promotes [Route("/path","GET POST")] request-DTO attributes (verbs from the attribute, falling back to the service's handler methods, else GET) to the canonical http_endpoint_definition shape, dispatched in the csharp case. No longer regex-only SCOPE.Operation. |
 | Handler attribution | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: each synthesized ServiceStack endpoint carries source_handler=SCOPE.Operation:<Service>.<HandlerMethod>, picking the verb-specific Get/Post method when present, else the Any catch-all. Value-asserted per-verb in TestSynth_ServiceStack + TestSynth_ServiceStack_AnyHandler. |
 | Route extraction | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: ssRouteAttrRe extracts the path + optional verb list from each [Route(...)] attribute on a request DTO; the path is canonicalised into the endpoint ID. Asserted on /widgets/{Id} in TestSynth_ServiceStack. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

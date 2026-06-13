@@ -26,21 +26,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Loco.rs](../detail/lang.rust.framework.loco.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 7/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | ✅ 7/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Loco.rs](../detail/lang.rust.framework.loco.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 6/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |
 | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 6/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 11/24 | 🟡 6/13 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
-| [ntex](../detail/lang.rust.framework.ntex.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [ntex](../detail/lang.rust.framework.ntex.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |
 
 

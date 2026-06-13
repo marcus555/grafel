@@ -26,7 +26,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Cowboy](../detail/lang.erlang.framework.cowboy.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🔴 0/13 | |
+| [Cowboy](../detail/lang.erlang.framework.cowboy.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🔴 0/13 | |
 
 
 ## Other

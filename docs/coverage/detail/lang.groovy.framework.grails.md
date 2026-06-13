@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [groovy](../by-language/groovy.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | 4914 | `internal/engine/http_endpoint_grails.go`<br>`internal/engine/httproutes/canonicalize.go` | #4914: synthesizeGroovyRoutes (http_endpoint_grails.go) synthesizes canonical http_endpoint_definition entities from Groovy web routes that have NO prior producer (the base groovy.go extractor is Gradle/CALLS-aware but web-framework-blind). Three sources: (a) Grails convention controllers — a `class BookController { def index() {…} }` under grails-app/controllers/ (or any file declaring `class *Controller`) -> ANY /book/index per action method (verb ANY since Grails actions are HTTP-method-agnostic; beforeInterceptor/afterInterceptor lifecycle hooks excluded); (b) explicit UrlMappings.groovy entries `"/book/$id"(controller:'book',action:'show')` -> /book/{id} ($name->{name}, explicit method: honored); (c) Ratpack handler DSL `get('api/books'){…}` -> GET /api/books, `path('x')` -> ANY. Paths are canonicalised via httproutes (FrameworkGrails/FrameworkRatpack, curly/colon). Was wrongly marked fully-missing while actively synthesized — fixture-proven by the engine TestGrails_*/TestRatpack_* suites and the existing tests_linkage TESTS-edge tests that depend on these endpoints. |
 | Handler attribution | ✅ `full` | — | 4914 | `internal/engine/http_endpoint_grails.go` | #4914: each synthesized Grails/Ratpack http_endpoint_definition is attributed to its handler — a Grails convention endpoint carries the controller class + action method name (BookController.index -> /book/index), a UrlMappings endpoint carries the mapped controller/action pair, and a Ratpack endpoint carries the verb-DSL handler at its source line. Was wrongly marked missing. |
 | Route extraction | ✅ `full` | — | 4914 | `internal/engine/http_endpoint_grails.go` | #4914: route paths/verbs are extracted from all three Groovy web-route forms (Grails controller-convention /<controller>/<action>, explicit UrlMappings.groovy patterns with $-param rewriting, Ratpack get/post/put/delete/patch/options/path handler DSL) by synthesizeGroovyRoutes' grailsActionRe/grailsUrlMappingRe/ratpackRouteRe. Was wrongly marked missing while route_extraction was actively driving endpoint_synthesis. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

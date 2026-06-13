@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | 2932 | `internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/http_endpoint_synthesis_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/fastify.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/frameworks/fastify.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-29` | 3062 | `internal/custom/javascript/fastify.go`<br>`internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go`<br>`internal/engine/http_endpoint_synthesis_test.go` | — |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

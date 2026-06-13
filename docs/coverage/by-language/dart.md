@@ -26,7 +26,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [shelf_router / dart_frog / conduit (Dart HTTP)](../detail/lang.dart.framework.shelf.md) | 🟡 3/6 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
+| [shelf_router / dart_frog / conduit (Dart HTTP)](../detail/lang.dart.framework.shelf.md) | 🟡 3/7 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 
 
 ### UI Frontend

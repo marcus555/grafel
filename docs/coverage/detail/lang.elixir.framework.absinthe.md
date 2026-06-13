@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/engine/rules/graphql/frameworks/absinthe_elixir.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/elixir_routes.go`<br>`internal/engine/elixir_routes_test.go` | synthesizeAbsinthe maps each top-level 'field :name' under an Absinthe query/mutation/subscription block to http:GRAPHQL:/graphql/<Root>/<field> (Strawberry/Apollo convention, #3066), tracking do/end depth so nested object-type fields are excluded. Value-asserting test (TestAbsinthe_Schema proves Query/users, Query/user, Mutation/create_user and excludes nested object fields). |
+| Websocket route extraction | — `not_applicable` | `2026-06-14` | — | — | #4965: GraphQL/gRPC/OpenAPI-doc/service-abstraction framework with no HTTP WebSocket-upgrade route surface (WS, if used, is provided by the host HTTP framework, not this layer). |
 
 ### View
 

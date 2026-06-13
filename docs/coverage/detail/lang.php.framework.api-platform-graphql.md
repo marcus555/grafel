@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [php](../by-language/php.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | — | `internal/custom/php/apiplatform_graphql.go`<br>`internal/custom/php/graphql_parity_test.go` | — |
 | Handler attribution | ✅ `full` | `2026-06-02` | — | `internal/custom/php/apiplatform_graphql.go`<br>`internal/custom/php/graphql_parity_test.go` | — |
 | Route extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/php/apiplatform_graphql.go`<br>`internal/custom/php/graphql_parity_test.go` | — |
+| Websocket route extraction | — `not_applicable` | `2026-06-14` | — | — | #4965: GraphQL/gRPC/OpenAPI-doc/service-abstraction framework with no HTTP WebSocket-upgrade route surface (WS, if used, is provided by the host HTTP framework, not this layer). |
 
 ### View
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-06-03` | — | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | #3982: synthesis is now order-independent (the warp::verb() filter may precede or follow the path filter) and accepts both the warp::path!(...) macro and the warp::path("seg") function form. Value-asserting tests TestWarpFunctionPath + TestWarpMethodFirstOrder + TestWarpPostMethod. Stays PARTIAL: warp routes are composed with .or() into filter trees and a path-less filter chain has no statically-resolvable method (a GET default is applied) — these cases are not fully attributable without data-flow over the combinator graph. |
 | Handler attribution | 🟢 `partial` | `2026-06-03` | — | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | #3982: handler recovered from the .and_then/.map(handler) terminal regardless of filter order. Stays PARTIAL alongside endpoint_synthesis: handlers reached only via an intermediate filter variable (let f = path.and(get); f.and_then(h)) need cross-binding resolution not yet modelled. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | warp::path! filter chains; typed segments (u32) normalised to {param}; verb+path+handler attribution |
+| Websocket route extraction | ✅ `full` | `2026-06-14` | 4965 | `internal/custom/rust/websocket_routes.go`<br>`internal/custom/rust/websocket_routes_test.go` | #4965 dedicated websocket_route_extraction (new http_backend taxonomy key). custom_rust_websocket_routes recognises the warp::ws() filter chain terminating in .and_then/.map(...): the upgrade handler is recovered from ws.on_upgrade(handler) inside the terminal closure (or a bare .and_then/.map(fn)); path is recovered from the warp::path!/warp::path("seg") filter on the same statement exactly as the producer warp chain does. Stamps Name="WS <route_path>", websocket=true, route_path, http_method=GET, handler_name, upgrade_mechanism=warp::ws. Value-asserted TestRustWS_WarpFilterChain (WS /chat -> handler_name=handle_ws). Also recognised by the same extractor (no dedicated framework record): tokio-tungstenite accept_async/accept_hdr_async server accept points (TestRustWS_TungsteniteAccept, framework=tokio_tungstenite, upgrade_mechanism=accept_async, no route_path). Honest no-op on non-rust/plain-HTTP files. |
 
 ### View
 

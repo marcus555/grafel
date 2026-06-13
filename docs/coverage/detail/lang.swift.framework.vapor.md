@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/swift/vapor.go` | vapor.go emits SCOPE.Operation entities with http_method and route_path properties from Vapor route registrations; the cross-repo http_pass.go can match these endpoints for cross-link synthesis; proven by TestVaporRoute. |
 | Handler attribution | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/swift/vapor.go` | vapor.go emits RouteCollection controller entities (SCOPE.Component/controller) and links routes to file context; full handler-to-function attribution requires resolving trailing closures back to named handler functions which is not yet implemented. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/swift/vapor.go` | vapor.go custom extractor handles app.get/post/put/delete/patch/options route registrations, RouteCollection conformances, and .grouped prefix declarations; emits SCOPE.Operation/endpoint with http_method and route_path properties; proven by TestVaporRoute and TestVaporRouteCollection. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

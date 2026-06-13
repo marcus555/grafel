@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3962: synthesizeNancy promotes both index-syntax Get["/path"] (Nancy 1.x) and call-syntax Get("/path") (Nancy 2.x) routes inside a : NancyModule subclass to the canonical http_endpoint_definition shape (http:<VERB>:<path>), dispatched in the csharp case. No longer regex-only SCOPE.Operation. |
 | Handler attribution | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: each synthesized Nancy endpoint carries source_handler=SCOPE.Operation:<Module> (routes are inline lambdas assigned in the module ctor, so the module is the handler). Value-asserted in TestSynth_Nancy. |
 | Route extraction | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: nancyIndexRouteRe + nancyCallRouteRe extract verb+path for both Nancy route-declaration styles; the module gate prevents call-syntax collision with FastEndpoints' bare Get(). Asserted on /widgets/{id} in TestSynth_Nancy. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 
