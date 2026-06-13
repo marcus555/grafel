@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # rust
 
-**Frameworks**: 15 · **Tools**: 6 · **ORMs**: 15 · **Other**: 4
+**Frameworks**: 17 · **Tools**: 10 · **ORMs**: 15 · **Other**: 5
 
 Back to [summary](../summary.md).
 
@@ -29,6 +29,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
 | [Axum](../detail/lang.rust.framework.axum.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
 | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Loco.rs](../detail/lang.rust.framework.loco.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Poem](../detail/lang.rust.framework.poem.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
@@ -39,6 +40,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 11/24 | 🟡 6/13 | |
 | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
+| [ntex](../detail/lang.rust.framework.ntex.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |
 
 
@@ -57,8 +59,12 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Cargo.toml](../detail/pkg.cargo.md) | — | — | 🔴 | ✅ | — | |
 | [cargo test (stdlib)](../detail/test.cargo-test.md) | ✅ | — | — | — | ✅ | |
 | [criterion (benchmark)](../detail/test.criterion.md) | ✅ | — | — | — | ✅ | |
+| [insta](../detail/test.insta.md) | ✅ | — | — | — | ✅ | |
 | [mockall](../detail/test.mockall.md) | ✅ | — | — | — | ✅ | |
+| [mockito (Rust)](../detail/test.mockito-rs.md) | ✅ | — | — | — | ✅ | |
 | [proptest](../detail/test.proptest.md) | ✅ | — | — | — | ✅ | |
+| [serial_test](../detail/test.serial-test.md) | ✅ | — | — | — | ✅ | |
+| [wiremock](../detail/test.wiremock.md) | ✅ | — | — | — | ✅ | |
 
 ## ORMs
 
@@ -94,6 +100,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [async-nats (NATS)](../detail/lang.rust.framework.async-nats.md) | 🟢 | 🟢 | 🟢 | |
 | [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | |
 | [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | |
+
+
+### IaC / Provisioning
+
+| Name | Dependency attribution | Iac cross stack reference | Iac environment region account | Iac event source wiring | Iac iam grant attribution | Iac output export extraction | Iac resource property extraction | Iac stack app topology | Resource extraction | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [Shuttle (deploy runtime)](../detail/platform.rust.shuttle.md) | — | — | — | — | — | — | 🟢 | — | 🟢 | |
 
 
 ### Validation

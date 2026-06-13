@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 247 · **ORMs**: 172 · **Tools**: 120 · **Other**: 204
+**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 249 · **ORMs**: 172 · **Tools**: 124 · **Other**: 205
 
 ## Coverage by language
 
@@ -14,8 +14,8 @@
 | [C/C++](by-language/c-cpp.md) | 20 | 16 | 10 | 4 |
 | [C#](by-language/csharp.md) | 18 | 7 | 16 | 9 |
 | [kotlin](by-language/kotlin.md) | 18 | 0 | 7 | 1 |
+| [rust](by-language/rust.md) | 17 | 10 | 15 | 5 |
 | [php](by-language/php.md) | 16 | 6 | 14 | 1 |
-| [rust](by-language/rust.md) | 15 | 6 | 15 | 4 |
 | [elixir](by-language/elixir.md) | 14 | 9 | 10 | 5 |
 | [scala](by-language/scala.md) | 14 | 3 | 7 | 1 |
 | [ruby](by-language/ruby.md) | 9 | 6 | 14 | 8 |
@@ -53,7 +53,7 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 
 | Lane | Records | Tools |
 |---|---:|---|
-| [IaC / Provisioning](by-category/platform.md#iac--provisioning) | 8 | AWS CDK, AWS CloudFormation, Ansible, Azure Bicep, … |
+| [IaC / Provisioning](by-category/platform.md#iac--provisioning) | 9 | AWS CDK, AWS CloudFormation, Ansible, Azure Bicep, … |
 | [Containers & Orchestration](by-category/platform.md#containers--orchestration) | 5 | Dockerfile, Helm charts, Kubernetes manifests, Kustomize, … |
 | [Config Files](by-category/platform.md#config-files) | 7 | .env, .ini, .properties, .toml, … |
 | [Workflow / DAG & State Machines](by-category/platform.md#workflow--dag--state-machines) | 8 | Apache Airflow, Argo Workflows, Celery canvas, Python transitions, … |
@@ -83,4 +83,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 247 frameworks · 120 tools · 172 ORMs · 204 other
+Total: 249 frameworks · 124 tools · 172 ORMs · 205 other

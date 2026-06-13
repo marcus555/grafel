@@ -136,6 +136,102 @@ testing:
     a separate test crate beyond tokio itself.
 
     '
+- name: serial_test
+  crate: serial_test
+  category: test_isolation
+  crates_io_version_2025: 3.x
+  detection:
+    cargo_toml_deps:
+    - serial_test
+    dev_dependency: true
+    import_markers:
+    - 'use serial_test::'
+    code_patterns:
+    - '#[serial]'
+    - '#[serial('
+    - '#[parallel]'
+    - '#[file_serial]'
+  notes: 'Forces annotated tests to run serially rather than in parallel. #[serial]
+    attribute (optionally with a named lock group) is the detection signal. Combined
+    with #[test]/#[tokio::test]; rustTestRE already links the underlying test fn.
+
+    '
+- name: mockito
+  crate: mockito
+  category: http_mocking
+  crates_io_version_2025: 1.x
+  detection:
+    cargo_toml_deps:
+    - mockito
+    dev_dependency: true
+    import_markers:
+    - 'use mockito::'
+    code_patterns:
+    - mockito::Server::new
+    - mockito::server_url
+    - .mock(
+    - .with_status(
+    - .with_body(
+    - .create()
+    - Matcher::
+  notes: 'In-process HTTP mock server for testing HTTP clients. mockito::Server::new()
+    and the .mock(method, path) builder are the detection signals. Used inside
+    test functions to stub outbound HTTP. Should be a [dev-dependency].
+
+    '
+- name: wiremock
+  crate: wiremock
+  category: http_mocking
+  crates_io_version_2025: 0.6.x
+  detection:
+    cargo_toml_deps:
+    - wiremock
+    dev_dependency: true
+    import_markers:
+    - 'use wiremock::'
+    - 'use wiremock::matchers::'
+    code_patterns:
+    - MockServer::start
+    - Mock::given(
+    - .respond_with(
+    - ResponseTemplate::new(
+    - .mount(
+    - matchers::method(
+    - matchers::path(
+  notes: 'Async HTTP mock server (tokio-native). MockServer::start() + the
+    Mock::given(matcher).respond_with(...).mount(&server) builder are the detection
+    signals. The async counterpart to mockito. Should be a [dev-dependency].
+
+    '
+- name: insta
+  crate: insta
+  category: snapshot
+  crates_io_version_2025: 1.x
+  detection:
+    cargo_toml_deps:
+    - insta
+    dev_dependency: true
+    import_markers:
+    - 'use insta::'
+    structural_markers:
+    - snapshots/
+    - '*.snap'
+    config_markers:
+    - .insta.yaml
+    code_patterns:
+    - assert_snapshot!(
+    - assert_debug_snapshot!(
+    - assert_json_snapshot!(
+    - assert_yaml_snapshot!(
+    - assert_ron_snapshot!(
+    - insta::with_settings!
+    - glob!(
+  notes: 'Snapshot testing library. assert_snapshot!/assert_debug_snapshot!/
+    assert_json_snapshot! macros write reference snapshots under snapshots/ (*.snap).
+    The snapshots/ directory and .snap files are structural signals. Used inside
+    test functions; should be a [dev-dependency] (cargo-insta is the companion CLI).
+
+    '
 test_conventions:
   inline_unit_tests:
     pattern: '#[cfg(test)] mod tests { ... }'

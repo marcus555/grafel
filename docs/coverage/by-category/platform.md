@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 45 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 39 · **python**: 1 · **ruby**: 1
+**Total**: 46 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 39 · **python**: 1 · **ruby**: 1 · **rust**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -19,6 +19,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | 🟢 | — | — | — | — | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | ✅ | ✅ | — | — | 🟢 | — | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | ✅ | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
+| [rust](../by-language/rust.md) | [Shuttle (deploy runtime)](../detail/platform.rust.shuttle.md) | — | — | — | — | — | — | 🟢 | — | 🟢 | 🟢 | |
 
 ## Containers & Orchestration
 
