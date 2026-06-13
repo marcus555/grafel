@@ -53,7 +53,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type graph extraction | 🔴 `missing` | — | 5007 | — | — |
+| Type graph extraction | ✅ `full` | `2026-06-14` | — | `internal/custom/rust/juniper.go`<br>`internal/custom/rust/juniper_typegraph.go`<br>`internal/custom/rust/juniper_typegraph_test.go` | #5007: new internal/custom/rust/juniper_typegraph.go mirrors the async-graphql code-first type-graph extractor (#3983) for juniper. Emits SCOPE.Schema/type nodes (BuildOperationStructuralRef("graphql",file,Type), shared identity with the SDL/async-graphql/py/jsts passes) + GRAPH_RELATES field->type edges off #[derive(GraphQLObject)] struct fields and #[graphql_object]/#[graphql_subscription] impl resolver return types, carrying the SDL cardinality contract (field_name/list/nullable/item_nullable/cardinality/self_ref, framework=juniper). Probe TestJunTG_GraphQLObject_FieldGraph asserts User.orders Vec<Order> to_many + Option<Account> nullable to_one + manager Option<User> self_ref + scalar/GraphQLInputObject fields no edge; TestJunTG_ResolverReturnType asserts Query.user FieldResult<User> to_one unwrap + Vec<Order> to_many; wrong-language + plain-struct no-op probes. Honest-partial: same-file resolution only; GraphQLInputObject/GraphQLEnum stay DTO-catalog (#4964). |
 
 ### Type System
 

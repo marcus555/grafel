@@ -148,7 +148,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟡 6/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 11/24 | 🟡 6/13 | |
 | [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [rust](../by-language/rust.md) | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
+| [rust](../by-language/rust.md) | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 3/24 | 🟡 2/13 | |
 | [rust](../by-language/rust.md) | [ntex](../detail/lang.rust.framework.ntex.md) | 🟡 5/7 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |
 | [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🟡 3/7 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/12 | |
