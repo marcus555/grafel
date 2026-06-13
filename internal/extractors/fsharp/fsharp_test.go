@@ -1039,8 +1039,11 @@ let fetchAll () =
 	}
 }
 
-// TestFSharp_CEUsage_CustomBuilder — #5048: a custom builder invocation
-// `optional { ... }` emits a USES edge to that builder symbol.
+// TestFSharp_CEUsage_CustomBuilder — #5048/#5077: a custom builder invocation
+// `optional { ... }` emits a USES edge. #5077: the `optional` symbol resolves
+// through the let-binding `let optional = OptionBuilder()` so the USES edge
+// re-targets the OptionBuilder TYPE (ToID) and stamps ce_builder_type, while the
+// raw symbol survives in ce_builder.
 func TestFSharp_CEUsage_CustomBuilder(t *testing.T) {
 	src := `module Work
 
@@ -1059,14 +1062,197 @@ let combine () =
 	}
 	found := false
 	for _, r := range op.Relationships {
-		if r.Kind == "USES" && r.ToID == "optional" {
+		if r.Kind == "USES" && r.ToID == "OptionBuilder" {
 			found = true
+			if r.Properties["ce_builder"] != "optional" {
+				t.Errorf("ce_builder=%q, want optional", r.Properties["ce_builder"])
+			}
+			if r.Properties["ce_builder_type"] != "OptionBuilder" {
+				t.Errorf("ce_builder_type=%q, want OptionBuilder", r.Properties["ce_builder_type"])
+			}
 			if !strings.Contains(r.Properties["ce_bind_points"], "return!") {
 				t.Errorf("ce_bind_points=%q, want return!", r.Properties["ce_bind_points"])
 			}
 		}
 	}
 	if !found {
-		t.Error("expected USES edge to optional builder")
+		t.Error("expected USES edge to resolved OptionBuilder type")
+	}
+}
+
+// --- #5077 deepening: match-site edges, CE-member re-typing, USES resolution,
+// computed builder heads ---
+
+// TestFSharp_ActivePattern_MatchSite — #5077: a match arm `| Even ->` against a
+// known active-pattern case emits a USES edge from the enclosing operation to
+// the case sub-entity, closing the active-pattern match-SITE gap.
+func TestFSharp_ActivePattern_MatchSite(t *testing.T) {
+	src := `module Patterns
+
+let (|Even|Odd|) n =
+    if n % 2 = 0 then Even else Odd
+
+let classify n =
+    match n with
+    | Even -> "even"
+    | Odd -> "odd"
+`
+	ents := runFSharp(t, src, "patterns.fs")
+	op := fsFind(ents, "classify", "SCOPE.Operation")
+	if op == nil {
+		t.Fatal("expected SCOPE.Operation classify")
+	}
+	wantRef := fsSchemaRef("patterns.fs", "(|Even|Odd|).Even")
+	var even, odd *types.RelationshipRecord
+	for i := range op.Relationships {
+		r := &op.Relationships[i]
+		if r.Kind != "USES" || r.Properties["match_site"] != "true" {
+			continue
+		}
+		switch r.Properties["active_pattern_case"] {
+		case "Even":
+			even = r
+		case "Odd":
+			odd = r
+		}
+	}
+	if even == nil {
+		t.Fatal("expected match-site USES edge for case Even")
+	}
+	if even.ToID != wantRef {
+		t.Errorf("Even ToID=%q, want %q", even.ToID, wantRef)
+	}
+	if odd == nil {
+		t.Error("expected match-site USES edge for case Odd")
+	}
+}
+
+// TestFSharp_ActivePattern_MatchSite_NoMatch — #5077: a match arm against a DU
+// case that is NOT a known active-pattern case emits NO match-site edge.
+func TestFSharp_ActivePattern_MatchSite_NoMatch(t *testing.T) {
+	src := `module Patterns
+
+let (|Even|Odd|) n =
+    if n % 2 = 0 then Even else Odd
+
+let describe x =
+    match x with
+    | Some v -> "some"
+    | None -> "none"
+`
+	ents := runFSharp(t, src, "patterns.fs")
+	op := fsFind(ents, "describe", "SCOPE.Operation")
+	if op == nil {
+		t.Fatal("expected SCOPE.Operation describe")
+	}
+	for _, r := range op.Relationships {
+		if r.Properties["match_site"] == "true" {
+			t.Errorf("unexpected match-site edge for non-active-pattern case %q",
+				r.Properties["active_pattern_case"])
+		}
+	}
+}
+
+// TestFSharp_CEMember_Retyped — #5077: the individual Bind/Return/Zero members of
+// a CE builder type are re-typed SCOPE.Operation/ce_member (not plain member) so
+// the builder protocol is queryable.
+func TestFSharp_CEMember_Retyped(t *testing.T) {
+	src := `module Builders
+
+type OptionBuilder() =
+    member _.Bind(m, f) = Option.bind f m
+    member _.Return(x) = Some x
+    member _.Zero() = None
+`
+	ents := runFSharp(t, src, "builders.fs")
+	for _, name := range []string{"Bind", "Return", "Zero"} {
+		op := fsFind(ents, name, "SCOPE.Operation")
+		if op == nil {
+			t.Fatalf("expected SCOPE.Operation %s", name)
+		}
+		if op.Subtype != "ce_member" {
+			t.Errorf("%s subtype=%q, want ce_member", name, op.Subtype)
+		}
+		if op.Properties["ce_member"] != "true" {
+			t.Errorf("%s ce_member=%q, want true", name, op.Properties["ce_member"])
+		}
+		if op.Properties["ce_protocol_method"] != name {
+			t.Errorf("%s ce_protocol_method=%q, want %s", name, op.Properties["ce_protocol_method"], name)
+		}
+	}
+}
+
+// TestFSharp_CEMember_NotRetypedWhenNotBuilder — #5077: a method named `Return`
+// on an ordinary (non-builder) type is NOT re-typed ce_member, since no CE
+// builder type in the file declares the protocol.
+func TestFSharp_CEMember_NotRetypedWhenNotBuilder(t *testing.T) {
+	src := `module Things
+
+type Repo() =
+    member _.Return(x) = x
+`
+	ents := runFSharp(t, src, "things.fs")
+	op := fsFind(ents, "Return", "SCOPE.Operation")
+	if op == nil {
+		t.Fatal("expected SCOPE.Operation Return")
+	}
+	if op.Subtype == "ce_member" {
+		t.Error("Return on non-builder Repo should not be re-typed ce_member")
+	}
+}
+
+// TestFSharp_CEUsage_ComputedHead — #5077: a computed builder head
+// `(mkBuilder ()) { ... }` (an expression, not a bare identifier) emits a USES
+// edge to the factory symbol stamped ce_head=computed.
+func TestFSharp_CEUsage_ComputedHead(t *testing.T) {
+	src := `module Work
+
+let run () =
+    (mkBuilder ()) {
+        let! x = getX ()
+        return x
+    }
+`
+	ents := runFSharp(t, src, "work.fs")
+	op := fsFind(ents, "run", "SCOPE.Operation")
+	if op == nil {
+		t.Fatal("expected SCOPE.Operation run")
+	}
+	found := false
+	for _, r := range op.Relationships {
+		if r.Kind == "USES" && r.ToID == "mkBuilder" {
+			found = true
+			if r.Properties["ce_head"] != "computed" {
+				t.Errorf("ce_head=%q, want computed", r.Properties["ce_head"])
+			}
+			if !strings.Contains(r.Properties["ce_bind_points"], "let!") {
+				t.Errorf("ce_bind_points=%q, want let!", r.Properties["ce_bind_points"])
+			}
+		}
+	}
+	if !found {
+		t.Error("expected USES edge to computed builder head mkBuilder")
+	}
+}
+
+// TestFSharp_CE_WrongLanguageNoOp — #5077: C#-shaped source fed to the F#
+// extractor produces no F#-specific CE/active-pattern artefacts (wrong-language
+// no-op guard).
+func TestFSharp_CE_WrongLanguageNoOp(t *testing.T) {
+	src := `public class Foo {
+    public int Bar() { return 1; }
+}
+`
+	ents := runFSharp(t, src, "Foo.cs")
+	for _, e := range ents {
+		if e.Subtype == "ce_member" || e.Subtype == "active_pattern" ||
+			e.Subtype == "active_pattern_case" || e.Subtype == "computation_builder" {
+			t.Errorf("unexpected F# CE/active-pattern artefact %q on wrong-language input", e.Name)
+		}
+		for _, r := range e.Relationships {
+			if r.Properties["match_site"] == "true" || r.Properties["ce_head"] == "computed" {
+				t.Errorf("unexpected CE/match-site edge on wrong-language input from %q", e.Name)
+			}
+		}
 	}
 }
