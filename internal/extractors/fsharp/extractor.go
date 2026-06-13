@@ -168,6 +168,18 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	apEntities := extractActivePatterns(src, filePath, imports)
 	entities = append(entities, apEntities...)
 
+	// #5077: resolution maps reused across the operation/type passes.
+	//   - apCases:        bare case name → dotted case entity Name, so a match
+	//     site `| Even ->` emits a USES edge to the active-pattern case.
+	//   - ceBuilderTypes: type names that declare the CE builder protocol.
+	//   - ceMemberNames:  CE-protocol member names (Bind/Return/...) declared by
+	//     any builder, so the matching member operations are re-typed ce_member.
+	//   - builderBindings: `let optional = OptionBuilder()` → builder TYPE, so a
+	//     CE USES edge to `optional` resolves to the OptionBuilder type entity.
+	apCases := collectActivePatternCases(apEntities)
+	ceBuilderTypes, ceMemberNames := collectCEBuilderTypes(src)
+	builderBindings := collectBuilderBindings(src, ceBuilderTypes)
+
 	// 1. Module/namespace declarations → SCOPE.Component
 	seen := make(map[string]bool)
 	for _, m := range moduleRE.FindAllStringSubmatchIndex(src, -1) {
@@ -241,8 +253,11 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		endLine := startLine + strings.Count(body, "\n")
 		calls := collectCalls(body, name, startLine)
 		// #5048: computation-expression usage (`async { }` / custom builders)
-		// inside the body → USES edges to the builder symbol.
-		calls = append(calls, collectCEUsage(body)...)
+		// inside the body → USES edges to the builder symbol. #5077: builder
+		// symbol resolves to its bound TYPE; computed `( ... ) {` heads captured.
+		calls = append(calls, collectCEUsage(body, builderBindings)...)
+		// #5077: active-pattern match-SITE edges — `| Even ->` → case sub-entity.
+		calls = append(calls, collectMatchSiteEdges(body, filePath, apCases)...)
 
 		entities = append(entities, types.EntityRecord{
 			Name:       name,
@@ -282,20 +297,34 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		body := extractIndentBody(src, m[1], len(indent))
 		endLine := startLine + strings.Count(body, "\n")
 		calls := collectCalls(body, name, startLine)
-		calls = append(calls, collectCEUsage(body)...)
+		calls = append(calls, collectCEUsage(body, builderBindings)...)
+		calls = append(calls, collectMatchSiteEdges(body, filePath, apCases)...)
+
+		memberProps := map[string]string{
+			"imports": strings.Join(imports, ","),
+		}
+		memberSubtype := "member"
+		// #5077: a member that implements the CE builder protocol (Bind/Return/
+		// Zero/Combine/...) is re-typed a CE-protocol operation so the builder
+		// protocol is queryable. ceMemberNames holds the CE-member names declared
+		// by any builder type in this file; ceBuilderMembers gates it to the
+		// canonical protocol so an unrelated method named the same is not flipped.
+		if ceMemberNames[name] && ceBuilderMembers[name] {
+			memberSubtype = "ce_member"
+			memberProps["ce_member"] = "true"
+			memberProps["ce_protocol_method"] = name
+		}
 
 		entities = append(entities, types.EntityRecord{
-			Name:       name,
-			Kind:       "SCOPE.Operation",
-			Subtype:    "member",
-			SourceFile: filePath,
-			Language:   "fsharp",
-			StartLine:  startLine,
-			EndLine:    endLine,
-			Signature:  "member " + name,
-			Properties: map[string]string{
-				"imports": strings.Join(imports, ","),
-			},
+			Name:          name,
+			Kind:          "SCOPE.Operation",
+			Subtype:       memberSubtype,
+			SourceFile:    filePath,
+			Language:      "fsharp",
+			StartLine:     startLine,
+			EndLine:       endLine,
+			Signature:     "member " + name,
+			Properties:    memberProps,
 			Relationships: calls,
 		})
 	}
