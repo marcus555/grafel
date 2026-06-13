@@ -196,6 +196,143 @@ let report (repository: OrderRepository) =
 	}
 }
 
+// TestSniffEffectsFSharp_DIReceiverType proves the #5115 cross-binding / DI
+// receiver-type deepening: a Dapper call on a connection reached through (a) a
+// member-field / alias re-binding of a typed connection, or (b) a factory whose
+// RETURN TYPE is an IDbConnection-family type, is classified even though the
+// receiver NAME is outside the conventional heuristic and the connection is not
+// directly param-annotated / `new`-constructed at the callsite.
+func TestSniffEffectsFSharp_DIReceiverType(t *testing.T) {
+	src := `module Data
+open System.Data
+
+let aliasRead (db: IDbConnection) =
+    let database = db
+    database.QueryAsync<Order>("select * from orders")
+
+let aliasChainWrite (db: IDbConnection) o =
+    let a = db
+    let handle = a
+    handle.InsertAsync(o)
+
+let openDb (cs: string) : IDbConnection = new SqlConnection(cs)
+
+let factoryRead () =
+    let myDb = openDb(connStr)
+    myDb.QueryAsync<Order>("select * from orders")
+`
+	got := fsharpEffectsByFn(src)
+	// Effects attribute to the inner let-binding header (honest-partial inner-let
+	// shadowing, shared with SQLProvider #5106); assert the EFFECT exists on the
+	// resolved receiver regardless of which header it is pinned to.
+	if !anyFn(got, EffectDBRead) {
+		t.Errorf("expected a db_read from an alias/factory-resolved receiver, got %v", got)
+	}
+	if !anyFn(got, EffectDBWrite) {
+		t.Errorf("expected a db_write from an alias-chain-resolved receiver, got %v", got)
+	}
+	// `database`, `handle`, `myDb` must all have been folded into the receiver
+	// alternation (alias, alias-of-alias, and factory-return respectively).
+	extra := map[string]bool{}
+	for _, n := range fsharpTypedDapperReceiverNames(src) {
+		extra[n] = true
+	}
+	for _, want := range []string{"database", "a", "handle", "myDb"} {
+		if !extra[want] {
+			t.Errorf("expected %q folded into resolved receiver set, got %v", want, extra)
+		}
+	}
+}
+
+// TestSniffEffectsFSharp_DIReceiverNoLeak proves an alias / field of a NON-
+// connection value never earns a db effect (the DI/alias resolver only credits
+// a name whose source is ALREADY a resolved IDbConnection).
+func TestSniffEffectsFSharp_DIReceiverNoLeak(t *testing.T) {
+	src := `module Pure
+
+let report (repository: OrderRepository) =
+    let r = repository
+    r.Query<Order>("anything")
+`
+	for _, m := range sniffEffectsFSharp(src) {
+		if m.Effect == EffectDBRead || m.Effect == EffectDBWrite {
+			t.Errorf("alias of non-connection must not earn a db effect, got %v (%s)", m.Effect, m.Sink)
+		}
+	}
+	if names := fsharpTypedDapperReceiverNames(src); len(names) != 0 {
+		t.Errorf("no receiver should be resolved for a non-connection alias, got %v", names)
+	}
+}
+
+// TestSniffEffectsFSharp_AssembledSQLVerb proves the #5115 assembled-SQL verb
+// inference: a Dapper Execute with NO whole-string literal recovers its verb
+// from (a) an inline interpolated/concatenated head, or (b) an intra-function
+// `let sql = "VERB ..."` binding the call passes by name. The inferred basis is
+// recorded with the `~` suffix in the Sink tag, distinct from the explicit
+// literal classification and from the conservative `write?` default.
+func TestSniffEffectsFSharp_AssembledSQLVerb(t *testing.T) {
+	src := `module Data
+open System.Data
+
+let updNamed (conn: IDbConnection) =
+    let sql = "UPDATE orders SET shipped = 1 WHERE id = @Id"
+    conn.Execute(sql)
+
+let readNamed (conn: IDbConnection) =
+    let sql = "SELECT * FROM orders WHERE id = @Id"
+    conn.Execute(sql)
+
+let insInline (conn: IDbConnection) cols =
+    conn.Execute($"INSERT INTO orders ({cols}) VALUES (@v)")
+
+let storedProc (conn: IDbConnection) sql =
+    conn.Execute(sql, commandType = CommandType.StoredProcedure)
+`
+	sinks := fsharpSinksByFn(src)
+	// Inferred-write (named UPDATE binding).
+	if !anySink(sinks, "dapper.execute.write~") {
+		t.Errorf("expected an inferred-write (write~) from a named/inline assembled UPDATE/INSERT, got %v", sinks)
+	}
+	// Inferred-read (named SELECT binding).
+	if !anySink(sinks, "dapper.execute.read~") {
+		t.Errorf("expected an inferred-read (read~) from a named assembled SELECT, got %v", sinks)
+	}
+	// The stored-proc call (SQL bound to an opaque param) stays the conservative
+	// write? default — genuinely unresolvable for a regex/heuristic extractor.
+	if !anySink(sinks, "dapper.execute.write?") {
+		t.Errorf("expected the opaque stored-proc Execute to stay write?, got %v", sinks)
+	}
+	// Effects: at least one read and one write recovered from assembled SQL.
+	got := fsharpEffectsByFn(src)
+	if !anyFn(got, EffectDBRead) {
+		t.Errorf("expected a db_read recovered from assembled SELECT, got %v", got)
+	}
+	if !anyFn(got, EffectDBWrite) {
+		t.Errorf("expected a db_write recovered from assembled UPDATE/INSERT, got %v", got)
+	}
+}
+
+// TestSniffEffectsFSharp_AssembledSQLWrongLangNoop proves the assembled-SQL /
+// DI resolution paths are inert on a NON-F# (C#) source: the F# sniffer is
+// dispatched by language, so a C#-shaped Execute with a `var sql = "..."` head
+// is not the F# sniffer's concern (no `let` binding shape, no F# function
+// header) and yields no F# db effect when fed directly.
+func TestSniffEffectsFSharp_AssembledSQLWrongLangNoop(t *testing.T) {
+	// C# syntax: `var` binding, `;`, braces — none of the F# `let`/`member`
+	// headers or `let sql =` binding shapes match.
+	src := `public class Repo {
+    public Task Run(IDbConnection conn) {
+        var sql = "UPDATE orders SET x = 1";
+        return conn.Execute(sql);
+    }
+}`
+	for _, m := range sniffEffectsFSharp(src) {
+		if m.Sink == "dapper.execute.read~" || m.Sink == "dapper.execute.write~" {
+			t.Errorf("C# var-binding must not drive F# assembled-SQL inference, got %s", m.Sink)
+		}
+	}
+}
+
 // TestSniffEffectsFSharp_NpgsqlFSharp proves Npgsql.FSharp `Sql.query`
 // literals are classified by their leading SQL verb.
 func TestSniffEffectsFSharp_NpgsqlFSharp(t *testing.T) {
@@ -241,6 +378,26 @@ func TestSniffEffectsFSharp_HTTP(t *testing.T) {
 	if !got["PushEvent"][EffectHTTPOut] {
 		t.Errorf("PushEvent expected http_out, got %v", got["PushEvent"])
 	}
+}
+
+// anyFn reports whether ANY function in the collapsed effect map carries eff.
+func anyFn(got map[string]map[Effect]bool, eff Effect) bool {
+	for _, effs := range got {
+		if effs[eff] {
+			return true
+		}
+	}
+	return false
+}
+
+// anySink reports whether ANY function carries the given sink tag.
+func anySink(got map[string]map[string]bool, sink string) bool {
+	for _, sinks := range got {
+		if sinks[sink] {
+			return true
+		}
+	}
+	return false
 }
 
 // fsharpSinksByFn collapses sniffer output into fn -> set-of-sink-tags, so
