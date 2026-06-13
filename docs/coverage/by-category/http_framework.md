@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 247 records · **C/C++**: 20 · **clojure**: 4 · **crystal**: 1 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 1 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 15 · **scala**: 14 · **swift**: 5
+**Total**: 249 records · **C/C++**: 20 · **clojure**: 4 · **crystal**: 1 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 1 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -138,6 +138,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
 | [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
 | [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [rust](../by-language/rust.md) | [Loco.rs](../detail/lang.rust.framework.loco.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Poem](../detail/lang.rust.framework.poem.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
@@ -148,6 +149,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 11/24 | 🟡 6/13 | |
 | [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
+| [rust](../by-language/rust.md) | [ntex](../detail/lang.rust.framework.ntex.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |
 | [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/12 | |
 

@@ -157,6 +157,33 @@ var rustMutationRe = regexp.MustCompile(
 	`\bself\s*\.\s*[A-Za-z_][\w]*\s*=(?:[^=])`,
 )
 
+// rustPoolSignalRe gates the connection-pool acquisition credit. A file must
+// reference one of the Rust connection-pool crates (deadpool / bb8 / r2d2 /
+// mobc) before a bare `.get()`/`.acquire()` is interpreted as a pooled DB
+// connection checkout — without the gate those method names collide with
+// Option::get / HashMap::get / Mutex::acquire and would false-positive.
+var rustPoolSignalRe = regexp.MustCompile(`\b(?:deadpool|bb8|r2d2|mobc)\b`)
+
+// rustPoolAcquireRe matches a pooled-connection checkout on a `pool`-named
+// receiver across the four crates:
+//
+//	deadpool : pool.get().await?                 (Pool::get)
+//	bb8      : pool.get().await?                 (Pool::get)
+//	mobc     : pool.get().await?                 (Pool::get)
+//	r2d2     : pool.get()? / pool.get_conn()     (sync, no .await)
+//	sqlx     : pool.acquire().await?             (sqlx::Pool::acquire)
+//
+// The receiver is anchored to a name CONTAINING `pool` (case-insensitive) so a
+// generic `cache.get(k)` in a pool-importing file is not mis-credited. The
+// checkout itself is a DB-substrate touch (it reaches the database to lease a
+// live connection), so we credit db_read — this restores attribution to a
+// function that only leases the connection and passes it down, the exact
+// weak-attribution gap called out in #5008. Honest-partial: only a
+// pool-named receiver is credited; an aliased connection handle is not traced.
+var rustPoolAcquireRe = regexp.MustCompile(
+	`\b[A-Za-z_]*[Pp]ool\w*\s*\.\s*(?:get|get_conn|acquire)\s*\(\s*\)`,
+)
+
 func sniffEffectsRust(content string) []EffectMatch {
 	if content == "" {
 		return nil
@@ -173,6 +200,30 @@ func sniffEffectsRust(content string) []EffectMatch {
 	out = appendRustMatches(out, content, headers, rustFSWriteRe, EffectFSWrite, "std::fs::write/File::create", 1.0)
 	out = appendRustMatches(out, content, headers, rustProcessRe, EffectFSWrite, "process::Command", 0.9)
 	out = appendRustMatches(out, content, headers, rustMutationRe, EffectMutation, "self.field=", 0.7)
+	out = append(out, rustPoolAcquireMatches(content, headers)...)
+	return out
+}
+
+// rustPoolAcquireMatches credits db_read for a connection-pool checkout
+// (deadpool / bb8 / r2d2 / mobc / sqlx::Pool) so a function that leases a
+// pooled connection — even when the subsequent query runs on the leased handle
+// in a callee — is attributed to the database substrate. Gated on a pool-crate
+// signal in the file to avoid colliding with Option::get / Mutex::acquire.
+func rustPoolAcquireMatches(content string, headers []funcHeader) []EffectMatch {
+	if !rustPoolSignalRe.MatchString(content) {
+		return nil
+	}
+	var out []EffectMatch
+	for _, m := range rustPoolAcquireRe.FindAllStringIndex(content, -1) {
+		line := lineOfOffset(content, m[0])
+		out = append(out, EffectMatch{
+			Function:   nearestHeader(headers, line),
+			Line:       line,
+			Effect:     EffectDBRead,
+			Sink:       "conn-pool.acquire(deadpool/bb8/r2d2/mobc)",
+			Confidence: 0.8,
+		})
+	}
 	return out
 }
 
