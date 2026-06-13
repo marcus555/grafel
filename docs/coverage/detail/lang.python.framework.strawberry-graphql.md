@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | 3066 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/graphql/frameworks/strawberry_python.yaml`<br>`internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-29` | 3066 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-29` | 3066 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/python/frameworks/strawberry_graphql.yaml` | — |
+| Websocket route extraction | — `not_applicable` | `2026-06-14` | — | — | #4965: GraphQL/gRPC/OpenAPI-doc/service-abstraction framework with no HTTP WebSocket-upgrade route surface (WS, if used, is provided by the host HTTP framework, not this layer). |
 
 ### View
 

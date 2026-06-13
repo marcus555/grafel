@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [crystal](../by-language/crystal.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-12` | — | `internal/engine/http_endpoint_kemal.go`<br>`internal/engine/httproutes/canonicalize.go` | synthesizeKemalRoutes scans a Crystal source for Kemal `get "/x" do ... end` verb blocks, Amber `get "/path", Ctrl, :action` routes-block registrations, and Lucky inline-path Action macros, synthesising one canonical http_endpoint_definition each, canonicalised through httproutes.FrameworkKemal into the shared `{param}` form (colon-params `/users/:id` -> `/users/{id}`). Gated by kemalHasRoute (framework marker + verb macro pre-filter) so arbitrary files are skipped. Honest exclusions: interpolated/variable paths, ws "/..." websocket routes, and Lucky name-derived (no inline path) Action routes — follow-up #4937. |
 | Handler attribution | 🟢 `partial` | `2026-06-12` | 4937 | `internal/engine/http_endpoint_kemal.go` | Synthesised endpoints carry a handler kind; Kemal `do ... end` route blocks and Amber/Lucky inline handlers are anonymous bodies, so a named-handler IMPLEMENTS edge is bound only where a same-named handler is resolvable. The Amber controller form `get "/x", Ctrl, :action` names the controller+action — full named-handler attribution across all three frameworks is follow-up #4937. |
 | Route extraction | ✅ `full` | `2026-06-12` | — | `internal/engine/http_endpoint_kemal.go` | Static Kemal/Amber/Lucky verb+path routes recovered by synthesizeKemalRoutes (#4749); interpolated/variable and websocket routes dropped (honest, see endpoint_synthesis). |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

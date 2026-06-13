@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-03` | — | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | #3982: tide chained routes app.at("/p").get(a).post(b) — each verb on the same .at() now synthesises its own endpoint (previously only the first verb fired). Value-asserting test TestTideChainedVerbs asserts GET/POST /users -> list_users/create_user. |
 | Handler attribution | ✅ `full` | `2026-06-03` | — | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | #3982: every verb in a tide chained route is attributed to its own handler. Asserted by TestTideChainedVerbs. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | app.at(path).verb(h); :id params normalised to {id}; verb+path+handler asserted |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

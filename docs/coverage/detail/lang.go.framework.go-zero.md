@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/go_zero.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/go/frameworks/go_zero.yaml` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/rules/go/frameworks/go_zero.yaml` | — |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

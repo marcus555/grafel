@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | huma.Register(api, huma.Operation{Method,Path}, handler) -> endpoint. Engine synthesis (go_trio) + dedicated SCOPE-entity extractor; fixture-proven. |
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | Final huma.Register argument attributed as handler; fixture-proven. |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | — |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

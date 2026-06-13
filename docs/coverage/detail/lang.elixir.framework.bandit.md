@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | — `not_applicable` | — | — | — | Bandit has no endpoint/route concept; it is a transport adapter |
 | Handler attribution | 🟢 `partial` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/substrate/entry_points_elixir.go` | Bandit delegates to Plug-compatible handlers; Plug.call/2 attribution tracked via entry-point sniffer |
 | Route extraction | — `not_applicable` | — | — | — | Bandit is a low-level HTTP server (replaces Cowboy); routing belongs to Phoenix/Plug layer above it |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

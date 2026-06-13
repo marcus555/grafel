@@ -26,10 +26,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Apache APISIX](../detail/lang.lua.framework.apisix.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/12 | |
-| [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🟡 7/12 | |
-| [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/6 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
-| [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟡 3/6 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
+| [Apache APISIX](../detail/lang.lua.framework.apisix.md) | 🟡 2/7 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/12 | |
+| [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/7 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🟡 7/12 | |
+| [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
+| [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 
 
 ## Other

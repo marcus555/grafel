@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [dart](../by-language/dart.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_dart.go`<br>`internal/engine/httproutes/canonicalize.go` | Dart server-side routes synthesized to canonical http_endpoint_definition via synthesizeShelfRoutes/synthesizeConduitRoutes/synthesizeDartFrogRoutes (#4758). shelf_router Router()..get('/users/<id>', h)/router.post('/x', h) with <id>/<id|[0-9]+> angle-bracket params -> {id} (FrameworkShelf, |regex constraint dropped); dart_frog file-based routes (routes/users/[id]/index.dart + onRequest) -> /users/{id} ([id]->{id}, index.dart->parent, verb read from HttpMethod.* dispatch else ANY, FrameworkDartFrog); conduit router.route("/users/[:id]") -> {id} ([:id] optional + :id required, FrameworkConduit) emitted ANY. In the same shape axum/Vapor/Kemal/Jester emit; the base dart extractor stays structural-only. Value-asserting tests in http_endpoint_dart_test.go. Honest follow-ups: conduit @Operation verb-precise controller methods, angel3/jaguar producers, dart_frog dynamic verb dispatch. |
 | Handler attribution | 🟢 `partial` | `2026-06-11` | 4758 | `internal/engine/http_endpoint_dart.go` | Endpoints emitted with handlerKind=Controller; shelf/dart_frog/conduit handlers are referenced inline or via a Controller class, so a same-named handler IMPLEMENTS edge is bound only when the resolver finds one -- full named-handler attribution is a follow-up. |
 | Route extraction | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_dart.go` | Static shelf_router/dart_frog/conduit verb+path routes recovered by synthesizeShelfRoutes/synthesizeDartFrogRoutes/synthesizeConduitRoutes (#4758); interpolated/concatenated paths ($-interpolation) dropped (honest). dart_frog path derived from the route file location under routes/. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

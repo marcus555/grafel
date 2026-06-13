@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3962: synthesizeFastEndpoints promotes the bare Verb("/path") registrations inside a class : Endpoint<TReq[,TRes]> Configure() body to the canonical http_endpoint_definition shape (http:<VERB>:<path>), dispatched in the csharp case. No longer regex-only SCOPE.Operation. |
 | Handler attribution | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: each synthesized FastEndpoints endpoint carries source_handler=SCOPE.Operation:<Class>.HandleAsync (or <Class> when no HandleAsync), attributing to the endpoint's handler method. Value-asserted in TestSynth_FastEndpoints + TestSynth_FastEndpoints_NoHandleAsync. |
 | Route extraction | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: feRouteRe extracts the verb+path of each bare Configure() route helper; the leading non-dot boundary excludes consumer client.Get(...) calls (negative TestSynth_FastEndpoints_NoConsumerCall). |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_ruby_graperoda_producer.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/ruby/frameworks/roda.yaml` | #4417: Roda routing-tree routes (r.get/r.post leaf verbs inside r.on/r.is branch blocks) synthesize one http_endpoint_definition per leaf verb via synthesizeRoda; r.on/r.is branch matchers compose into the path. String literals are static segments; String/Integer/Float class matchers and :sym captures normalize to {param}. Best-effort over the dynamic tree (regexp/array matchers skipped). Anonymous block handler → inlineHandlerRefKind → same-file IMPLEMENTS bridge (mirrors Sinatra #4385). |
 | Handler attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_ruby_graperoda_producer.go`<br>`internal/engine/http_endpoint_synthesis.go` | #4417: each Roda leaf verb is an anonymous inline block handler; synthesizeRoda signals inlineHandlerRefKind so the endpoint bridges to a synthesized <inline VERB /path> Operation via a same-file IMPLEMENTS edge (no graph island). |
 | Route extraction | ✅ `full` | `2026-06-11` | — | `internal/custom/ruby/routes.go`<br>`internal/engine/http_endpoint_ruby_graperoda_producer.go` | #4417: synthesizeRoda walks the r.on/r.is routing tree composing branch segments into the route path and emits an http_endpoint_definition per leaf verb (verb-level inline matchers like r.get Integer contribute a trailing capture). Complements the SCOPE-entity route extraction in routes.go. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

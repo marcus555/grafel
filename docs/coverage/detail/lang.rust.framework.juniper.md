@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-12` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/juniper.go`<br>`internal/custom/rust/juniper_test.go` | #4964: internal/custom/rust/juniper.go synthesizes verb GRAPHQL endpoints from #[graphql_object]/#[graphql_subscription] impl blocks; RootNode::new/Schema::new root captured as SCOPE.Service (paren-balanced arg reader handles EmptyMutation::new()/EmptySubscription::new()). Mirrors the async-graphql extractor. Proven by TestJuniperResolverFields/TestJuniperSchemaRoot/TestJuniperSchemaRoot_EmptyConstructors. |
 | Handler attribution | ✅ `full` | `2026-06-12` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/juniper.go`<br>`internal/custom/rust/juniper_test.go` | #4964: handler_name=<Root>.<field> attributed per resolver method (Query.user etc). Proven by TestJuniperResolverFields. |
 | Route extraction | ✅ `full` | `2026-06-12` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/juniper.go`<br>`internal/custom/rust/juniper_test.go` | #4964: each #[graphql_object] impl Query/Mutation + #[graphql_subscription] impl Subscription resolver method becomes a GRAPHQL endpoint at /graphql/<Root>/<field> — EXACT canonical shape async-graphql/gqlgen/Strawberry/Apollo/Absinthe emit so cross-repo client links join; operation kind derived from impl root. Proven by TestJuniperResolverFields. |
+| Websocket route extraction | — `not_applicable` | `2026-06-14` | — | — | #4965: GraphQL/gRPC/OpenAPI-doc/service-abstraction framework with no HTTP WebSocket-upgrade route surface (WS, if used, is provided by the host HTTP framework, not this layer). |
 
 ### View
 

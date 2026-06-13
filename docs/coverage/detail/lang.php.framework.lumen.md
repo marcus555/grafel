@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [php](../by-language/php.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Lumen app->get/post/router->method routes extracted; endpoint synthesis via regex route parsing |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Lumen controller string patterns (Controller@method) extracted alongside routes |
 | Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

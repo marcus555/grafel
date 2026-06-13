@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [clojure](../by-language/clojure.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🔴 `missing` | `2026-06-12` | 4910 | — | Ring IS detected (internal/engine/rules/clojure/frameworks/ring.yaml) and is THE foundational Clojure HTTP abstraction (request-map → response-map handler fn + wrap-* middleware) that Compojure/Reitit/Pedestal build on. Bare Ring handlers carry no static route table (dispatch is in code), so there is no literal route to synthesise — endpoints surface through the Compojure/Reitit routers layered on top (those records carry the route_extraction). Honest: Ring itself is a detected substrate, not a route source. |
 | Handler attribution | 🔴 `missing` | — | 4910 | — | — |
 | Route extraction | — `not_applicable` | — | — | — | Bare Ring has no declarative route table — routing is imperative handler dispatch. Routes are synthesised from the Compojure/Reitit/Pedestal routers layered on Ring, not from Ring itself. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/go_routes.go`<br>`internal/engine/http_endpoint_go_group_prefix_4408_test.go`<br>`internal/engine/response_shape_go.go`<br>`internal/engine/rules/go/frameworks/gin.yaml` | #4408: synthesizeGoRouters (response_shape_go.go) now resolves gin/echo `r.Group("/v1")` route-group prefixes and prepends them to every route registered on the group variable, composing NESTED groups (`admin := v1.Group("/admin")` -> /v1/admin/...) via goGroupPrefixIndex + joinPathFragments. Handles extra middleware args (`r.Group("/p", authMW)`) and `=` reassignment; root-router routes stay unprefixed. Value-asserting tests (single/nested/middleware-arg/echo group + root-unchanged regression). Honest-partial limit: a RouterGroup passed into a setup func or a computed/non-literal prefix is not statically recoverable -> route falls back to its own path (pre-fix behaviour, never a wrong prefix). chi `r.Route("/api", fn)` closure-based nesting is a distinct mechanism (not .Group(); follow-up). |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/go_routes.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/extractors_test.go`<br>`internal/custom/golang/gin.go` | regex-based: direct .GET/.POST/.DELETE/.PATCH etc + .Group()/.Route() prefix resolution tested; misses cross-file route splits, dynamic path construction, indirect router variable aliasing, and conditional registration |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

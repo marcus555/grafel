@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-14` | 5008 | `internal/custom/rust/ntex_loco_shuttle.go`<br>`internal/custom/rust/ntex_loco_shuttle_test.go` | #5008: ntex (actix-derived) route producer mirrors actix_web.go — attribute macros #[get("/p")]/#[web::get("/p")] + manual .route("/p", web::get().to(h)) + web::resource("/p").route(web::get().to(h)), scope-aware via web::scope("/prefix"). Gated on a `ntex` token so it cannot fire on real actix files. Path params normalised to {id}. HttpServer::new()/web::server() -> SCOPE.Service, .wrap(MW) -> SCOPE.Pattern. Value-asserted: TestNtexMacroRoute/TestNtexResourceScopeComposed/TestNtexServerAndMiddleware (+ wrong-language + no-match no-ops). Non-Routing cells inherited from the shared rust passes (identical to the other minor-framework records). |
 | Handler attribution | ✅ `full` | `2026-06-14` | 5008 | `internal/custom/rust/ntex_loco_shuttle.go`<br>`internal/custom/rust/ntex_loco_shuttle_test.go` | #5008: handler_name captured for every ntex route; asserted by TestNtexResourceScopeComposed. |
 | Route extraction | ✅ `full` | `2026-06-14` | 5008 | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/ntex_loco_shuttle.go`<br>`internal/custom/rust/ntex_loco_shuttle_test.go` | #5008: ntex scope+resource path composition with {id} param normalisation (helpers.rustNormalizePath/rustJoinPaths). |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

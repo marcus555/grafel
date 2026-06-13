@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-03` | — | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | #3982: Route::new().at("/p", get(a).post(b)) chained method routers — each verb in the method-router argument now synthesises its own endpoint with the path preserved and normalised, at flagship-axum depth. Value-asserting test TestPoemChainedVerbs asserts GET/POST /users -> list_users/create_user. |
 | Handler attribution | ✅ `full` | `2026-06-03` | — | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | #3982: every verb in a poem chained method router is attributed to its own handler (handler_name prop), not just the first. Asserted by TestPoemChainedVerbs. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | Route::new().at(path, verb(h)); #[handler] attribution; :id params normalised to {id} |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

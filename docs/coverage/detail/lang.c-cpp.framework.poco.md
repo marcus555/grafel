@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | SCOPE.Operation entities from POCO handler registration; partial = regex |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | Handler class names extracted from addHandler<T> and server.addHandler; partial = regex |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | Paths from addHandler<T>/router.add/server.addHandler; partial = regex heuristic |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 

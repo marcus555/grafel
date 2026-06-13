@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -21,6 +21,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/chi.go`<br>`internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/chi.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/chi.go`<br>`internal/engine/go_routes.go` | — |
 | Route extraction | 🟢 `partial` | `2026-06-11` | backfill:dictionary-completeness | `internal/custom/golang/chi.go`<br>`internal/custom/golang/extractors_test.go`<br>`internal/engine/http_endpoint_go_chi_route_prefix_4782_test.go`<br>`internal/engine/response_shape_go.go` | regex-based: direct .GET/.POST/.DELETE/.PATCH etc. #4782: chi's CLOSURE-based sub-router prefix mount r.Route("/api", func(r chi.Router){ ... }) is now resolved in endpoint synthesis (goChiRouteSpans/chiEnclosingPrefix) — distinct from the gin/echo .Group("/v1") form (#4408). Prefixes accumulate TRANSITIVELY across nested Route closures and are tracked POSITIONALLY (by closure byte-span) since the closure router param commonly re-shadows the parent (`r`). Value-asserted TestChiRoutePrefix4782_SingleRoute/_NestedRoute (/api/v1/users)/_ScopedToClosure/_SiblingClosures/_ArbitraryParamName. Still misses cross-file route splits, dynamic path construction, indirect router variable aliasing, and conditional registration. |
+| Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
 ### View
 
