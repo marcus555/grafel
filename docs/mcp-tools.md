@@ -112,6 +112,7 @@ Security, secrets, licenses, test coverage, dead code, and cross-group parity.
 | [`archigraph_license_audit`](mcp-tools/audit.md#archigraph_license_audit) | Audit dependency licenses; flag GPL/AGPL conflicts. |
 | [`archigraph_test_coverage`](mcp-tools/audit.md#archigraph_test_coverage) | Production entities with no TESTS edge, ranked by severity. |
 | [`archigraph_test_reachability`](mcp-tools/audit.md#archigraph_test_reachability) | Static test-reachability (TESTS+CALLS): orphan fns/endpoints with no test path. |
+| [`archigraph_coverage_effectiveness`](mcp-tools/audit.md#archigraph_coverage_effectiveness) | Reachability × line-coverage cross-product: reachable-but-0%-lines (ineffective tests) + quadrants. |
 | [`archigraph_dead_code`](mcp-tools/audit.md#archigraph_dead_code) | Reachability dead-code: entities unreached by entry-points. |
 | [`archigraph_find_dead_code`](mcp-tools/audit.md#archigraph_find_dead_code) | Dead/unwired code: isolated, marked-unused, or test-only symbols. |
 | [`archigraph_security_findings`](mcp-tools/audit.md#archigraph_security_findings) | Taint-flow findings: source → sink paths ranked by confidence. |

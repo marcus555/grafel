@@ -60,6 +60,26 @@ Output: group and per-module reachability roll-ups (% reachable), an endpoint ro
 
 ---
 
+## `archigraph_coverage_effectiveness`
+
+The reachability × line-coverage **cross-product** report (#5063): it crosses the static test-reachability signal (#5037) with the ingested LCOV line coverage (#5036) — both **stamped onto entity properties at index time** by #5061 — and classifies every production function/endpoint into a small set of meaningful quadrants:
+
+- **reachable + 0% lines** → candidate **ineffective / tautological test** (the headline signal): a static test path reaches the entity, yet not one of its production lines actually ran. Cross-check with [`archigraph_contract_test_effectiveness`](#archigraph_contract_test_effectiveness) (#4893).
+- **reachable + low coverage** (< 50%) → weak coverage.
+- **reachable + covered** (≥ 50%) → healthy: tested and run.
+- **reachable + no line-coverage measurement** → reachable, but the entity is absent from the LCOV report, so the line-coverage cross is unavailable for it.
+- **unreachable** → untested surface (the #5037 orphans).
+
+It reports per-module and group quadrant roll-ups and the headline **ineffective-test list**. Like the sibling reachability tool, it **reads the stamped properties off the loaded graph — it does not recompute** (it runs the pure `coverage.ComputeEffectivenessReport` over them).
+
+**Honest degradation:** when a group/module carries reachability but **no ingested line coverage** (`coverage_pct` absent on every entity), the tool reports the reachability quadrants and states that the line-coverage cross — and therefore the reachable-but-0%-lines signal — is unavailable, rather than fabricating a verdict. When nothing is stamped at all, it says *"reachability not computed — reindex"*.
+
+Key parameters: `repo_filter[]`, `ineffective_only` (bool — show only the reachable-but-0%-lines list + roll-ups), `limit` (default 100).
+
+Output: group + per-module quadrant roll-ups (worst-first by ineffective+untested ratio), the ineffective-test list, and a quadrant-sorted entity listing. Dashboard surfacing of this report is owned by #5062 / #5067.
+
+---
+
 ## `archigraph_dead_code`
 
 Reachability dead-code: entities unreached by entry-points.

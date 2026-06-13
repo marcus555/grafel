@@ -578,6 +578,7 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_secrets", "archigraph_quality_cycles",
 		"archigraph_test_coverage", "archigraph_license_audit",
 		"archigraph_test_reachability",
+		"archigraph_coverage_effectiveness",
 		"archigraph_module_analysis", "archigraph_diff_refs",
 		// #1742 subgraph retained (despite deprecation)
 		"archigraph_subgraph",
@@ -719,8 +720,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_apply_doc_semantics (#4309 doc ingestion L2 apply step).
 	// +1 archigraph_control_flow (#4822 on-demand per-function CFG, control-flow epic #4820 part (b)).
 	// +1 archigraph_contract_test_effectiveness (#4893 tautological/oracle-blind spec detector).
-	if got := len(allRegisteredTools); got != 67 {
-		t.Errorf("expected 67 registered tools, got %d — update this count if tools are added/removed (added archigraph_test_reachability #5060)", got)
+	// +1 archigraph_coverage_effectiveness (#5063 reachability x line-coverage cross-product).
+	if got := len(allRegisteredTools); got != 68 {
+		t.Errorf("expected 68 registered tools, got %d — update this count if tools are added/removed (added archigraph_coverage_effectiveness #5063)", got)
 	}
 }
 
@@ -3165,41 +3167,42 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	// Go-level error. The wrap middleware injects elapsed_ms on both success
 	// and IsError=true results, so this test validates both paths.
 	minimalArgs := map[string]map[string]any{
-		"archigraph_whoami":               {"group": "g"},
-		"archigraph_get_source":           {"group": "g", "entity_id": "DashboardScreen"},
-		"archigraph_find":                 {"group": "g", "query": "DashboardScreen"},
-		"archigraph_inspect":              {"group": "g", "label_or_id": "DashboardScreen"},
-		"archigraph_expand":               {"group": "g", "node": "DashboardScreen"},
-		"archigraph_trace":                {"group": "g", "source": "r1::a1", "target": "r1::a4"},
-		"archigraph_traces":               {"group": "g", "action": "list"},
-		"archigraph_clusters":             {"group": "g"},
-		"archigraph_orient":               {"group": "g"}, // #4290 orientation analysis
-		"archigraph_stats":                {"group": "g"},
-		"archigraph_enrichments":          {"group": "g", "action": "list"},
-		"archigraph_repairs":              {"group": "g", "action": "list"},
-		"archigraph_apply_docgen_repairs": {"group": "g"},
-		"archigraph_apply_doc_semantics":  {"group": "g"},
-		"archigraph_patterns":             {"group": "g", "action": "query", "text": "test"},
-		"archigraph_topology":             {"group": "g", "action": "orphan_publishers"},
-		"archigraph_flows":                {"group": "g", "action": "dead_ends"},
-		"archigraph_graph_patterns":       {"group": "g", "action": "list"},
-		"archigraph_search_entities":      {"group": "g", "query": "Dashboard"},
-		"archigraph_subgraph":             {"group": "g", "entity_id": "r1::a1"},
-		"archigraph_find_paths":           {"group": "g", "from": "r1::a1", "to": "r1::a4"},
-		"archigraph_endpoints":            {"group": "g", "action": "definitions"},
-		"archigraph_effective_contract":   {"group": "g", "entity_id": "r1::a2"},
-		"archigraph_find_callers":         {"group": "g", "entity_id": "r1::a2"},
-		"archigraph_find_callees":         {"group": "g", "entity_id": "r1::a2"},
-		"archigraph_impact_radius":        {"group": "g", "entity_id": "r1::a2"},
-		"archigraph_find_dead_code":       {"group": "g"},
-		"archigraph_quality_cycles":       {"group": "g"},
-		"archigraph_auth_coverage":        {"group": "g"},
-		"archigraph_test_coverage":        {"group": "g"},
-		"archigraph_test_reachability":    {"group": "g"},
-		"archigraph_module_analysis":      {"group": "g"},
-		"archigraph_secrets":              {"group": "g"},
-		"archigraph_neighbors":            {"group": "g", "entity_id": "r1::a2", "direction": "both"},
-		"archigraph_status":               {"group": "g"},
+		"archigraph_whoami":                 {"group": "g"},
+		"archigraph_get_source":             {"group": "g", "entity_id": "DashboardScreen"},
+		"archigraph_find":                   {"group": "g", "query": "DashboardScreen"},
+		"archigraph_inspect":                {"group": "g", "label_or_id": "DashboardScreen"},
+		"archigraph_expand":                 {"group": "g", "node": "DashboardScreen"},
+		"archigraph_trace":                  {"group": "g", "source": "r1::a1", "target": "r1::a4"},
+		"archigraph_traces":                 {"group": "g", "action": "list"},
+		"archigraph_clusters":               {"group": "g"},
+		"archigraph_orient":                 {"group": "g"}, // #4290 orientation analysis
+		"archigraph_stats":                  {"group": "g"},
+		"archigraph_enrichments":            {"group": "g", "action": "list"},
+		"archigraph_repairs":                {"group": "g", "action": "list"},
+		"archigraph_apply_docgen_repairs":   {"group": "g"},
+		"archigraph_apply_doc_semantics":    {"group": "g"},
+		"archigraph_patterns":               {"group": "g", "action": "query", "text": "test"},
+		"archigraph_topology":               {"group": "g", "action": "orphan_publishers"},
+		"archigraph_flows":                  {"group": "g", "action": "dead_ends"},
+		"archigraph_graph_patterns":         {"group": "g", "action": "list"},
+		"archigraph_search_entities":        {"group": "g", "query": "Dashboard"},
+		"archigraph_subgraph":               {"group": "g", "entity_id": "r1::a1"},
+		"archigraph_find_paths":             {"group": "g", "from": "r1::a1", "to": "r1::a4"},
+		"archigraph_endpoints":              {"group": "g", "action": "definitions"},
+		"archigraph_effective_contract":     {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_find_callers":           {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_find_callees":           {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_impact_radius":          {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_find_dead_code":         {"group": "g"},
+		"archigraph_quality_cycles":         {"group": "g"},
+		"archigraph_auth_coverage":          {"group": "g"},
+		"archigraph_test_coverage":          {"group": "g"},
+		"archigraph_test_reachability":      {"group": "g"},
+		"archigraph_coverage_effectiveness": {"group": "g"},
+		"archigraph_module_analysis":        {"group": "g"},
+		"archigraph_secrets":                {"group": "g"},
+		"archigraph_neighbors":              {"group": "g", "entity_id": "r1::a2", "direction": "both"},
+		"archigraph_status":                 {"group": "g"},
 		// PH5 (#2093): diff tool — repo/ref_a/ref_b all required.
 		"archigraph_diff_refs": {"group": "g", "repo": "r1", "ref_a": "main", "ref_b": "feat/x"},
 		// #4292: PR-impact tool. Single mode args; repo lookup fails gracefully
@@ -3304,8 +3307,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 67 {
-		t.Errorf("expected 67 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_test_reachability #5060)", len(tools))
+	if len(tools) != 68 {
+		t.Errorf("expected 68 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_coverage_effectiveness #5063)", len(tools))
 	}
 
 	for _, st := range tools {
