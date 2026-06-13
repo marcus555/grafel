@@ -1121,6 +1121,20 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_test_reachability", s.handleTestReachability))
 
+	// #5063: coverage effectiveness — crosses #5037 reachability with #5036
+	// LCOV line coverage (both stamped by #5061) into quadrants; headline is
+	// reachable-but-0%-lines (candidate ineffective/tautological tests, #4893).
+	// Reads stamped props; does not recompute. Dashboard surfacing = #5062/#5067.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_coverage_effectiveness",
+		mcpapi.WithDescription("Reachability x line-coverage: reachable-but-0%-lines (ineffective tests)."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithBoolean("ineffective_only", mcpapi.DefaultBool(false)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"),
+	), s.wrap("archigraph_coverage_effectiveness", s.handleCoverageEffectiveness))
+
 	// archigraph_module_analysis — module-level GDS (#1384, epic #1380).
 	// action=cycles|centrality|all over the aggregated module graph: SCCs,
 	// PageRank, betweenness. Bird's-eye view alongside entity-level tools.
