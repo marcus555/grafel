@@ -179,6 +179,11 @@ func (e *tauriExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		cmdName := src[m[2]:m[3]]
 		ent := makeEntity("tauri:command:"+cmdName, "SCOPE.Operation", "ipc_command",
 			file.Path, file.Language, lineOf(src, m[0]))
+		// QualifiedName = the stable token so the resolver's byQualifiedName tier
+		// binds both the in-binary generate_handler! CALLS edge AND the
+		// cross-language frontend invoke("cmd") CALLS edge (ToID carries this
+		// exact token) to this command entity.
+		ent.QualifiedName = "tauri:command:" + cmdName
 		setProps(&ent,
 			"framework", "tauri",
 			"command_name", cmdName,
