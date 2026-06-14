@@ -295,6 +295,58 @@ export function resolveCoverageKindIndicator(
 }
 
 /**
+ * Per-kind CSS color token used to TINT a diagram node (the tone ring / corner
+ * glyph of the #5147 node overlay) so the decoration matches the kind's Badge
+ * tone exactly — line→success, reachability→info, capability→neutral. Returns a
+ * `var(--…)` reference (theme-aware, light + dark) rather than a literal hex so
+ * the ring tracks the active theme. Kept here, beside the resolver, so the
+ * tone↔kind mapping lives in ONE place and the node overlay cannot drift from
+ * the row/banner treatments.
+ */
+const KIND_RING_VAR: Record<CoverageProvenanceKind, string> = {
+  line: "var(--success)",
+  reachability: "var(--info)",
+  capability: "var(--text-4)",
+};
+
+/**
+ * Render-ready node decoration for the #5147 coverage-kind overlay. Pure +
+ * DOM-free so the kind→tone→ring selection is unit-testable in the node vitest
+ * env. A node with NO coverage signal resolves (via the resolver's capability
+ * default) to the neutral capability treatment — never a fake authoritative
+ * green — satisfying the "degrade to neutral, never a fake green" rule.
+ */
+export interface CoverageKindNodeDecoration {
+  kind: CoverageProvenanceKind;
+  /** Theme-aware CSS color (a `var(--…)`) for the ring / corner glyph. */
+  ringColor: string;
+  /** Short chip label, mirrors {@link resolveCoverageKindIndicator}. */
+  short: string;
+  /** Tooltip — the one-line provenance `method`. */
+  title: string;
+  /** True only for authoritative (line) coverage. */
+  authoritative: boolean;
+}
+
+/**
+ * Resolve the per-node decoration for the coverage-kind overlay. Thin
+ * projection over {@link resolveCoverageKindIndicator} so the precedence and
+ * tones never drift between the rows (#5067) and the diagram nodes (#5147).
+ */
+export function resolveCoverageKindNodeDecoration(
+  state: CoverageSourceState | null | undefined,
+): CoverageKindNodeDecoration {
+  const ind = resolveCoverageKindIndicator(state);
+  return {
+    kind: ind.kind,
+    ringColor: KIND_RING_VAR[ind.kind],
+    short: ind.short,
+    title: ind.title,
+    authoritative: ind.authoritative,
+  };
+}
+
+/**
  * Group-level ingested line-coverage roll-up, as surfaced by the dashboard
  * `/quality/coverage` endpoint's optional `line_coverage` field (#5066). Mirror
  * of the Go `LineCoverageSummary` wire shape. Kept here (rather than importing

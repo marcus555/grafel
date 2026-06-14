@@ -109,6 +109,12 @@ export interface CTNodeData {
    * view (the other models don't differentiate).
    */
   nodeClass?: "infra" | "code";
+  /**
+   * #5147 coverage-kind overlay ring (group-level, threaded by the topology
+   * surface). When present + non-empty the node draws a tone ring keyed to the
+   * active coverage kind; absent / `{}` ⇒ no decoration (capability / off).
+   */
+  coverageRing?: { boxShadow?: string };
   [key: string]: unknown;
 }
 

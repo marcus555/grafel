@@ -69,6 +69,11 @@ import {
   writeFlowAudio,
 } from "@/lib/flow-audio";
 import { useDownstreamDAG } from "@/hooks/use-paths";
+import { useCoverageKind } from "@/hooks/use-coverage-kind";
+import {
+  CoverageKindOverlayToggle,
+  coverageKindRingStyle,
+} from "@/components/ui";
 import type { DownstreamDAGNode, DownstreamDAGResponse } from "@/data/types";
 import {
   unfoldTree,
@@ -381,6 +386,11 @@ function FlowDagInner({
   // Click-to-highlight (#4479): the focused instance id whose route is lit, or
   // null for the normal (everything-visible) view.
   const [routeFocus, setRouteFocus] = useState<string | null>(null);
+  // #5147 coverage-kind overlay — off by default; tints every node by the
+  // group's best-available coverage kind. Reads the shared coverage query
+  // (#5066) via useCoverageKind — no extra fetch.
+  const [coverageOverlay, setCoverageOverlay] = useState(false);
+  const coverageKind = useCoverageKind(groupId);
 
   // Only fetch when no payload was injected.
   const query = useDownstreamDAG(
@@ -537,6 +547,14 @@ function FlowDagInner({
   // Apply selection + route highlighting on top of the positioned layout. This
   // is engine-agnostic and cheap (no re-layout) — a fresh shallow copy per node
   // so React Flow sees the data change.
+  // #5147: the coverage-kind ring is group-level (one kind per surface), so
+  // resolve it once and apply the SAME ring to every node. capability/off ⇒ no
+  // ring (the helper returns {}), so nodes degrade to no decoration honestly.
+  const coverageRing = useMemo(
+    () => coverageKindRingStyle(coverageKind, coverageOverlay),
+    [coverageKind, coverageOverlay],
+  );
+
   const { nodes: baseNodes, edges: baseEdges } = useMemo(() => {
     const nodes = laidOut.nodes.map((n) => {
       const data: FlowDagNodeData = { ...(n.data as FlowDagNodeData) };
@@ -545,6 +563,7 @@ function FlowDagInner({
       // instances of a selected node light up.
       data.selected = selectedNodeId != null ? data.node.id === selectedNodeId : undefined;
       data.onRoute = routeSet ? routeSet.has(n.id) : undefined;
+      data.coverageRing = coverageRing;
       return { ...n, data };
     });
     const edges = laidOut.edges.map((e) => {
@@ -554,7 +573,7 @@ function FlowDagInner({
       return { ...e, data: { ...e.data, kind: e.data?.kind ?? "CALLS", onRoute } as FlowDagEdgeData };
     });
     return { nodes, edges };
-  }, [laidOut, selectedNodeId, routeSet]);
+  }, [laidOut, selectedNodeId, routeSet, coverageRing]);
 
   // ── Step-replay (#4362) ──────────────────────────────────────────────────
   // The replay walks the laid-out tree in topological order. baseEdges are
@@ -743,6 +762,13 @@ function FlowDagInner({
             <Plus size={11} />
           </button>
         </div>
+
+        {/* #5147 coverage-kind overlay toggle + legend */}
+        <CoverageKindOverlayToggle
+          state={coverageKind}
+          enabled={coverageOverlay}
+          onToggle={() => setCoverageOverlay((v) => !v)}
+        />
 
         {/* Fetch / layout status */}
         {(isLoading || layingOut) && (

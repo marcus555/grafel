@@ -1028,7 +1028,7 @@ export default function IaCScreen() {
               hint="This environment has no resolved module instances or definition resources. Pick another environment or All envs."
             />
           ) : (
-            <IaCDiagram report={scoped!} />
+            <IaCDiagram report={scoped!} groupId={groupId} />
           )}
         </div>
       </div>

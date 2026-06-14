@@ -85,6 +85,15 @@ export interface FlowDagNodeData extends Record<string, unknown> {
    *  - "pending"   → not yet reached by the current playhead (dimmed)
    */
   replay?: "active" | "traversed" | "pending";
+  /**
+   * #5147 coverage-kind overlay: when present + enabled, the node draws a tone
+   * ring keyed to which archigraph coverage applies to this group (line ▸ reach
+   * ▸ capability). Threaded from the surface's shared coverage state (#5066),
+   * not per-node — node payloads carry no per-node coverage signal — so every
+   * node tints the same kind, and the capability default renders NO ring (never
+   * a fake green). Undefined ⇒ overlay off.
+   */
+  coverageRing?: { boxShadow?: string };
 }
 
 /** Data carried on each React Flow edge, consumed by the custom edge renderer. */

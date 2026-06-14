@@ -38,6 +38,8 @@ import { CommunitiesPopover } from "@/components/graph/communities-popover";
 import { MCPActivityOverlay } from "@/components/graph/mcp-activity-overlay";
 import { GraphJarvisOverlay } from "@/components/graph/graph-jarvis-overlay";
 import { useGraphHighlight } from "@/hooks/use-graph-highlight";
+import { useCoverageKind } from "@/hooks/use-coverage-kind";
+import { CoverageKindIndicator } from "@/components/ui";
 import { useGraphJarvisReplay } from "@/hooks/use-graph-jarvis-replay";
 import { buildUndirectedAdjacency, bfsEgo as bfsEgoOver } from "@/lib/ego-bfs";
 
@@ -126,6 +128,15 @@ export default function GraphScreen() {
   const s = useGraphStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, isLoading, isError } = useGraph(groupId, { lod: s.lod });
+  // #5147 coverage-kind overlay. The cosmos.gl WebGL engine renders nodes from
+  // Float32 color buffers with NO per-node DOM/sprite layer, so a per-node tone
+  // ring (as on the React-Flow surfaces) is genuinely infeasible here without a
+  // separate sprite-overlay pipeline. We surface the group's coverage KIND as an
+  // HTML legend chip on the canvas instead (the iconOnly indicator over the
+  // WebGL layer), so the surface still answers "which coverage is this" — and
+  // the per-node ring is left as the documented residual. Reuses the shared
+  // coverage query (#5066) + #5067 resolver — no extra fetch.
+  const coverageKind = useCoverageKind(groupId);
 
   // #1386 — module-level GDS for the "Module overview" mode. Lazy: only
   // fetched while the overview toggle is ON, so the default graph route has
@@ -787,6 +798,17 @@ export default function GraphScreen() {
               <div className="pointer-events-none rounded-md border border-border bg-surface/80 px-2 py-1 font-mono text-xs text-text-3 backdrop-blur-sm">
                 LOD: {lodLabel}
               </div>
+              {/* #5147 coverage-kind legend — which archigraph coverage applies
+                  to this group (line ▸ reach ▸ capability). The WebGL canvas
+                  can't ring individual nodes, so this HTML chip carries the kind
+                  for the whole surface. Shown only once coverage has settled so
+                  it never flashes a misleading default. */}
+              {coverageKind.ready && (
+                <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface/80 px-2 py-1 text-xs text-text-3 backdrop-blur-sm">
+                  <span className="text-text-4">coverage</span>
+                  <CoverageKindIndicator state={coverageKind.state} />
+                </div>
+              )}
               {/* #4641 — calm "isolated" chip. Unconnected (zero-edge) nodes are
                   typically constants / types / config that simply have no graph
                   edges; they're hidden by default so the main graph shows the

@@ -31,6 +31,12 @@ import { useSourcePeek } from "@/components/SourcePeek";
 import { nodeStyle, isExternalNode, moduleBand, edgeStyle } from "./style";
 import { SOURCE_HANDLE_ID, TARGET_HANDLE_ID, type FlowDagNodeData } from "./layout";
 
+/** Compose the state boxShadow with the optional #5147 coverage-kind ring. */
+function mergeShadow(base?: string, ring?: string): string | undefined {
+  if (base && ring) return `${base}, ${ring}`;
+  return base ?? ring;
+}
+
 /**
  * FlowDagNode — one DAG node. Color + label come from the role; terminal
  * nodes get a doubled ring so collection sinks read as endpoints of the walk.
@@ -48,6 +54,7 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
     truncatedHere,
     module: mod,
     replay,
+    coverageRing,
   } = data as FlowDagNodeData;
   // Taxonomy bucket → tint (#4566): exception=red (#4556), external=muted
   // (#4558/#4564), genuine leaf=Return/finish end-cap (#4561), else role/kind.
@@ -123,14 +130,19 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
         // #4557: a left module color-band groups same-module nodes visually.
         borderLeft: band ? `3px solid ${band.color}` : undefined,
         // Selected / route-lit (#4479) → accent ring; a genuine terminal
-        // end-cap (#4561) or a collection sink → a heavier outline ring.
-        boxShadow: replayActive
-          ? "0 0 0 2px var(--accent), 0 0 16px 2px color-mix(in srgb, var(--accent) 55%, transparent)"
-          : selected || onRoute === true
-          ? "0 0 0 2px var(--accent)"
-          : terminalCap || node.terminal
-            ? `0 0 0 2px color-mix(in srgb, ${rs.border} 60%, var(--text))`
-            : undefined,
+        // end-cap (#4561) or a collection sink → a heavier outline ring. The
+        // #5147 coverage-kind ring (coverageRing) composes ON TOP via a merged
+        // boxShadow so it stacks with — never clobbers — the state ring.
+        boxShadow: mergeShadow(
+          replayActive
+            ? "0 0 0 2px var(--accent), 0 0 16px 2px color-mix(in srgb, var(--accent) 55%, transparent)"
+            : selected || onRoute === true
+            ? "0 0 0 2px var(--accent)"
+            : terminalCap || node.terminal
+              ? `0 0 0 2px color-mix(in srgb, ${rs.border} 60%, var(--text))`
+              : undefined,
+          coverageRing?.boxShadow,
+        ),
       }}
     >
       {/* in/out handles — positions follow the H/V layout direction (TB →

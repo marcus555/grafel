@@ -48,6 +48,11 @@ import { IaCNode } from "./IaCNode";
 import { IaCGroupNode } from "./IaCGroupNode";
 import { IaCEdge } from "./IaCEdge";
 import { categoryStyle } from "./categoryStyle";
+import { useCoverageKind } from "@/hooks/use-coverage-kind";
+import {
+  CoverageKindOverlayToggle,
+  coverageKindRingStyle,
+} from "@/components/ui";
 
 const nodeTypes: NodeTypes = {
   [IAC_NODE_TYPE]: IaCNode,
@@ -73,12 +78,18 @@ const LEGEND_CATEGORIES = [
 
 interface IaCDiagramProps {
   report: IaCReport;
+  /** Group id — drives the #5147 coverage-kind overlay (shared query, #5066). */
+  groupId?: string;
   className?: string;
 }
 
-function IaCDiagramInner({ report, className }: IaCDiagramProps) {
+function IaCDiagramInner({ report, groupId = "", className }: IaCDiagramProps) {
   const [direction, setDirection] = useState<IaCDiagramDirection>("LR");
   const [groupMode, setGroupMode] = useState<IaCGroupMode>("module");
+  // #5147 coverage-kind overlay — off by default; reads the shared coverage
+  // query (#5066) so the same kind the Quality tab shows tints these nodes.
+  const [coverageOverlay, setCoverageOverlay] = useState(false);
+  const coverageKind = useCoverageKind(groupId);
 
   // Layout engine: ELK (default, async) or the legacy dagre fallback (sync).
   // Stable for the component lifetime — flip via VITE_IAC_LAYOUT_ENGINE.
@@ -131,6 +142,22 @@ function IaCDiagramInner({ report, className }: IaCDiagramProps) {
     [nodes],
   );
   const resourceCount = nodes.length - moduleCount;
+
+  // #5147: apply the group-level coverage-kind ring to the RESOURCE nodes only
+  // (group containers are scaffolding, not coverable entities). capability/off ⇒
+  // the helper returns {}, so node styles are untouched (no fake decoration).
+  const coverageRing = useMemo(
+    () => coverageKindRingStyle(coverageKind, coverageOverlay),
+    [coverageKind, coverageOverlay],
+  );
+  const decoratedNodes = useMemo(() => {
+    if (!coverageRing.boxShadow) return nodes;
+    return nodes.map((n) =>
+      n.type === IAC_NODE_TYPE
+        ? { ...n, data: { ...n.data, coverageRing } }
+        : n,
+    );
+  }, [nodes, coverageRing]);
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
@@ -187,6 +214,13 @@ function IaCDiagramInner({ report, className }: IaCDiagramProps) {
           </button>
         </div>
 
+        {/* #5147 coverage-kind overlay toggle + legend */}
+        <CoverageKindOverlayToggle
+          state={coverageKind}
+          enabled={coverageOverlay}
+          onToggle={() => setCoverageOverlay((v) => !v)}
+        />
+
         <span className="text-xs text-text-4 tabular-nums">
           {resourceCount} {resourceCount === 1 ? "resource" : "resources"}
           {" · "}
@@ -227,7 +261,7 @@ function IaCDiagramInner({ report, className }: IaCDiagramProps) {
           </div>
         ) : (
           <ReactFlow
-            nodes={nodes}
+            nodes={decoratedNodes}
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}

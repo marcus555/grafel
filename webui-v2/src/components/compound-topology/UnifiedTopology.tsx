@@ -60,6 +60,11 @@ import { classifyNodes, isCrossBoundary, unifiedStats } from "./unify";
 import { CTNode } from "./CTNode";
 import { CTZone } from "./CTZone";
 import { CTEdge } from "./CTEdge";
+import { useCoverageKind } from "@/hooks/use-coverage-kind";
+import {
+  CoverageKindOverlayToggle,
+  coverageKindRingStyle,
+} from "@/components/ui";
 
 const nodeTypes: NodeTypes = {
   [CT_NODE_TYPE]: CTNode,
@@ -83,6 +88,10 @@ function UnifiedTopologyInner({ groupId, className }: UnifiedTopologyProps) {
       return next;
     });
   }, []);
+
+  // #5147 coverage-kind overlay — off by default; shared coverage query (#5066).
+  const [coverageOverlay, setCoverageOverlay] = useState(false);
+  const coverageKind = useCoverageKind(groupId);
 
   // The infra lens already interleaves code + infra in one containment tree.
   const { data, isLoading, isError } = useCompoundTopology(groupId, "infra");
@@ -130,14 +139,28 @@ function UnifiedTopologyInner({ groupId, className }: UnifiedTopologyProps) {
   const classes = useMemo(() => classifyNodes(data?.nodes), [data]);
   const stats = useMemo(() => unifiedStats(data?.nodes, data?.edges), [data]);
 
+  // #5147: group-level coverage-kind ring (empty/off ⇒ no decoration).
+  const coverageRing = useMemo(
+    () => coverageKindRingStyle(coverageKind, coverageOverlay),
+    [coverageKind, coverageOverlay],
+  );
+
   // Stamp the unified node class onto each rendered leaf node so CTNode draws
-  // the infra/code distinction. Zone boxes are untouched. Positions untouched.
+  // the infra/code distinction, plus the #5147 coverage ring. Zone boxes are
+  // untouched. Positions untouched.
   const nodes: Node[] = useMemo(() => {
     return base.nodes.map((n) => {
       if (n.type !== CT_NODE_TYPE) return n;
-      return { ...n, data: { ...n.data, nodeClass: classes.get(n.id) } };
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          nodeClass: classes.get(n.id),
+          ...(coverageRing.boxShadow ? { coverageRing } : {}),
+        },
+      };
     });
-  }, [base.nodes, classes]);
+  }, [base.nodes, classes, coverageRing]);
 
   // Stamp the cross-boundary flag onto each rendered edge so CTEdge emphasises
   // real code↔infra usage links. A summary edge (collapsed zone) endpoint is a
@@ -164,6 +187,12 @@ function UnifiedTopologyInner({ groupId, className }: UnifiedTopologyProps) {
         <span className="text-text-4">
           infra resources and the code that uses them, in one diagram
         </span>
+        {/* #5147 coverage-kind overlay toggle + legend */}
+        <CoverageKindOverlayToggle
+          state={coverageKind}
+          enabled={coverageOverlay}
+          onToggle={() => setCoverageOverlay((v) => !v)}
+        />
         <div className="ml-auto flex items-center gap-3 text-text-4 tabular-nums">
           <span className="inline-flex items-center gap-1">
             <Database size={11} className="text-success" /> {stats.infraNodes} infra

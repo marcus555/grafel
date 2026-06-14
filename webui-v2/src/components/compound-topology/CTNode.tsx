@@ -6,6 +6,12 @@ import { Database, Box } from "lucide-react";
 import type { CTNodeData } from "./layout";
 import { tierStyle } from "./tierStyle";
 
+/** Compose the highlight boxShadow with the optional #5147 coverage-kind ring. */
+function mergeShadow(base?: string, ring?: string): string | undefined {
+  if (base && ring) return `${base}, ${ring}`;
+  return base ?? ring;
+}
+
 function CTNodeImpl({ data }: NodeProps) {
   const d = data as CTNodeData;
   const s = tierStyle(d.tier);
@@ -41,11 +47,16 @@ function CTNodeImpl({ data }: NodeProps) {
         // Infra resources carry a solid left rail so they read as "a deployed
         // thing" vs code; code keeps a flush card.
         borderLeftWidth: isInfra ? 4 : isPrimary || isLinked ? 2 : 1,
-        boxShadow: isPrimary
-          ? "0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent)"
-          : isLinked
-            ? "0 0 0 2px color-mix(in srgb, var(--info) 32%, transparent)"
-            : undefined,
+        // #5147: the coverage-kind ring (d.coverageRing) composes ON TOP of the
+        // highlight ring so both stack rather than clobbering each other.
+        boxShadow: mergeShadow(
+          isPrimary
+            ? "0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent)"
+            : isLinked
+              ? "0 0 0 2px color-mix(in srgb, var(--info) 32%, transparent)"
+              : undefined,
+          d.coverageRing?.boxShadow,
+        ),
       }}
       title={`${d.label} · ${d.kind} · ${s.label}${d.repo ? ` · ${d.repo}` : ""}${
         cls ? ` · ${cls === "infra" ? "infra resource" : "code"}` : ""
