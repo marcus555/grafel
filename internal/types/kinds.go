@@ -1094,6 +1094,27 @@ const (
 	// not double-counted.
 	RelationshipKindSharesData RelationshipKind = "SHARES_DATA"
 
+	// #5204 (refs #3628 area #13): shared-DB coupling edge at the SERVICE/REPO
+	// granularity. Emitted by the project-scope shared-table-coupling pass
+	// (engine.ApplySharedTableCouplingEdges) between two canonical
+	// `service:<repo>` SCOPE.Service entities that BOTH access the SAME resolved
+	// physical table (normalised across schema/alias), when those accessors live
+	// in DISTINCT repos/services AND at least one side WRITES the table. Where
+	// SHARES_DATA models intra-repo module↔module data coupling, SHARES_TABLE_WITH
+	// is the orthogonal CROSS-SERVICE hidden-coupling smell the Django→NestJS
+	// rewrite cares about: two services silently sharing one physical table is
+	// exactly what a clean service split must break apart. Properties on the
+	// edge: table (the normalised physical table name), access_from / access_to
+	// (the read/write access kinds per side, comma-joined sorted, e.g.
+	// "read,write"), writer ("from"|"to"|"both" — which side(s) write, so a
+	// read-only pair is never emitted), confidence ("high" — only resolved
+	// literal table identities qualify), provenance=SHARED_TABLE_COUPLING. The
+	// edge is undirected in meaning but emitted once per unordered service pair
+	// (the lexicographically smaller service ID is FromID) so it is
+	// deterministic and idempotent. Honest: dynamic/unresolved tables and
+	// same-service multi-module access never fire it.
+	RelationshipKindSharesTableWith RelationshipKind = "SHARES_TABLE_WITH"
+
 	// #3623 (epic #3607): Apollo Federation cross-subgraph entity edge.
 	//   FEDERATES : the extending subgraph's `extend type Foo @key(fields:"id")`
 	//               SCOPE.Component stub → the owning entity type `Foo`. The edge
@@ -1447,6 +1468,7 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindTransitionsTo,
 		// #3628 area #13 shared-database cross-service coupling edge:
 		RelationshipKindSharesData,
+		RelationshipKindSharesTableWith,
 		// #3623 (epic #3607) Apollo Federation cross-subgraph entity edge:
 		RelationshipKindFederates,
 		// #3639 (epic #3625) DB-migration apply-order edge (Alembic chain):
