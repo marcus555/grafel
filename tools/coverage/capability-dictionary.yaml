@@ -66,7 +66,7 @@ categories:
   databases:
     capabilities: [resource_extraction, dependency_attribution]
   platform:
-    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference, iac_iam_grant_attribution, iac_event_source_wiring, iac_environment_region_account, iac_stack_app_topology, iac_resource_property_extraction]
+    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, cross_service_table_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference, iac_iam_grant_attribution, iac_event_source_wiring, iac_environment_region_account, iac_stack_app_topology, iac_resource_property_extraction]
     subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology, integration_external, localization, frontend_routing]
   security:
     capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
@@ -892,6 +892,7 @@ subcategories:
       - resource_extraction
       - dependency_attribution
       - shared_data_coupling
+      - cross_service_table_coupling
     groups: []
 
   # B6 (#3875): the recently-added node-type dimensions previously shared

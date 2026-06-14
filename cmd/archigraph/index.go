@@ -1782,6 +1782,19 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				sdStats.TablesConsidered, sdStats.SharedTables,
 				sdStats.DataAccessAnnotated, sdStats.CouplingEdges)
 		}
+
+		// #5204 — cross-SERVICE shared-table coupling. Orthogonal to the
+		// intra-repo module SHARES_DATA edges above: groups resolved literal
+		// tables across DISTINCT repos/services and emits SHARES_TABLE_WITH when
+		// ≥2 services share one physical table with ≥1 writer. Same data-coupling
+		// axis, so it rides the same --skip-pass=shared-db flag.
+		stStats := engine.ApplySharedTableCouplingEdges(doc)
+		if verbose() || stStats.CouplingEdges > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: shared-table tables=%d shared=%d coupling_edges=%d services_minted=%d\n",
+				stStats.TablesConsidered, stStats.SharedTables,
+				stStats.CouplingEdges, stStats.ServicesMinted)
+		}
 	}
 
 	// Pass 8.9 — dependency-boundary annotation (#3638, epic #3625). Restores
