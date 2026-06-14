@@ -46,6 +46,11 @@ import { CTNode } from "./CTNode";
 import { CTZone } from "./CTZone";
 import { CTEdge } from "./CTEdge";
 import { tierStyle } from "./tierStyle";
+import { useCoverageKind } from "@/hooks/use-coverage-kind";
+import {
+  CoverageKindOverlayToggle,
+  coverageKindRingStyle,
+} from "@/components/ui";
 
 const nodeTypes: NodeTypes = {
   [CT_NODE_TYPE]: CTNode,
@@ -73,6 +78,9 @@ function CompoundTopologyInner({ groupId, className }: CompoundTopologyProps) {
     tier: new Set(),
   });
   const collapsed = collapsedByLens[groupBy];
+  // #5147 coverage-kind overlay — off by default; shared coverage query (#5066).
+  const [coverageOverlay, setCoverageOverlay] = useState(false);
+  const coverageKind = useCoverageKind(groupId);
 
   const { data, isLoading, isError } = useCompoundTopology(groupId, groupBy);
 
@@ -152,6 +160,21 @@ function CompoundTopologyInner({ groupId, className }: CompoundTopologyProps) {
   );
   const nodeCount = nodes.length - zoneCount;
 
+  // #5147: apply the group-level coverage-kind ring to entity nodes (not the
+  // CT_ZONE containers). capability/off ⇒ {} ⇒ untouched (no fake decoration).
+  const coverageRing = useMemo(
+    () => coverageKindRingStyle(coverageKind, coverageOverlay),
+    [coverageKind, coverageOverlay],
+  );
+  const decoratedNodes = useMemo(() => {
+    if (!coverageRing.boxShadow) return nodes;
+    return nodes.map((n) =>
+      n.type === CT_NODE_TYPE
+        ? { ...n, data: { ...n.data, coverageRing } }
+        : n,
+    );
+  }, [nodes, coverageRing]);
+
   // Tier lanes actually present (for the legend).
   const presentTiers = useMemo(() => {
     const set = new Set((data?.nodes ?? []).map((n) => n.tier));
@@ -204,6 +227,13 @@ function CompoundTopologyInner({ groupId, className }: CompoundTopologyProps) {
           </div>
         )}
 
+        {/* #5147 coverage-kind overlay toggle + legend */}
+        <CoverageKindOverlayToggle
+          state={coverageKind}
+          enabled={coverageOverlay}
+          onToggle={() => setCoverageOverlay((v) => !v)}
+        />
+
         <span className="text-xs text-text-4 tabular-nums">
           {nodeCount} {nodeCount === 1 ? "node" : "nodes"}
           {groupBy !== "tier" && ` · ${zoneCount} ${zoneCount === 1 ? "zone" : "zones"}`}
@@ -247,7 +277,7 @@ function CompoundTopologyInner({ groupId, className }: CompoundTopologyProps) {
           </div>
         ) : (
           <ReactFlow
-            nodes={nodes}
+            nodes={decoratedNodes}
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}

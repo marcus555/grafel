@@ -60,6 +60,12 @@ export interface CompoundLensProps {
   selectedId?: string | null;
   /** Fired when a leaf node is clicked; null clears the selection. */
   onSelectNode?: (id: string | null) => void;
+  /**
+   * #5147 coverage-kind ring (group-level), owned by the parent
+   * CrossLinkedTopology so both lenses share one toggle. Empty/absent ⇒ no
+   * decoration.
+   */
+  coverageRing?: { boxShadow?: string };
   className?: string;
 }
 
@@ -69,6 +75,7 @@ function CompoundLensInner({
   highlight,
   selectedId,
   onSelectNode,
+  coverageRing,
   className,
 }: CompoundLensProps) {
   // Per-lens collapse set (independent of the other lens).
@@ -125,13 +132,25 @@ function CompoundLensInner({
   // Inject the cross-link highlight into each node/zone's data so CTNode/CTZone
   // render it. Positions are untouched — this is a cheap per-render remap.
   const nodes: Node[] = useMemo(() => {
+    // #5147: the coverage ring applies to leaf (non-zone) nodes; empty ⇒ omit.
+    const ring = coverageRing?.boxShadow ? { coverageRing } : null;
     if (!highlight?.active) {
       // No selection — strip any stale highlight flags.
-      return base.nodes.map((n) =>
-        n.data && (n.data as { highlight?: unknown }).highlight !== undefined
-          ? { ...n, data: { ...n.data, highlight: undefined, dimmed: false }, selected: false }
-          : n,
-      );
+      return base.nodes.map((n) => {
+        const isZone = n.type === CT_ZONE_TYPE;
+        const cov = isZone ? null : ring;
+        if (
+          n.data &&
+          (n.data as { highlight?: unknown }).highlight !== undefined
+        ) {
+          return {
+            ...n,
+            data: { ...n.data, highlight: undefined, dimmed: false, ...cov },
+            selected: false,
+          };
+        }
+        return cov ? { ...n, data: { ...n.data, ...cov } } : n;
+      });
     }
     return base.nodes.map((n) => {
       const isZone = n.type === CT_ZONE_TYPE;
@@ -141,10 +160,10 @@ function CompoundLensInner({
       return {
         ...n,
         selected: !isZone && n.id === selectedId,
-        data: { ...n.data, highlight: hl, dimmed: true },
+        data: { ...n.data, highlight: hl, dimmed: true, ...(isZone ? null : ring) },
       };
     });
-  }, [base.nodes, highlight, selectedId]);
+  }, [base.nodes, highlight, selectedId, coverageRing]);
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_evt, node) => {

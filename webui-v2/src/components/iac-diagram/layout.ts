@@ -123,6 +123,12 @@ export interface IaCNodeData {
   resource: IaCResource;
   /** Count of relation targets that could not be joined to a rendered node. */
   unresolvedCount: number;
+  /**
+   * #5147 coverage-kind overlay ring (group-level, threaded by IaCDiagram). When
+   * present + non-empty the node draws a tone ring keyed to the active coverage
+   * kind; absent / `{}` ⇒ no decoration (the capability default / overlay off).
+   */
+  coverageRing?: { boxShadow?: string };
   [key: string]: unknown;
 }
 

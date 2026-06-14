@@ -18,7 +18,7 @@ import { categoryStyle } from "./categoryStyle";
 import type { IaCNodeData } from "./layout";
 
 function IaCNodeImpl({ data, sourcePosition, targetPosition, selected }: NodeProps) {
-  const { resource, unresolvedCount } = data as IaCNodeData;
+  const { resource, unresolvedCount, coverageRing } = data as IaCNodeData;
   const style = categoryStyle(resource.category);
   const Icon = style.Icon;
   const { openSourcePeek } = useSourcePeek();
@@ -50,6 +50,8 @@ function IaCNodeImpl({ data, sourcePosition, targetPosition, selected }: NodePro
         borderLeftWidth: 3,
         // selection ring picks up the category color
         ...(selected ? ({ ["--tw-ring-color" as string]: style.color }) : {}),
+        // #5147 coverage-kind ring (group-level tone). Empty/absent ⇒ no ring.
+        ...(coverageRing?.boxShadow ? { boxShadow: coverageRing.boxShadow } : {}),
       }}
       title={
         hasSource

@@ -26,6 +26,11 @@ import { cn } from "@/lib/utils";
 import { useCompoundTopology } from "@/hooks/use-topology";
 import { CompoundLens } from "./CompoundLens";
 import { computeCrossLink } from "./crossLink";
+import { useCoverageKind } from "@/hooks/use-coverage-kind";
+import {
+  CoverageKindOverlayToggle,
+  coverageKindRingStyle,
+} from "@/components/ui";
 
 interface CrossLinkedTopologyProps {
   groupId: string;
@@ -35,6 +40,13 @@ interface CrossLinkedTopologyProps {
 export function CrossLinkedTopology({ groupId, className }: CrossLinkedTopologyProps) {
   // Shared selection across both lenses (a node id, or null).
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // #5147 coverage-kind overlay — one toggle drives BOTH lenses' rings.
+  const [coverageOverlay, setCoverageOverlay] = useState(false);
+  const coverageKind = useCoverageKind(groupId);
+  const coverageRing = useMemo(
+    () => coverageKindRingStyle(coverageKind, coverageOverlay),
+    [coverageKind, coverageOverlay],
+  );
 
   // We need BOTH payloads here (not just inside each lens) to compute the
   // cross-link — these queries are shared/cached with the lens' own useQuery,
@@ -73,6 +85,12 @@ export function CrossLinkedTopology({ groupId, className }: CrossLinkedTopologyP
         <span className="text-text-4">
           select a node in either lens to highlight its counterpart in the other
         </span>
+        {/* #5147 coverage-kind overlay toggle + legend (drives both lenses) */}
+        <CoverageKindOverlayToggle
+          state={coverageKind}
+          enabled={coverageOverlay}
+          onToggle={() => setCoverageOverlay((v) => !v)}
+        />
         {selectedId && (
           <div className="ml-auto flex items-center gap-2">
             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">
@@ -106,6 +124,7 @@ export function CrossLinkedTopology({ groupId, className }: CrossLinkedTopologyP
             highlight={cross.infra}
             selectedId={selectedId}
             onSelectNode={setSelectedId}
+            coverageRing={coverageRing}
             className="flex-1"
           />
         </div>
@@ -120,6 +139,7 @@ export function CrossLinkedTopology({ groupId, className }: CrossLinkedTopologyP
             highlight={cross.modules}
             selectedId={selectedId}
             onSelectNode={setSelectedId}
+            coverageRing={coverageRing}
             className="flex-1"
           />
         </div>
