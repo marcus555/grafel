@@ -76,6 +76,6 @@ These properties survive into `graph.json` and are queryable through the existin
 
 ## Operator controls
 
-- **Disable repair layer entirely:** `rm <repo>/.archigraph/repair.json`. Next index returns to pure-static behaviour.
+- **Disable repair layer entirely:** `rm <repo>/.grafel/repair.json`. Next index returns to pure-static behaviour.
 - **Reject a specific repair manually:** delete its record from `repair.json` (or rewrite by hand) before reindex.
-- **CI-only no-repair mode:** OPEN QUESTION in ADR-0015 — likely just file-absence; an `ARCHIGRAPH_DISABLE_REPAIR` env var is on the table if the file-absence convention proves insufficient.
+- **CI-only no-repair mode:** OPEN QUESTION in ADR-0015 — likely just file-absence; an `GRAFEL_DISABLE_REPAIR` env var is on the table if the file-absence convention proves insufficient.

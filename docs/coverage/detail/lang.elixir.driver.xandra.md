@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-06` | [link](https://github.com/cajasmota/archigraph/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | scanElixirDrivers attributes Xandra.execute/prepare CQL call sites to the FROM/INTO/UPDATE table via elixirCqlRe + the shared emitCQLTargets/extractSQLTable. QUERIES edge caller->Class:<table>, orm=cassandra, verb canonicalised (SELECT->find, INSERT->create). Interpolated/concatenated CQL (no literal table) honest-skipped. Value-asserting tests TestDriver_ElixirXandraCQL (list->Class:Event find) + TestDriver_ElixirXandraInsert (add->Class:Order create); negative TestDriver_ElixirXandraDynamicTableSkipped. |
+| Query attribution | ✅ `full` | `2026-06-06` | [link](https://github.com/cajasmota/grafel/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | scanElixirDrivers attributes Xandra.execute/prepare CQL call sites to the FROM/INTO/UPDATE table via elixirCqlRe + the shared emitCQLTargets/extractSQLTable. QUERIES edge caller->Class:<table>, orm=cassandra, verb canonicalised (SELECT->find, INSERT->create). Interpolated/concatenated CQL (no literal table) honest-skipped. Value-asserting tests TestDriver_ElixirXandraCQL (list->Class:Event find) + TestDriver_ElixirXandraInsert (add->Class:Order create); negative TestDriver_ElixirXandraDynamicTableSkipped. |
 
 ### Migrations
 

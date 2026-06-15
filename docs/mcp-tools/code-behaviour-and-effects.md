@@ -6,7 +6,7 @@ Per-function effects, control flow, purity, intra-procedural data flow, and temp
 
 ---
 
-## `archigraph_effects`
+## `grafel_effects`
 
 Effects + sinks for a function.
 
@@ -16,7 +16,7 @@ Output: detected effects and sinks; optional branch and effect-context detail.
 
 ---
 
-## `archigraph_control_flow`
+## `grafel_control_flow`
 
 On-demand per-function control-flow graph + complexity.
 
@@ -26,7 +26,7 @@ Output: CFG at the requested detail level with cyclomatic complexity.
 
 ---
 
-## `archigraph_pure_functions`
+## `grafel_pure_functions`
 
 Functions with no detected effects — memoization candidates.
 
@@ -36,7 +36,7 @@ Output: list of pure functions.
 
 ---
 
-## `archigraph_data_flows`
+## `grafel_data_flows`
 
 Request-input → sink DATA_FLOWS_TO edges.
 
@@ -46,7 +46,7 @@ Output: data-flow edges carrying `field`, `sink_kind`, and `hop_path`.
 
 ---
 
-## `archigraph_def_use`
+## `grafel_def_use`
 
 Intra-procedural def-use chains (last-write-wins) per function.
 
@@ -56,7 +56,7 @@ Output: per-function def-use chains.
 
 ---
 
-## `archigraph_template_patterns`
+## `grafel_template_patterns`
 
 i18n / log_format / sql template literals lifted per file.
 

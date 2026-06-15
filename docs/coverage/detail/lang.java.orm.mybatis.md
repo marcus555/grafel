@@ -15,18 +15,18 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3096) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go`<br>`internal/engine/rules/java/orms/mybatis.yaml` | Annotation @Results + XML <resultMap> become result_map schema entities (SCOPE.Schema); column DDL not parsed; model class references extracted from resultMap type attribute only |
+| Model extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3096) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go`<br>`internal/engine/rules/java/orms/mybatis.yaml` | Annotation @Results + XML <resultMap> become result_map schema entities (SCOPE.Schema); column DDL not parsed; model class references extracted from resultMap type attribute only |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
-| Schema extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Annotation @Results + XML <resultMap> become result_map schema entities; column DDL not parsed. |
+| Schema extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Annotation @Results + XML <resultMap> become result_map schema entities; column DDL not parsed. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Association extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | result_map result_type captured; <association>/<collection> nested joins not yet parsed. |
+| Association extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | result_map result_type captured; <association>/<collection> nested joins not yet parsed. |
 | Foreign key extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jpa_fk_lazy.go` | MyBatis mappers may co-exist with JPA annotations in hybrid projects; jpa_fk_lazy.go handles @JoinColumn/@FetchType patterns when present. Coverage is indirect (#3180). |
 | Lazy loading recognition | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/java/jpa_fk_lazy.go` | MyBatis mappers may co-exist with JPA annotations in hybrid projects; jpa_fk_lazy.go handles @JoinColumn/@FetchType patterns when present. Coverage is indirect (#3180). |
-| Relationship extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Result maps + mapper->statement ownership; FK/join-result associations not modeled. |
+| Relationship extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3007) | `internal/custom/java/mybatis.go`<br>`internal/custom/java/orm_extractors_test.go` | Result maps + mapper->statement ownership; FK/join-result associations not modeled. |
 
 ### Queries
 

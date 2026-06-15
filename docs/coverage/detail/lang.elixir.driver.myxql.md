@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3644) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3644) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
 
 ### Migrations
 

@@ -6,7 +6,7 @@
 
 ## Context
 
-archigraph needs to be installable across macOS (Intel + Apple Silicon), Linux (x86_64 + arm64), and Windows with the smallest possible install friction. The target users are software developers and AI agents working inside developer machines and CI runners. They expect a tool to be obtainable with a single command and to "just work" without further setup.
+grafel needs to be installable across macOS (Intel + Apple Silicon), Linux (x86_64 + arm64), and Windows with the smallest possible install friction. The target users are software developers and AI agents working inside developer machines and CI runners. They expect a tool to be obtainable with a single command and to "just work" without further setup.
 
 A polyglot runtime would require Python 3.11+ with `uv`, Node.js for auxiliary scripts, system-level `pip install` of a dozen dependencies, plus a tree-sitter toolchain compiled at install time. Each of these is a failure point on at least one OS, and the cumulative effect makes "install and forget" unattainable: broken installs, version skew between machines, and tooling drift are routine outcomes for end users on stacks like that.
 
@@ -14,9 +14,9 @@ We want a distribution story where the user runs one command, gets one executabl
 
 ## Decision
 
-archigraph is implemented in Go and shipped as a single statically-linked binary per platform. Releases are produced via GoReleaser on GitHub Actions using native runners (`macos-13` for Intel, `macos-14` for Apple Silicon, `ubuntu-latest` for Linux x86_64 and arm64, `windows-latest` for Windows x86_64). CGO is enabled because tree-sitter requires it; using native runners means the C toolchain is the platform-native one, and we never cross-compile with CGO.
+grafel is implemented in Go and shipped as a single statically-linked binary per platform. Releases are produced via GoReleaser on GitHub Actions using native runners (`macos-13` for Intel, `macos-14` for Apple Silicon, `ubuntu-latest` for Linux x86_64 and arm64, `windows-latest` for Windows x86_64). CGO is enabled because tree-sitter requires it; using native runners means the C toolchain is the platform-native one, and we never cross-compile with CGO.
 
-Binaries are uploaded to GitHub Releases. End users install via a one-line script (`curl ... | sh`) that detects OS/arch, downloads the matching artifact, verifies a checksum, and drops the binary into `~/.local/bin/archigraph` (or the Windows equivalent). Homebrew tap and Scoop manifest follow as secondary channels. There is no Docker image as a primary install path, and no compile-on-install — end users never touch a compiler.
+Binaries are uploaded to GitHub Releases. End users install via a one-line script (`curl ... | sh`) that detects OS/arch, downloads the matching artifact, verifies a checksum, and drops the binary into `~/.local/bin/grafel` (or the Windows equivalent). Homebrew tap and Scoop manifest follow as secondary channels. There is no Docker image as a primary install path, and no compile-on-install — end users never touch a compiler.
 
 ## Consequences
 

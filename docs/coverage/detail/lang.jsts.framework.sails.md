@@ -18,8 +18,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
-| Endpoint synthesis | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/sails.yaml`<br>`testdata/fixtures/typescript/sails_routes.ts` | — |
-| Handler attribution | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/sails.yaml`<br>`testdata/fixtures/typescript/sails_routes.ts` | — |
+| Endpoint synthesis | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/sails.yaml`<br>`testdata/fixtures/typescript/sails_routes.ts` | — |
+| Handler attribution | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2851) | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/rules/javascript_typescript/frameworks/sails.yaml`<br>`testdata/fixtures/typescript/sails_routes.ts` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | 3062 | `internal/engine/http_endpoint_jsts_backend.go`<br>`internal/engine/http_endpoint_jsts_backend_test.go`<br>`internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go` | — |
 | Websocket route extraction | 🔴 `missing` | `2026-06-14` | — | — | #4965: dedicated websocket_route_extraction not yet implemented for this framework. The capability key was introduced for the rust axum/actix/warp WS extractor (internal/custom/rust/websocket_routes.go); this framework's WebSocket-upgrade idiom is not yet recognised and is a follow-up gap. |
 
@@ -33,7 +33,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2897) | `internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`internal/engine/http_endpoint_jsts_sails_auth.go`<br>`testdata/fixtures/typescript/sails_policies.ts`<br>`testdata/fixtures/typescript/sails_routes.ts` | — |
+| Auth coverage | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2897) | `internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`internal/engine/http_endpoint_jsts_sails_auth.go`<br>`testdata/fixtures/typescript/sails_policies.ts`<br>`testdata/fixtures/typescript/sails_routes.ts` | — |
 
 ### Validation
 
@@ -47,7 +47,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | — `not_applicable` | — | — | — | Sails does not attach middleware to individual endpoints; its global middleware pipeline is the declarative `order` array under `middleware` in config/http.js. Covered by the framework_specific Middleware Pipeline / middleware_order_recognition cell (ParseSailsMiddlewareOrder). |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
 
 ### Schema
 

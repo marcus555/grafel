@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
+| Context extraction | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/grafel/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
 
 ### Navigation
 
@@ -29,19 +29,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Platform branching | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
+| Platform branching | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/grafel/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
 
 ### Native Bridge
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
+| Native module imports | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/grafel/issues/3218) | `internal/custom/golang/fyne_gomobile_test.go`<br>`internal/custom/golang/gomobile.go` | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3255) | `internal/custom/golang/gomobile.go`<br>`internal/custom/golang/gomobile_branch_test.go` | — |
+| Branch conditions | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3255) | `internal/custom/golang/gomobile.go`<br>`internal/custom/golang/gomobile_branch_test.go` | — |
 | State management | — `not_applicable` | — | — | — | — |
 
 ### Type System

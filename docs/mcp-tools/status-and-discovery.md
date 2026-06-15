@@ -2,11 +2,11 @@
 
 [← Back to the MCP tools index](../mcp-tools.md)
 
-Orientation, search, and single-entity lookup. **Call `archigraph_whoami` first** at the start of every session. Most tools accept the common routing arguments `group`, `cwd`, and `ref`; see [SCHEMA.md](../../internal/mcp/SCHEMA.md) for the canonical schema.
+Orientation, search, and single-entity lookup. **Call `grafel_whoami` first** at the start of every session. Most tools accept the common routing arguments `group`, `cwd`, and `ref`; see [SCHEMA.md](../../internal/mcp/SCHEMA.md) for the canonical schema.
 
 ---
 
-## `archigraph_whoami`
+## `grafel_whoami`
 
 Infer group/repo/ref for the caller.
 
@@ -18,7 +18,7 @@ Output: `cwd_resolved_to`, `group`, `repo`, `indexed_ref`, `is_worktree`.
 
 ---
 
-## `archigraph_stats`
+## `grafel_stats`
 
 Corpus-level metrics.
 
@@ -28,7 +28,7 @@ Output: entity counts per kind, relationship counts, unresolved import breakdown
 
 ---
 
-## `archigraph_orient`
+## `grafel_orient`
 
 Orientation analysis: surfaces the most important entities, cross-cutting edges, and a set of orientation questions to seed exploration.
 
@@ -38,7 +38,7 @@ Output: ranked key entities, cross-cutting edge list, and suggested orientation 
 
 ---
 
-## `archigraph_search_entities`
+## `grafel_search_entities`
 
 Substring search over entity names; ranked matches with source locations.
 
@@ -48,7 +48,7 @@ Output: ranked list of matching entities with source file + line.
 
 ---
 
-## `archigraph_find`
+## `grafel_find`
 
 BM25 graph query with optional BFS expansion. Primary discovery tool.
 
@@ -60,7 +60,7 @@ Output: BM25-scored entities with BFS expansion. Tail trimmed below `min_score`.
 
 ---
 
-## `archigraph_inspect`
+## `grafel_inspect`
 
 Look up a single entity by id, qualified name, or label. Returns the full record plus line-precise calls/called_by.
 
@@ -75,7 +75,7 @@ Output: full entity record including all properties + attached findings, plus:
 
 ---
 
-## `archigraph_get_source`
+## `grafel_get_source`
 
 Return actual source lines for a node (id/qname/label).
 
@@ -85,7 +85,7 @@ Output: source text with start/end line numbers. Times out gracefully on large f
 
 ---
 
-## `archigraph_subgraph`
+## `grafel_subgraph`
 
 Nodes+edges within N hops of an entity.
 

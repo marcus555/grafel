@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-03` | [link](https://github.com/cajasmota/archigraph/issues/3645) | — | Overstated cite corrected (#3637): dynamodb_java.yaml is detection-only (empty source_patterns/relationship_rules; the custom_extractors Python block never runs in Go) and dynamodb_java.go extracts only @DynamoDbBean model + @DynamoDbPartitionKey/SortKey/Attribute key schema — NO scan/query call-site attribution and no QUERIES edge. No native query-topology extractor exists; honest status is missing. |
+| Query attribution | 🔴 `missing` | `2026-06-03` | [link](https://github.com/cajasmota/grafel/issues/3645) | — | Overstated cite corrected (#3637): dynamodb_java.yaml is detection-only (empty source_patterns/relationship_rules; the custom_extractors Python block never runs in Go) and dynamodb_java.go extracts only @DynamoDbBean model + @DynamoDbPartitionKey/SortKey/Attribute key schema — NO scan/query call-site attribution and no QUERIES edge. No native query-topology extractor exists; honest status is missing. |
 
 ### Migrations
 

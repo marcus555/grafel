@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/discriminator.go` | — |
-| State management | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_expo/ProfileScreen.tsx`<br>`internal/extractors/javascript/zustand_store.go` | — |
+| State management | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_expo/ProfileScreen.tsx`<br>`internal/extractors/javascript/zustand_store.go` | — |
 
 ### Type System
 
@@ -99,8 +99,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Eas build detection | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/eas.json` | — |
-| Expo config extraction | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/app.json` | parseExpoManifest mines app.json / app.config.{js,ts} Expo manifest → expo_name, expo_slug, expo_version, expo_sdk_version, expo_scheme, expo_plugins. #3580 added sdkVersion (expo_sdk_version), value-asserted in TestDiscover_MobileFixtures (51.0.0). |
+| Eas build detection | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/eas.json` | — |
+| Expo config extraction | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/2879) | `internal/extractors/config/discover.go`<br>`internal/extractors/config/testdata/mobile/expo_config/app.json` | parseExpoManifest mines app.json / app.config.{js,ts} Expo manifest → expo_name, expo_slug, expo_version, expo_sdk_version, expo_scheme, expo_plugins. #3580 added sdkVersion (expo_sdk_version), value-asserted in TestDiscover_MobileFixtures (51.0.0). |
 | Expo router specifics | ✅ `full` | `2026-05-28` | — | `internal/extractors/javascript/navigation.go` | — |
 
 ### Expo Internals

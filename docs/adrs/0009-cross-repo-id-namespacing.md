@@ -10,7 +10,7 @@ A code knowledge graph that spans multiple repositories must handle entity-ID co
 
 Three places where collision matters:
 
-1. **Per-repo extraction** — each `archigraph index <repo>` runs in isolation; the indexer doesn't know other repos exist.
+1. **Per-repo extraction** — each `grafel index <repo>` runs in isolation; the indexer doesn't know other repos exist.
 2. **MCP server holding multiple repos** — single process, in-memory `Dict[repo, Graph]`, must serve queries that span repos without conflating IDs.
 3. **Cross-repo link file** — references entities in two different repos by ID; one or both endpoints must carry their repo name.
 
@@ -30,7 +30,7 @@ The local-ID hash is collision-stable within a single repo (identical functions 
 
 ### Positive
 
-- `archigraph index` is repo-local — no global state, no cross-repo dependency at index time. Watchers can rebuild one repo's graph without touching others.
+- `grafel index` is repo-local — no global state, no cross-repo dependency at index time. Watchers can rebuild one repo's graph without touching others.
 - Re-indexing produces stable IDs (deterministic hash) — agents that cached IDs can continue using them after a rebuild as long as the source location didn't change.
 - The MCP composition layer is the only place that knows about cross-repo scope. Single point of namespace control. Easier to evolve.
 - Cross-repo links file format is self-describing and unambiguous.

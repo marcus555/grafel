@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: session.execute('... FROM t') CQL table parsed via scanRubyDrivers/emitCQLTargets; QUERIES edge to Class:<Table>; dynamic CQL honest-skipped. |
+| Query attribution | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3645) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: session.execute('... FROM t') CQL table parsed via scanRubyDrivers/emitCQLTargets; QUERIES edge to Class:<Table>; dynamic CQL honest-skipped. |
 
 ### Migrations
 

@@ -15,21 +15,21 @@ The per-project model has predictable failure modes at this scale:
 - **Cold-start churn**: every IDE launch forked all configured MCP servers; warm-up amortization was lost when an IDE restarted.
 - **Configuration sprawl**: each project's `.mcp.json` had to be kept in sync; onboarding a new repo required editing config.
 
-archigraph organizes repos into **groups** (a group is an arbitrary collection of repos the user wants to query together — typically a microservices org, a monorepo's sub-projects, or a multi-repo product). The natural unit of MCP-server scope is therefore the machine's full set of registered groups, not any single project.
+grafel organizes repos into **groups** (a group is an arbitrary collection of repos the user wants to query together — typically a microservices org, a monorepo's sub-projects, or a multi-repo product). The natural unit of MCP-server scope is therefore the machine's full set of registered groups, not any single project.
 
 ## Decision
 
-archigraph runs **one long-lived MCP process per machine**. The process loads `~/.archigraph/registry.json` on startup, holds graphs for every registered group in memory, and routes each tool call to the appropriate group via the resolution cascade defined in ADR-008.
+grafel runs **one long-lived MCP process per machine**. The process loads `~/.grafel/registry.json` on startup, holds graphs for every registered group in memory, and routes each tool call to the appropriate group via the resolution cascade defined in ADR-008.
 
-IDE and agent-host configuration uses a **single global MCP entry**, not per-project entries. Users configure archigraph once in their host's global MCP config; opening any repo registered in `~/.archigraph/registry.json` makes that repo's graph queryable through the same connection.
+IDE and agent-host configuration uses a **single global MCP entry**, not per-project entries. Users configure grafel once in their host's global MCP config; opening any repo registered in `~/.grafel/registry.json` makes that repo's graph queryable through the same connection.
 
 Routing a tool call to the right group uses three signals (full detail in ADR-008):
 
 1. Explicit `group` argument on the tool call.
-2. Caller's working-directory metadata, walked upward to find a `.archigraph/group.json` marker.
+2. Caller's working-directory metadata, walked upward to find a `.grafel/group.json` marker.
 3. Singleton-group fallback when only one group is registered.
 
-A new `archigraph_whoami` MCP tool returns the inferred group + repo for the current caller session, useful for agent self-orientation.
+A new `grafel_whoami` MCP tool returns the inferred group + repo for the current caller session, useful for agent self-orientation.
 
 File watchers remain **per-repo** but are not part of this process. They are short-lived units invoked by save events (or by the IDE's file-change hook), which write incremental updates to disk that the long-lived MCP process picks up via mtime polling.
 
@@ -39,7 +39,7 @@ File watchers remain **per-repo** but are not part of this process. They are sho
 - One process, one binary load, one warm graph cache for the entire developer session.
 - Memory footprint is dominated by the graphs themselves, not by N copies of the runtime.
 - Cross-group queries are possible without spawning anything new.
-- Single global config; new repos are registered by `archigraph register`, not by editing IDE config.
+- Single global config; new repos are registered by `grafel register`, not by editing IDE config.
 - Cold start cost is paid once per machine session.
 
 ### Negative

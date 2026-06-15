@@ -17,22 +17,22 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/java/orms/jpa_jakarta_persistence_api.yaml` | — |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
-| Schema extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3097) | `internal/custom/java/jpa_fk_lazy.go` | @Table table_name + @Column(name/nullable/length) attribute depth parsed via hibernate.go shared helper; full DDL introspection not parsed. |
+| Schema extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3097) | `internal/custom/java/jpa_fk_lazy.go` | @Table table_name + @Column(name/nullable/length) attribute depth parsed via hibernate.go shared helper; full DDL introspection not parsed. |
 
 ### Relationships
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Association extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/java/hibernate.go`<br>`internal/custom/java/patterns_dispatch.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Re-wired live via custom_java_patterns dispatch (#3586): jakarta.persistence @OneToMany/@ManyToOne/@OneToOne/@ManyToMany associations emit DEPENDS_ON edges through RunCustomExtractors; value-asserting smoke test TestJavaPatternsJpaEntityLive asserts the Order->LineItem @OneToMany DEPENDS_ON edge emits live |
-| Foreign key extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3097) | `internal/custom/java/jpa_fk_lazy.go` | @JoinColumn(name=) and @ForeignKey(name=) parsed via hibernate.go shared helper; emits SCOPE.Component/foreign_key entities |
-| Lazy loading recognition | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3097) | `internal/custom/java/jpa_fk_lazy.go` | FetchType.LAZY and FetchType.EAGER parsed; emits SCOPE.Component/fetch_config entities |
+| Foreign key extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3097) | `internal/custom/java/jpa_fk_lazy.go` | @JoinColumn(name=) and @ForeignKey(name=) parsed via hibernate.go shared helper; emits SCOPE.Component/foreign_key entities |
+| Lazy loading recognition | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3097) | `internal/custom/java/jpa_fk_lazy.go` | FetchType.LAZY and FetchType.EAGER parsed; emits SCOPE.Component/fetch_config entities |
 | Relationship extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/java/hibernate.go`<br>`internal/custom/java/patterns_dispatch.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | Re-wired live via custom_java_patterns dispatch (#3586): JPA association annotations emit directed DEPENDS_ON relationship edges through RunCustomExtractors; value-asserting smoke test TestJavaPatternsJpaEntityLive asserts the Order->LineItem DEPENDS_ON edge emits live |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3096) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_other.go`<br>`internal/engine/orm_queries_test.go`<br>`internal/extractors/cross/dbmap/extractor_test.go`<br>`internal/extractors/cross/dbmap/orms.go` | Engine pass scanJavaORM handles EntityManager.find/persist/remove/merge and Spring Data repository call patterns; emits QUERIES edges with orm=jpa or orm=spring_data. Plain JDBC raw SQL (Statement.executeQuery/executeUpdate("…")) table topology now resolved by dbmap.detectJDBC (import-gated on java.sql/javax.sql) which parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb; value-asserting tests TestJDBCExecuteQueryReadsTable + TestJDBCJoinYieldsBothTables (#3644). Inline JPQL string content still unparsed for engine QUERIES edges. |
+| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3096) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_other.go`<br>`internal/engine/orm_queries_test.go`<br>`internal/extractors/cross/dbmap/extractor_test.go`<br>`internal/extractors/cross/dbmap/orms.go` | Engine pass scanJavaORM handles EntityManager.find/persist/remove/merge and Spring Data repository call patterns; emits QUERIES edges with orm=jpa or orm=spring_data. Plain JDBC raw SQL (Statement.executeQuery/executeUpdate("…")) table topology now resolved by dbmap.detectJDBC (import-gated on java.sql/javax.sql) which parses FROM/INTO/UPDATE/JOIN and emits SCOPE.DataAccess + ACCESSES_TABLE edges with read/write verb; value-asserting tests TestJDBCExecuteQueryReadsTable + TestJDBCJoinYieldsBothTables (#3644). Inline JPQL string content still unparsed for engine QUERIES edges. |
 
 ### Migrations
 

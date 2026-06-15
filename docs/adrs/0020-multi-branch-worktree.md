@@ -8,9 +8,9 @@
 
 ## Context
 
-Until this ADR, the archigraph daemon indexed exactly one git ref per registered
-repository — whichever ref was current when the last `archigraph index` or
-`archigraph rebuild` ran. This design has two concrete problems.
+Until this ADR, the grafel daemon indexed exactly one git ref per registered
+repository — whichever ref was current when the last `grafel index` or
+`grafel rebuild` ran. This design has two concrete problems.
 
 **Branch-switch context loss.** Developers work on feature branches,
 hotfixes, and release cuts simultaneously. When a developer runs `git
@@ -47,10 +47,10 @@ disk usage.**
 Per-ref artifacts live under:
 
 ```
-~/.archigraph/store/<slug>-<hash>/refs/<ref-safe>/graph.fb
-~/.archigraph/store/<slug>-<hash>/refs/<ref-safe>/graph.json  (opt-in)
-~/.archigraph/store/<slug>-<hash>/refs/<ref-safe>/graph-stats.json
-~/.archigraph/store/<slug>-<hash>/refs/<ref-safe>/embeddings.bin
+~/.grafel/store/<slug>-<hash>/refs/<ref-safe>/graph.fb
+~/.grafel/store/<slug>-<hash>/refs/<ref-safe>/graph.json  (opt-in)
+~/.grafel/store/<slug>-<hash>/refs/<ref-safe>/graph-stats.json
+~/.grafel/store/<slug>-<hash>/refs/<ref-safe>/embeddings.bin
 ```
 
 `<ref-safe>` is the ref name percent-encoded with `%2F` for `/` so that branch
@@ -111,7 +111,7 @@ extended to watch `.git/HEAD` in addition to source files. A HEAD change event:
    below). If clone fails or is not applicable, a full index runs (#2129).
 
 Git hooks (`post-checkout`, `post-merge`, `post-rewrite`) installed by
-`archigraph install-hooks` send an explicit signal to the daemon via the
+`grafel install-hooks` send an explicit signal to the daemon via the
 Unix-domain socket, providing a faster path than waiting for the fsnotify HEAD
 event. The hooks are idempotent and co-exist with husky / lefthook / pre-commit
 managed setups. The `pre-push` hook (existing) is retained unchanged (#2222).
@@ -130,7 +130,7 @@ cycles have their slots transitioned to COLD (#2138, watcher pause/resume #2139)
 
 When a new ref has never been indexed (no `graph.fb` present), the daemon
 checks whether a close ancestor ref's graph can be seeded. If the diff between
-the ancestor and the new ref touches ≤ `ARCHIGRAPH_CLONE_MAX_FILES` files
+the ancestor and the new ref touches ≤ `GRAFEL_CLONE_MAX_FILES` files
 (default 20, hard cap 100), the optimisation:
 
 1. Copies the parent's `graph.fb` and side-cars to the new ref's store dir.
@@ -150,18 +150,18 @@ The following CLI subcommands accept a `--ref <name>` flag to target a specific
 indexed ref instead of the current HEAD:
 
 ```
-archigraph status   [--ref <name>]
-archigraph rebuild  [--ref <name>]
-archigraph index    [--ref <name>]
-archigraph list     [--ref <name>]
-archigraph doctor   [--ref <name>]
-archigraph remove   [--ref <name>]
+grafel status   [--ref <name>]
+grafel rebuild  [--ref <name>]
+grafel index    [--ref <name>]
+grafel list     [--ref <name>]
+grafel doctor   [--ref <name>]
+grafel remove   [--ref <name>]
 ```
 
-`archigraph status` also accepts `--all-refs` to display all indexed refs for
+`grafel status` also accepts `--all-refs` to display all indexed refs for
 a group, with HOT/WARM/COLD tier annotation per slot (#2219).
 
-`archigraph branches` lists every indexed ref for a group, with tier, size-on-disk,
+`grafel branches` lists every indexed ref for a group, with tier, size-on-disk,
 last-indexed timestamp, and entity count (#2144).
 
 ### Dashboard `?ref=` query parameter
@@ -246,12 +246,12 @@ actually differ.
 - **Storage growth is linear in indexed branches.** Each `(repo, ref)` slot adds
   one `graph.fb` (typically 5–25 MB per repo). The disk eviction policy (EXPIRED
   TTL) bounds growth for long-lived feature branches that are no longer accessed.
-  Users can inspect and manually evict with `archigraph branches --evict <ref>`.
+  Users can inspect and manually evict with `grafel branches --evict <ref>`.
 - **Ref-switch latency window.** There is a brief window between a `git checkout`
   and the daemon's HEAD watch firing where MCP queries land on the old ref's
   graph. The git-hook path reduces this to near-zero when hooks are installed.
 - **Clone-from-parent is best-effort.** It is skipped when the ancestor diff
-  exceeds `ARCHIGRAPH_CLONE_MAX_FILES`, when the merge-base is too old (>7 days
+  exceeds `GRAFEL_CLONE_MAX_FILES`, when the merge-base is too old (>7 days
   by default), or when any step errors. The fallback is a full reindex.
 - **Worktree discovery requires `git worktree list`.** This is a subprocess call
   at daemon startup and on each watcher cycle. On machines with hundreds of
@@ -270,7 +270,7 @@ the daemon can still serve from it on restart.
 **Single-ref-at-a-time (previous design).** The daemon indexed only the current
 HEAD and discarded the old ref's data on branch switch. Rejected: poor
 multi-branch UX — developers cannot query a feature branch while working on
-another branch, and PR review requires a manual `archigraph rebuild` step.
+another branch, and PR review requires a manual `grafel rebuild` step.
 
 **Ref-on-demand only (no background watch).** Index a ref only when an MCP query
 or CLI command explicitly targets it, with no background HEAD watching. Rejected:

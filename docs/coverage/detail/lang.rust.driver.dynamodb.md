@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-05` | [link](https://github.com/cajasmota/archigraph/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: aws-sdk-rust fluent builder .table_name("X") captured by rustDynamoTableNameRe (plus the shared table_name="X" literal via emitDynamoTargets) in scanRustDrivers; QUERIES edge to Class:<Table> with orm=dynamodb, gated on aws_sdk_dynamodb. Dynamic table names (a variable) honest-skipped. |
+| Query attribution | ✅ `full` | `2026-06-05` | [link](https://github.com/cajasmota/grafel/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: aws-sdk-rust fluent builder .table_name("X") captured by rustDynamoTableNameRe (plus the shared table_name="X" literal via emitDynamoTargets) in scanRustDrivers; QUERIES edge to Class:<Table> with orm=dynamodb, gated on aws_sdk_dynamodb. Dynamic table names (a variable) honest-skipped. |
 
 ### Migrations
 

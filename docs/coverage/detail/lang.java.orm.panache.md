@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3096) | `internal/extractors/java/panache.go`<br>`internal/extractors/java/panache_test.go` | Synthesizes full static-method and DSL-builder operation entities (findById, count, list, page, stream, etc.) and named query entities; does not parse inline JPQL/HQL string content |
+| Query attribution | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3096) | `internal/extractors/java/panache.go`<br>`internal/extractors/java/panache_test.go` | Synthesizes full static-method and DSL-builder operation entities (findById, count, list, page, stream, etc.) and named query entities; does not parse inline JPQL/HQL string content |
 
 ### Migrations
 

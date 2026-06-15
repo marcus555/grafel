@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/custom/rust/neo4j.go`<br>`internal/custom/rust/neo4j_test.go` | query('CYPHER') / Query::new('CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built (format!) query strings not fully recoverable, so partial. |
+| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3645) | `internal/custom/rust/neo4j.go`<br>`internal/custom/rust/neo4j_test.go` | query('CYPHER') / Query::new('CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built (format!) query strings not fully recoverable, so partial. |
 
 ### Migrations
 

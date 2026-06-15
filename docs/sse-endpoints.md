@@ -1,6 +1,6 @@
 # Server-Sent Events (SSE) endpoints
 
-archigraph exposes two SSE endpoints for real-time streaming. Both are served
+grafel exposes two SSE endpoints for real-time streaming. Both are served
 by the embedded dashboard server on http://127.0.0.1:47274/.
 
 ---
@@ -42,8 +42,8 @@ Each event is a JSON object sent as an `event: progress` SSE line:
 
 - Events are emitted by the in-process pub/sub broker (`internal/progress`).
 - The dashboard `IndexingProgressModal` subscribes to this stream during
-  `archigraph rebuild` and shows a live progress bar.
-- The `archigraph rebuild` CLI also subscribes via the broker so the terminal
+  `grafel rebuild` and shows a live progress bar.
+- The `grafel rebuild` CLI also subscribes via the broker so the terminal
   can show real-time progress.
 - If no rebuild is in progress, the connection is held open but no events are
   sent until a rebuild starts.
@@ -65,7 +65,7 @@ Each event is a JSON object sent as an `event: mcp-activity` SSE line:
 ```json
 {
   "id":           "01HX4B8GQN5CMQRK",
-  "tool":         "archigraph_find",
+  "tool":         "grafel_find",
   "group":        "my-group",
   "repo_filter":  ["api-server"],
   "elapsed_ms":   31,
@@ -77,7 +77,7 @@ Each event is a JSON object sent as an `event: mcp-activity` SSE line:
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique call ID (ULID) |
-| `tool` | string | Tool name (e.g. `archigraph_find`) |
+| `tool` | string | Tool name (e.g. `grafel_find`) |
 | `group` | string | Resolved group slug |
 | `repo_filter` | string[] | Repos in scope for this call |
 | `elapsed_ms` | int | Server-side latency |

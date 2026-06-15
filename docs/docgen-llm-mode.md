@@ -11,7 +11,7 @@ workflows.
 
 ## MCP + grep, paired
 
-archigraph MCP gives you a navigable, accurate map of the code; grep gives you raw pattern matches.
+grafel MCP gives you a navigable, accurate map of the code; grep gives you raw pattern matches.
 Use MCP for structural questions: who calls X? what is the flow? where does Y live in the graph?
 Use grep for raw enumeration: every `if err != nil`, every import line, every TODO.
 Pair them: MCP narrows the search space; grep verifies edge-property questions MCP can't answer yet.
@@ -26,7 +26,7 @@ additional MCP round-trip for text-level detail that grep resolves in millisecon
 
 ## 1. The 5-Tier Docgen Ladder
 
-Archigraph docgen is built around a progressive-validation ladder. Each tier
+Grafel docgen is built around a progressive-validation ladder. Each tier
 is a strict superset of the tier below it — you can always run a higher tier,
 but you must clear the lower ones first before trusting the output.
 
@@ -66,8 +66,8 @@ It turns the deterministic stubs into LLM-filled prose via a three-step loop:
  daemon side                 orchestrator side (Claude Code)      daemon side
 ┌─────────────┐             ┌──────────────────────────────┐    ┌─────────────┐
 │  --llm-mode │             │  Pass 20 orchestrate          │    │  --llm-mode │
-│    =emit    │ ──bundle──► │  (skills/archigraph-tech-docs │ ──►│    =apply   │
-│             │             │   or /archigraph-test-page)   │    │             │
+│    =emit    │ ──bundle──► │  (skills/grafel-tech-docs │ ──►│    =apply   │
+│             │             │   or /grafel-test-page)   │    │             │
 └─────────────┘             └──────────────────────────────┘    └─────────────┘
    Tier 0 or 1                  reads bundle, fills each           re-runs Tier
    writes bundle.json           section with LLM prose,            contracts,
@@ -84,11 +84,11 @@ sequenceDiagram
     participant Skill as Claude Code<br/>Pass 20 (#1822)
     participant Cache as Section Cache<br/>(#1813 ticket E)
 
-    Dev->>Daemon: archigraph docgen --tier=1 --llm-mode=emit
+    Dev->>Daemon: grafel docgen --tier=1 --llm-mode=emit
     Daemon->>Daemon: build LLMPromptBundle<br/>(entity context, 1-hop neighbours,<br/>guidance, max_words, max_mermaid)
     Daemon-->>Dev: writes <pageID>-page-bundle.json
 
-    Dev->>Skill: invoke /archigraph-tech-docs (or /archigraph-test-page) — Pass 20
+    Dev->>Skill: invoke /grafel-tech-docs (or /grafel-test-page) — Pass 20
     Skill->>Skill: locate *-bundle.json files
     loop for each section in bundle
         Skill->>Cache: check section cache (prompt_hash)
@@ -102,7 +102,7 @@ sequenceDiagram
     Skill->>Skill: assemble LLMRunResult JSON
     Skill-->>Dev: writes <pageID>-page-result.json
 
-    Dev->>Daemon: archigraph docgen --tier=1 --llm-mode=apply<br/>--bundle-file=... --result-file=...
+    Dev->>Daemon: grafel docgen --tier=1 --llm-mode=apply<br/>--bundle-file=... --result-file=...
     Daemon->>Daemon: verify prompt_hash match<br/>run per-page contracts<br/>assemble final page
     Daemon-->>Dev: writes <pageID>-page.md + score.json
 ```
@@ -115,7 +115,7 @@ sequenceDiagram
    budgets, and a `prompt_hash` (SHA-256 over version + section names + entity
    ID + graph node hash + guidance text). Source: `internal/docgen/llm_bundle.go`.
 
-2. **Orchestrate** — Pass 20 of the `archigraph-tech-docs` skill reads every bundle
+2. **Orchestrate** — Pass 20 of the `grafel-tech-docs` skill reads every bundle
    file, calls the LLM once per section, assembles an `LLMRunResult` JSON, and
    writes it next to the bundle. The pass is idempotent: it skips any bundle
    whose result file already exists with a matching `prompt_hash`.
@@ -129,8 +129,8 @@ sequenceDiagram
 
 ## 3. Claude Code Skill Integration (Pass 20 / #1822)
 
-Pass 20 lives at `skills/archigraph-tech-docs/prompts/20-llm-orchestrate.md`.
-It is part of the `archigraph-tech-docs` skill (`skills/archigraph-tech-docs/SKILL.md`).
+Pass 20 lives at `skills/grafel-tech-docs/prompts/20-llm-orchestrate.md`.
+It is part of the `grafel-tech-docs` skill (`skills/grafel-tech-docs/SKILL.md`).
 
 **Trigger phrases** that invoke Pass 20:
 
@@ -142,7 +142,7 @@ It is part of the `archigraph-tech-docs` skill (`skills/archigraph-tech-docs/SKI
 **What Pass 20 does:**
 
 1. Locates `*-bundle.json` files under the docs dir
-   (`~/.archigraph/docs/<group>/`).
+   (`~/.grafel/docs/<group>/`).
 2. For each bundle, reads the `LLMPromptBundle` (schema `"1"`,
    source: `internal/docgen/llm_bundle.go`).
 3. For each `sections[]` entry, calls the LLM with a grounded prompt built from:
@@ -154,7 +154,7 @@ It is part of the `archigraph-tech-docs` skill (`skills/archigraph-tech-docs/SKI
    - Word + mermaid budgets
 4. Assembles `LLMRunResult` with `prompt_hash` copied from the bundle.
 5. Writes `<pageID>-page-result.json` next to the bundle.
-6. Invokes `archigraph docgen --tier=1 --llm-mode=apply ...`.
+6. Invokes `grafel docgen --tier=1 --llm-mode=apply ...`.
 
 **Schema constraint:** `section_results` must contain exactly the same section
 names as `bundle.sections` — no more, no fewer. The daemon's `ApplyResult`
@@ -196,25 +196,25 @@ You edited the `capabilities` section template and want fast feedback:
 
 ```bash
 # Step 1: emit a Tier 0 bundle for the section you are tuning.
-archigraph docgen \
+grafel docgen \
   --tier=0 \
   --group=<group> \
   --seed-entity=<entity-id> \
   --section=capabilities \
   --llm-mode=emit
 
-# Output: ~/.archigraph/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-bundle.json
+# Output: ~/.grafel/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-bundle.json
 
 # Step 2: run Pass 20 in Claude Code.
-# In Claude Code:  /archigraph-test-page   (single-entity emit→fill→apply loop)
+# In Claude Code:  /grafel-test-page   (single-entity emit→fill→apply loop)
 # (Pass 20 auto-detects the bundle and fills the section.)
 
 # Step 3: apply.
-archigraph docgen \
+grafel docgen \
   --tier=0 \
   --llm-mode=apply \
-  --bundle-file=~/.archigraph/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-bundle.json \
-  --result-file=~/.archigraph/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-result.json
+  --bundle-file=~/.grafel/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-bundle.json \
+  --result-file=~/.grafel/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-result.json
 
 # Read score.json, compare word_count / mermaid_count / token_count_estimate
 # against the previous run. Repeat from Step 1.
@@ -226,28 +226,28 @@ You want a full page for one entity with LLM prose, all contracts passing:
 
 ```bash
 # Step 1: emit a Tier 1 bundle (full page, all sections).
-archigraph docgen \
+grafel docgen \
   --tier=1 \
   --group=<group> \
   --seed-entity=<entity-id> \
   --llm-mode=emit
 
 # Step 2: fill via Pass 20 in Claude Code.
-# /archigraph-test-page  →  Pass 20 runs automatically.
+# /grafel-test-page  →  Pass 20 runs automatically.
 
 # Step 3: apply and verify contracts.
-archigraph docgen \
+grafel docgen \
   --tier=1 \
   --llm-mode=apply \
-  --bundle-file=~/.archigraph/docs/<group>/.tier1-<ts>/<entity-id>-page-bundle.json \
-  --result-file=~/.archigraph/docs/<group>/.tier1-<ts>/<entity-id>-page-result.json
+  --bundle-file=~/.grafel/docs/<group>/.tier1-<ts>/<entity-id>-page-bundle.json \
+  --result-file=~/.grafel/docs/<group>/.tier1-<ts>/<entity-id>-page-result.json
 
 # Successful output:
 #   tier1 apply complete
 #   entity:     <name>
 #   sections:   <N>
 #   contract:   PASS
-#   output:     ~/.archigraph/docs/<group>/.tier1-<ts>/<entity-id>-page.md
+#   output:     ~/.grafel/docs/<group>/.tier1-<ts>/<entity-id>-page.md
 ```
 
 ### Recipe C — Validate a coherent slice (no LLM)
@@ -255,7 +255,7 @@ archigraph docgen \
 You want to check cross-page contracts across ~5 related entities:
 
 ```bash
-archigraph docgen \
+grafel docgen \
   --tier=2 \
   --group=<group> \
   --seed-entity=<capability-entity-id> \
@@ -270,12 +270,12 @@ archigraph docgen \
 Before merging a prompt change, validate the whole repo's doc set:
 
 ```bash
-archigraph docgen \
+grafel docgen \
   --tier=3 \
   --group=<group> \
   --repo=<repo-slug>
 
-# Writes ~/.archigraph/docs/<group>/.tier3-<ts>/<repo>/score.json
+# Writes ~/.grafel/docs/<group>/.tier3-<ts>/<repo>/score.json
 # Check: contract_violations == 0, every_entity_covered == true.
 ```
 
@@ -284,7 +284,7 @@ archigraph docgen \
 Terminal validation across all repos in the group:
 
 ```bash
-archigraph docgen \
+grafel docgen \
   --tier=4 \
   --group=<group>
 
@@ -321,10 +321,10 @@ reference-scripts, reference-misc, module-readme, glossary, how-to-local-dev
 
 | Mode | Output path |
 |------|-------------|
-| Tier 0 emit | `~/.archigraph/docs/<group>/.tier0-<RFC3339>/<entity-id>-<section>-bundle.json` |
-| Tier 1 emit | `~/.archigraph/docs/<group>/.tier1-<RFC3339>/<entity-id>-page-bundle.json` |
-| Tier 1 result (written by Pass 20) | `~/.archigraph/docs/<group>/.tier1-<RFC3339>/<entity-id>-page-result.json` |
-| Tier 1 final page (written by apply) | `~/.archigraph/docs/<group>/.tier1-<RFC3339>/<entity-id>-page.md` |
+| Tier 0 emit | `~/.grafel/docs/<group>/.tier0-<RFC3339>/<entity-id>-<section>-bundle.json` |
+| Tier 1 emit | `~/.grafel/docs/<group>/.tier1-<RFC3339>/<entity-id>-page-bundle.json` |
+| Tier 1 result (written by Pass 20) | `~/.grafel/docs/<group>/.tier1-<RFC3339>/<entity-id>-page-result.json` |
+| Tier 1 final page (written by apply) | `~/.grafel/docs/<group>/.tier1-<RFC3339>/<entity-id>-page.md` |
 
 ---
 
@@ -343,8 +343,8 @@ reference-scripts, reference-misc, module-readme, glossary, how-to-local-dev
 
 ## See Also
 
-- `skills/archigraph-tech-docs/SKILL.md` — full pass pipeline (Passes 0–20)
-- `skills/archigraph-tech-docs/prompts/20-llm-orchestrate.md` — Pass 20 full procedure
+- `skills/grafel-tech-docs/SKILL.md` — full pass pipeline (Passes 0–20)
+- `skills/grafel-tech-docs/prompts/20-llm-orchestrate.md` — Pass 20 full procedure
 - `internal/docgen/llm_bundle.go` — schema source of truth
 - `internal/docgen/llm_apply.go` — apply-time contract enforcement
 - `docs/adrs/0015-residual-repair-agent-enrichment.md` — residual repair (ADR-0015)

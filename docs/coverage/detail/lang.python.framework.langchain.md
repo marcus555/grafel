@@ -28,7 +28,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/substrate/python.go`<br>`internal/substrate/taint_sites_python.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Python entities via python.go sniffers. Partial: top-level EntityRecord.Confidence not yet written by the extractor directly. |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/substrate/python.go`<br>`internal/substrate/taint_sites_python.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Python entities via python.go sniffers. Partial: top-level EntityRecord.Confidence not yet written by the extractor directly. |
 
 ## Provenance
 

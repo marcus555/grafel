@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-05` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: `session.Execute("CQL")`/ExecuteAsync (csCqlExecuteRe) captured via scanCSharpDrivers->emitCQLTargets; the CQL FROM/INTO/UPDATE table is parsed (extractSQLTable) into a QUERIES edge to Class:<Table>, runtime-built queries honest-skipped (#3645). |
+| Query attribution | ✅ `full` | `2026-06-05` | [link](https://github.com/cajasmota/grafel/issues/3645) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: `session.Execute("CQL")`/ExecuteAsync (csCqlExecuteRe) captured via scanCSharpDrivers->emitCQLTargets; the CQL FROM/INTO/UPDATE table is parsed (extractSQLTable) into a QUERIES edge to Class:<Table>, runtime-built queries honest-skipped (#3645). |
 
 ### Migrations
 

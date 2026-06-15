@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | — |
+| Context extraction | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | — |
 
 ### Navigation
 
@@ -41,8 +41,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2885) | `internal/extractors/javascript/branchconditions.go`<br>`internal/extractors/javascript/issue2885_branch_conditions_test.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/counter-view-model.ts` | FIXED(#2885): general branch-condition pass (branchconditions.go) now emits branch_conditions + BRANCHES_ON for if/ternary/switch member comparisons the discriminator pass misses, e.g. this._counter !== value / this._counter le 0. Proven by counter-view-model.ts modelled on a real extends-Observable NS view-model. |
-| State management | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts` | AUDIT(#2847) HOLDS: state_setter fires on 6 real NativeScript-Core view-models (notifyPropertyChange/this.set/set-accessor) from @nativescript app-templates. |
+| Branch conditions | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2885) | `internal/extractors/javascript/branchconditions.go`<br>`internal/extractors/javascript/issue2885_branch_conditions_test.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/counter-view-model.ts` | FIXED(#2885): general branch-condition pass (branchconditions.go) now emits branch_conditions + BRANCHES_ON for if/ternary/switch member comparisons the discriminator pass misses, e.g. this._counter !== value / this._counter le 0. Proven by counter-view-model.ts modelled on a real extends-Observable NS view-model. |
+| State management | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts` | AUDIT(#2847) HOLDS: state_setter fires on 6 real NativeScript-Core view-models (notifyPropertyChange/this.set/set-accessor) from @nativescript app-templates. |
 
 ### Type System
 
@@ -56,7 +56,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts` | — |
+| State setter emission | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/main-view-model.ts` | — |
 
 ### Testing
 
@@ -99,7 +99,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| HOC wrapper recognition | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | Genuine HOC signal only for the react-nativescript flavor (memo/withOrientation, recognised by the framework-agnostic React HOC detector in extractor.go). Core/Angular/Vue NativeScript flavors have no HOC equivalent; re-homed out of the shared mobile Structure column so it no longer reads as a paradigm-wide claim. |
+| HOC wrapper recognition | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_nativescript/AppShell.tsx` | Genuine HOC signal only for the react-nativescript flavor (memo/withOrientation, recognised by the framework-agnostic React HOC detector in extractor.go). Core/Angular/Vue NativeScript flavors have no HOC equivalent; re-homed out of the shared mobile Structure column so it no longer reads as a paradigm-wide claim. |
 
 ## Provenance
 

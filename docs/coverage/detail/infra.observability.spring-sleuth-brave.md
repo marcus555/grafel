@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | — `not_applicable` | — | — | — | — |
 | Metric extraction | — `not_applicable` | — | — | — | — |
-| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3856) | `internal/extractors/java/observability.go` | #3854 area #11: Spring Sleuth / Brave manual spans emit INSTRUMENTS edges (enclosing method -> span:<name> stub) in Java via the fluent form tracer.nextSpan().name("op").start(), anchored on the .name("op") call whose receiver chain includes nextSpan(). Honest-partial: a non-literal span name yields traced=true+dynamic=true keyed on the method without fabrication. |
+| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3856) | `internal/extractors/java/observability.go` | #3854 area #11: Spring Sleuth / Brave manual spans emit INSTRUMENTS edges (enclosing method -> span:<name> stub) in Java via the fluent form tracer.nextSpan().name("op").start(), anchored on the .name("op") call whose receiver chain includes nextSpan(). Honest-partial: a non-literal span name yields traced=true+dynamic=true keyed on the method without fabrication. |
 
 ## Provenance
 

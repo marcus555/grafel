@@ -47,7 +47,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/engine/http_endpoint_jsts_middleware.go`<br>`internal/engine/http_endpoint_jsts_middleware_test.go`<br>`testdata/fixtures/typescript/koa_middleware.ts` | — |
-| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3778) | `internal/engine/http_endpoint_jsts_ratelimit.go`<br>`internal/engine/http_endpoint_jsts_ratelimit_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | express-rate-limit / express-slow-down: resolves windowMs+max to a human rate and stamps rate_limited/rate_limit/rate_limit_scope (route|app)/rate_limit_source on the endpoint op. Imported/config-driven limiters → rate_limited=true with rate omitted (honest-partial). Negative: a limiter defined but never applied to a route is not stamped. |
+| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3778) | `internal/engine/http_endpoint_jsts_ratelimit.go`<br>`internal/engine/http_endpoint_jsts_ratelimit_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | express-rate-limit / express-slow-down: resolves windowMs+max to a human rate and stamps rate_limited/rate_limit/rate_limit_scope (route|app)/rate_limit_source on the endpoint op. Imported/config-driven limiters → rate_limited=true with rate omitted (honest-partial). Negative: a limiter defined but never applied to a route is not stamped. |
 
 ### Schema
 

@@ -7,7 +7,7 @@
 
 ## Context
 
-archigraph emits `<repo>/.archigraph/graph.json` as the canonical on-disk graph artifact. Every downstream consumer — the MCP query server (`internal/mcp/*`), the `doctor`/`quality`/`dashboard` subcommands, cross-repo link passes, the determinism harness, the bug-rate evaluator, third-party tools — pays a JSON unmarshal cost on every open.
+grafel emits `<repo>/.grafel/graph.json` as the canonical on-disk graph artifact. Every downstream consumer — the MCP query server (`internal/mcp/*`), the `doctor`/`quality`/`dashboard` subcommands, cross-repo link passes, the determinism harness, the bug-rate evaluator, third-party tools — pays a JSON unmarshal cost on every open.
 
 Measured against the current 11.34 MB fixture (`client-fixture-b`, 100k+ entities + relationships):
 
@@ -16,7 +16,7 @@ Measured against the current 11.34 MB fixture (`client-fixture-b`, 100k+ entitie
 | `json.Unmarshal(graph.json)`  | ~132 ms      | 50 MB / 640 k allocs |
 | `json.Unmarshal + linear scan to find one entity` | ~120 ms | 50 MB / 640 k allocs |
 
-That is the floor on every MCP tool call that needs graph state, on every doctor invocation, on every cross-repo link pass. As corpora grow toward the multi-million-entity ceiling targeted in `project_archigraph_v1_ship_gate_state`, the JSON parse dominates wall-time and memory pressure; it is also the single largest source of GC churn in long-running MCP sessions.
+That is the floor on every MCP tool call that needs graph state, on every doctor invocation, on every cross-repo link pass. As corpora grow toward the multi-million-entity ceiling targeted in `project_grafel_v1_ship_gate_state`, the JSON parse dominates wall-time and memory pressure; it is also the single largest source of GC churn in long-running MCP sessions.
 
 We have two cost levers:
 1. **Format**: stop parsing JSON. The graph schema is tabular and stable (ADR-0005); a binary format with zero-copy reads removes the parse entirely.
@@ -26,7 +26,7 @@ This ADR addresses (1) directly and lays the groundwork for (2) by emitting an e
 
 ## Decision
 
-**Adopt FlatBuffers as the v2 archigraph on-disk graph format.** The wire schema is defined in `internal/graph/schema/graph.fbs`; Go bindings live in `internal/graph/fbgraph/`; writer in `internal/graph/fbwriter/`; reader in `internal/graph/fbreader/`.
+**Adopt FlatBuffers as the v2 grafel on-disk graph format.** The wire schema is defined in `internal/graph/schema/graph.fbs`; Go bindings live in `internal/graph/fbgraph/`; writer in `internal/graph/fbwriter/`; reader in `internal/graph/fbreader/`.
 
 ### Why FlatBuffers (vs the alternatives)
 
@@ -42,7 +42,7 @@ FlatBuffers wins on the two axes that matter for this workload: zero-copy mmap r
 ### Schema
 
 ```fbs
-namespace archigraph;
+namespace grafel;
 
 table PropertyEntry { key: string; value: string; }
 
@@ -84,7 +84,7 @@ Property maps are flattened into key-sorted `PropertyEntry` vectors so the on-di
 1. **Phase 1 — design + prototype (this PR, #634)**: ADR-0016 + .fbs + writer + reader + benchmark. Indexer learns an opt-in `--export-fb` flag that **dual-writes** graph.fb next to graph.json. graph.json stays the source of truth; nothing reads graph.fb in production yet.
 2. **Phase 2 — consumer onboarding**: MCP server, doctor, and cross-repo link passes learn to prefer graph.fb when present (fall back to graph.json). Dual-write becomes the indexer default. One release at this state.
 3. **Phase 3 — flip**: graph.fb becomes the canonical artifact. graph.json becomes opt-in (`--export-json`) for jq workflows and human debugging. One release at this state.
-4. **Phase 4 — deprecate**: graph.json emission removed; agent-readable text export available via `archigraph dump --format=json`.
+4. **Phase 4 — deprecate**: graph.json emission removed; agent-readable text export available via `grafel dump --format=json`.
 
 Every consumer touched in phase 2 stays compatible with phase 1 / phase 4 layouts via the existing `graph.SchemaVersion` const plus the v2 FlatBuffers schema version field; a missing graph.fb is treated as "fall back to graph.json", a missing graph.json is treated as "binary-only repo".
 
@@ -103,7 +103,7 @@ The 3× disk-size target was set optimistically. Real fixtures show the dominant
 
 ### Tradeoffs
 
-- **Lose `jq`-able**: graph.json is human-inspectable; graph.fb requires `flatc --strict-json --raw-binary` round-trip or an `archigraph dump` helper. Mitigation: keep graph.json available behind `--export-json` through phase-3 and ship the dump helper in phase-2.
+- **Lose `jq`-able**: graph.json is human-inspectable; graph.fb requires `flatc --strict-json --raw-binary` round-trip or an `grafel dump` helper. Mitigation: keep graph.json available behind `--export-json` through phase-3 and ship the dump helper in phase-2.
 - **+codegen step**: contributors need `flatc` installed (`brew install flatbuffers`, `make fbgen`). Mitigation: generated files are checked in; codegen only required when editing the .fbs.
 - **+schema discipline**: adding/removing fields requires append-only or `(deprecated)` annotations. Mitigation: covered by `flatc`'s field-ID semantics; CI lint can enforce.
 - **Binding verbosity**: the generated Go API is offset-and-builder oriented (`EntityAddName(b, off)` etc.), not idiomatic. Mitigation: `fbwriter` and `fbreader` wrap the codegen so the rest of the codebase keeps working with `graph.Document`.
@@ -124,7 +124,7 @@ The 3× disk-size target was set optimistically. Real fixtures show the dominant
 
 **Negative**:
 - Larger surface area: a new schema file, generated bindings, codegen step, and a second on-disk artifact during the dual-write window.
-- Loses the "open graph.json in a text editor" affordance during the deprecation window; mitigated by `archigraph dump`.
+- Loses the "open graph.json in a text editor" affordance during the deprecation window; mitigated by `grafel dump`.
 
 **Risk**:
 - FlatBuffers `(key)` requires the entity vector be id-sorted. The indexer's `sortDocumentForEmission` already guarantees this for graph.json (#481), so we get it for free — but any new emit path must respect the invariant or `EntitiesByKey` returns false. Phase-2 will add a `flatc --schema --bfbs-comments` CI lint.

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://archigraph.dev/schemas/enrichment-candidates-v2.json",
+  "$id": "https://grafel.dev/schemas/enrichment-candidates-v2.json",
   "title": "enrichment-candidates.json (v2)",
-  "description": "On-disk format for <repo>/.archigraph/enrichment-candidates.json. Extends v1 (internal/enrichment/candidates.go) with the repair_edge kind required by ADR-0015. v1 readers may safely skip-by-kind on unknown kinds.",
+  "description": "On-disk format for <repo>/.grafel/enrichment-candidates.json. Extends v1 (internal/enrichment/candidates.go) with the repair_edge kind required by ADR-0015. v1 readers may safely skip-by-kind on unknown kinds.",
   "type": "object",
   "required": ["schema_version", "candidates"],
   "additionalProperties": true,

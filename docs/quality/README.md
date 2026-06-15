@@ -39,8 +39,8 @@ internal/quality/
 Single fixture:
 
 ```bash
-build/archigraph quality internal/quality/golden/python-django-mini
-build/archigraph quality --json out.json internal/quality/golden/python-django-mini
+build/grafel quality internal/quality/golden/python-django-mini
+build/grafel quality --json out.json internal/quality/golden/python-django-mini
 ```
 
 All fixtures (CI-shaped runner):
@@ -63,7 +63,7 @@ Exit codes:
    source tree (5-10 files, ~20-50 entities, ~30-100 relationships).
 2. Run the indexer once to see what it actually produces:
    ```bash
-   build/archigraph index --pretty --out /tmp/g.json internal/quality/golden/<name>/src
+   build/grafel index --pretty --out /tmp/g.json internal/quality/golden/<name>/src
    jq -r '.entities[] | "\(.kind)\t\(.name)\t\(.source_file)"' /tmp/g.json | sort -u
    jq -r '.relationships[] | "\(.kind)\t\(.from_id)\t\(.to_id)"' /tmp/g.json
    ```
@@ -72,7 +72,7 @@ Exit codes:
    capabilities you'd like to track without gating CI.
 4. Add a handful of `forbidden_relationships` — known false-positive
    shapes the extractor must NOT emit.
-5. Re-run `build/archigraph quality internal/quality/golden/<name>` until
+5. Re-run `build/grafel quality internal/quality/golden/<name>` until
    it exits 0, OR file an issue against the indexer with the recall miss.
 
 ## Authoring tips
@@ -106,7 +106,7 @@ path rather than a corpus-level trend.
 
 ## Phase 1 scope (PR #600)
 
-- Framework + `archigraph quality` subcommand
+- Framework + `grafel quality` subcommand
 - One fixture: `python-django-mini`
 - Unit tests for the matcher
 

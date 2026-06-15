@@ -1,6 +1,6 @@
-# archigraph graph format
+# grafel graph format
 
-archigraph stores its code-knowledge graph on disk as a FlatBuffers binary
+grafel stores its code-knowledge graph on disk as a FlatBuffers binary
 (`graph.fb`) defined in
 [`internal/graph/schema/graph.fbs`](../internal/graph/schema/graph.fbs).
 The design rationale is in
@@ -18,7 +18,7 @@ table Graph {
 ```
 
 This integer is the **wire format version** — it is independent of the
-archigraph release version and of the MCP `wire_version` string.
+grafel release version and of the MCP `wire_version` string.
 
 ### Versioning rules
 
@@ -30,13 +30,13 @@ archigraph release version and of the MCP `wire_version` string.
 
 ### Reader behaviour
 
-When archigraph reads a `graph.fb` file it checks the `version` field:
+When grafel reads a `graph.fb` file it checks the `version` field:
 
 - **Current version** — file is read normally.
-- **Older version** — archigraph either migrates the data transparently (for
+- **Older version** — grafel either migrates the data transparently (for
   additive-only changes) or returns a clear error asking the user to run
-  `archigraph rebuild` to regenerate the graph.
-- **Newer version** — archigraph returns an error asking the user to upgrade
+  `grafel rebuild` to regenerate the graph.
+- **Newer version** — grafel returns an error asking the user to upgrade
   the binary.
 
 ### Current schema version history

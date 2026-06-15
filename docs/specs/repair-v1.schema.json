@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://archigraph.dev/schemas/repair-v1.json",
+  "$id": "https://grafel.dev/schemas/repair-v1.json",
   "title": "repair.json (v1)",
-  "description": "On-disk format for <repo>/.archigraph/repair.json. Written by an LLM-equipped agent via the MCP submit_repair tool (or hand-edited). Loaded by the indexer before disposition classification per ADR-0015. Sibling file to enrichment-resolutions.json.",
+  "description": "On-disk format for <repo>/.grafel/repair.json. Written by an LLM-equipped agent via the MCP submit_repair tool (or hand-edited). Loaded by the indexer before disposition classification per ADR-0015. Sibling file to enrichment-resolutions.json.",
   "type": "object",
   "required": ["schema_version", "repairs"],
   "additionalProperties": false,

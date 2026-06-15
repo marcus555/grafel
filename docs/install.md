@@ -1,6 +1,6 @@
 # Install
 
-Full install matrix for archigraph. For the five-command path see [quickstart.md](quickstart.md).
+Full install matrix for grafel. For the five-command path see [quickstart.md](quickstart.md).
 
 ---
 
@@ -20,7 +20,7 @@ Full install matrix for archigraph. For the five-command path see [quickstart.md
 > **Not yet published.** The script below will work after the first release ships. During the preview phase, build from source (see below).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cajasmota/archigraph/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
 ```
 
 ---
@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/cajasmota/archigraph/main/install.s
 > **Not yet published.** During the preview phase, build from source with MinGW.
 
 ```powershell
-irm https://raw.githubusercontent.com/cajasmota/archigraph/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex
 ```
 
 Windows builds require MSYS2/MinGW64. The installer handles this. Shipped binaries link statically against MinGW — users do not need MinGW installed at runtime.
@@ -39,11 +39,11 @@ Windows builds require MSYS2/MinGW64. The installer handles this. Shipped binari
 
 ## Pre-built binary (manual download)
 
-> **Not yet published.** Will be at https://github.com/cajasmota/archigraph/releases after the first release.
+> **Not yet published.** Will be at https://github.com/cajasmota/grafel/releases after the first release.
 
 Archives per platform: `linux_x86_64`, `linux_arm64`, `macos_x86_64`, `macos_arm64`, `windows_x86_64`.
 
-Extract the archive and move the `archigraph` binary to a directory on your `PATH`.
+Extract the archive and move the `grafel` binary to a directory on your `PATH`.
 
 ---
 
@@ -52,10 +52,10 @@ Extract the archive and move the `archigraph` binary to a directory on your `PAT
 This is the correct path during the preview phase.
 
 ```sh
-git clone https://github.com/cajasmota/archigraph.git
-cd archigraph
+git clone https://github.com/cajasmota/grafel.git
+cd grafel
 make build           # builds dashboard (npm ci + vite build) + Go binary
-./archigraph --version
+./grafel --version
 ```
 
 `make build` runs `dashboard-build` (npm) then `go build`. If you only want the Go binary and the dashboard is already built:
@@ -67,7 +67,7 @@ make build-go-only
 To install the binary system-wide:
 
 ```sh
-go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/archigraph
+go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/grafel
 # installs to ~/go/bin -- ensure ~/go/bin is on PATH
 ```
 
@@ -78,7 +78,7 @@ go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/archigr
 For contributors who want to edit skills in-place and see changes without reinstalling:
 
 ```sh
-archigraph install --dev
+grafel install --dev
 ```
 
 This creates symlinks in `~/.claude/skills/` pointing back to `skills/` in the source checkout instead of copying files.
@@ -88,10 +88,10 @@ This creates symlinks in `~/.claude/skills/` pointing back to `skills/` in the s
 ## Post-install steps
 
 ```sh
-archigraph doctor               # smoke-check install + tools
-archigraph wizard               # create a group (interactive)
-archigraph install <group>      # start daemon, register MCP, install skills
-archigraph status <group>       # confirm MCP: connected
+grafel doctor               # smoke-check install + tools
+grafel wizard               # create a group (interactive)
+grafel install <group>      # start daemon, register MCP, install skills
+grafel status <group>       # confirm MCP: connected
 ```
 
 ---
@@ -99,9 +99,9 @@ archigraph status <group>       # confirm MCP: connected
 ## Upgrade
 
 ```sh
-archigraph update               # fetch latest stable, atomic replace, re-run install
-archigraph update --pre         # latest pre-release
-archigraph update --tag v1.2.3  # pin a specific version
+grafel update               # fetch latest stable, atomic replace, re-run install
+grafel update --pre         # latest pre-release
+grafel update --tag v1.2.3  # pin a specific version
 ```
 
 If the upgrade fails, the binary is automatically restored from the pre-update stash.
@@ -111,17 +111,17 @@ If the upgrade fails, the binary is automatically restored from the pre-update s
 ## Uninstall
 
 ```sh
-archigraph uninstall            # removes skills, MCP entries, stops daemon; leaves graphs
-archigraph uninstall --purge    # also removes ~/.archigraph/store/ and docs/
+grafel uninstall            # removes skills, MCP entries, stops daemon; leaves graphs
+grafel uninstall --purge    # also removes ~/.grafel/store/ and docs/
 ```
 
-Uninstall reads `install.json` to remove only what archigraph owns — it will not touch other tools' MCP registrations.
+Uninstall reads `install.json` to remove only what grafel owns — it will not touch other tools' MCP registrations.
 
 ---
 
 ## Configuration file
 
-User preferences are persisted to `~/.archigraph/settings.json`. See [settings.md](settings.md) for the full field reference.
+User preferences are persisted to `~/.grafel/settings.json`. See [settings.md](settings.md) for the full field reference.
 
 ---
 

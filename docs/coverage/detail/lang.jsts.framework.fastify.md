@@ -47,7 +47,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/engine/http_endpoint_jsts_middleware.go`<br>`internal/engine/http_endpoint_jsts_middleware_test.go`<br>`testdata/fixtures/typescript/fastify_middleware.ts` | — |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
 
 ### Schema
 
@@ -127,7 +127,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Effective contract | 🟢 `partial` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4710) | `internal/authposture/express.go`<br>`internal/mcp/effective_contract_express.go`<br>`internal/mcp/effective_contract_express_4710_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go` | #4710: the expressContractResolver (shared with Express/Koa/Hapi/Hono) in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint contract from existing graph signals. Fastify-specific: request fields from the route schema.body JSON-schema (request_body_type) field members plus any VALIDATES->dto:<schema>; per-branch statuses from the JSTS branch analyzer (reply.code(NNN), substrate analyzeBranchesJSTS); auth posture from the authposture express resolver (preHandler auth middleware). PARTIAL: untyped requests with no schema yield no request fields; structured RBAC frequently absent. Value-asserting coverage via TestEffectiveContract_Express_FullContract (shared resolver). |
+| Effective contract | 🟢 `partial` | `2026-06-11` | [link](https://github.com/cajasmota/grafel/issues/4710) | `internal/authposture/express.go`<br>`internal/mcp/effective_contract_express.go`<br>`internal/mcp/effective_contract_express_4710_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go` | #4710: the expressContractResolver (shared with Express/Koa/Hapi/Hono) in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint contract from existing graph signals. Fastify-specific: request fields from the route schema.body JSON-schema (request_body_type) field members plus any VALIDATES->dto:<schema>; per-branch statuses from the JSTS branch analyzer (reply.code(NNN), substrate analyzeBranchesJSTS); auth posture from the authposture express resolver (preHandler auth middleware). PARTIAL: untyped requests with no schema yield no request fields; structured RBAC frequently absent. Value-asserting coverage via TestEffectiveContract_Express_FullContract (shared resolver). |
 
 ## Provenance
 

@@ -1,5 +1,5 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# archigraph capabilities
+# grafel capabilities
 
 **Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 255 · **ORMs**: 176 · **Tools**: 129 · **Other**: 205
 
@@ -64,7 +64,7 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 
 ## Languages with extractor support, no records yet
 
-(archigraph has tree-sitter / extractor coverage for these but no framework/ORM/tool records tracked — contribute via `go run ./tools/coverage add`)
+(grafel has tree-sitter / extractor coverage for these but no framework/ORM/tool records tracked — contribute via `go run ./tools/coverage add`)
 
 | Language |
 |---|

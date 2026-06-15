@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-This directory holds archigraph's ADRs. Each record captures a single
+This directory holds grafel's ADRs. Each record captures a single
 architecturally-significant decision: the context that produced it, the
 decision itself, and the consequences we accepted.
 

@@ -6,7 +6,7 @@
 
 ## Context
 
-archigraph's value proposition rests on giving agents fast, structured answers to architecture questions. A subset of those answers benefits substantially from classical graph algorithms:
+grafel's value proposition rests on giving agents fast, structured answers to architecture questions. A subset of those answers benefits substantially from classical graph algorithms:
 
 - **Community detection** (Louvain, Leiden) groups closely-coupled subsystems, useful for "what cluster does this module belong to?".
 - **Betweenness centrality** identifies architectural choke-points — code that sits on many paths between communities.
@@ -18,7 +18,7 @@ The indexer already touches every node and edge during graph construction. It is
 
 ## Decision
 
-`archigraph index` computes community membership, centrality, and surprise scores during indexing, using `gonum/graph` algorithms, and bakes the results into the output JSON as **node attributes**:
+`grafel index` computes community membership, centrality, and surprise scores during indexing, using `gonum/graph` algorithms, and bakes the results into the output JSON as **node attributes**:
 
 - `community_id` — Louvain community label.
 - `centrality` — normalized betweenness centrality.
@@ -44,7 +44,7 @@ This decision interacts with ADR-006: because graphs are persisted as JSON on di
 - Adding a new algorithm is an indexer change plus a schema change in the JSON, not a hot-swappable MCP feature.
 
 ### Neutral
-- The choice of `gonum/graph` ties archigraph to that library's algorithm set for v1.0; replacing it later is contained to the indexer.
+- The choice of `gonum/graph` ties grafel to that library's algorithm set for v1.0; replacing it later is contained to the indexer.
 - The attribute schema is part of `SCHEMA.md` and follows the same versioning rules as the entity taxonomy in ADR-003.
 
 ## Alternatives considered

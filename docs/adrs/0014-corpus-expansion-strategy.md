@@ -6,7 +6,7 @@
 
 ## Context
 
-Adding language support to archigraph requires fixtures: real source
+Adding language support to grafel requires fixtures: real source
 trees that exercise extractor and resolver behaviour at realistic
 scale. Two candidate sources were considered:
 
@@ -25,7 +25,7 @@ scale. Two candidate sources were considered:
 Corpus expansion uses **sample applications**, not framework
 internals.
 
-- A new language is "covered" when archigraph indexes 2–3 sample apps
+- A new language is "covered" when grafel indexes 2–3 sample apps
   and the resolver disposition table is empty of unexplained
   categories.
 - Framework internals can be added later as stress fixtures, but they

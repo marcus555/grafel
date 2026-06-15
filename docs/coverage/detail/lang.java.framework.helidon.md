@@ -32,20 +32,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3088) | `internal/engine/java_auth_policy.go` | — |
+| Auth coverage | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3088) | `internal/engine/java_auth_policy.go` | — |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
-| Request validation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
+| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
+| Request validation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_jaxrs_dto.go` | — |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/helidon_filters.go` | — |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/helidon_filters.go` | — |
 | Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
@@ -67,9 +67,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🟢 `partial` | `2026-06-12` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/custom/java/patterns_dispatch.go` | #2996/#3083: CDI di_binding via @Produces producer methods (ExtractJakartaEEAdvanced, jakartaEEAdvFrameworks-gated) -> producer SCOPE.Operation + producer-type binding; same extractor that credits the jaxrs record full. Honest-partial: regex/file-local, no cross-file/@Qualifier-disambiguated binding resolution. Tested TestJakartaEEAdv_CDIProducer. |
-| DI injection point | 🟢 `partial` | `2026-06-12` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/custom/java/patterns_dispatch.go` | #2996/#3083/#2996: di_injection_point via @Inject (CDI), @EJB and @Resource field injection (jakarta_ee.go) -> DEPENDS_ON (kind=ejb_inject/cdi_inject); ExtractJakartaEE + ExtractJakartaEEAdvanced. Honest-partial: regex/file-local, target type resolved by name. Tested TestJakartaEE_EJB. |
-| DI scope resolution | 🟢 `partial` | `2026-06-12` | [link](https://github.com/cajasmota/archigraph/issues/3589) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/custom/java/patterns_dispatch.go` | #2996/#3083: di_scope_resolution via CDI scope annotations @ApplicationScoped/@RequestScoped/@SessionScoped/@Dependent/@ConversationScoped (jakarta_ee_advanced.go + java_di_scope_deepen.go) -> scoped SCOPE.Component carrying scope + framework. Honest-partial: file-local annotation scan. Tested TestQuarkus_CDIScopeResolution-style cases. |
+| DI binding extraction | 🟢 `partial` | `2026-06-12` | [link](https://github.com/cajasmota/grafel/issues/3589) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/custom/java/patterns_dispatch.go` | #2996/#3083: CDI di_binding via @Produces producer methods (ExtractJakartaEEAdvanced, jakartaEEAdvFrameworks-gated) -> producer SCOPE.Operation + producer-type binding; same extractor that credits the jaxrs record full. Honest-partial: regex/file-local, no cross-file/@Qualifier-disambiguated binding resolution. Tested TestJakartaEEAdv_CDIProducer. |
+| DI injection point | 🟢 `partial` | `2026-06-12` | [link](https://github.com/cajasmota/grafel/issues/3589) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/custom/java/patterns_dispatch.go` | #2996/#3083/#2996: di_injection_point via @Inject (CDI), @EJB and @Resource field injection (jakarta_ee.go) -> DEPENDS_ON (kind=ejb_inject/cdi_inject); ExtractJakartaEE + ExtractJakartaEEAdvanced. Honest-partial: regex/file-local, target type resolved by name. Tested TestJakartaEE_EJB. |
+| DI scope resolution | 🟢 `partial` | `2026-06-12` | [link](https://github.com/cajasmota/grafel/issues/3589) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/jakarta_ee.go`<br>`internal/custom/java/jakarta_ee_advanced.go`<br>`internal/custom/java/java_di_scope_deepen.go`<br>`internal/custom/java/patterns_dispatch.go` | #2996/#3083: di_scope_resolution via CDI scope annotations @ApplicationScoped/@RequestScoped/@SessionScoped/@Dependent/@ConversationScoped (jakarta_ee_advanced.go + java_di_scope_deepen.go) -> scoped SCOPE.Component carrying scope + framework. Honest-partial: file-local annotation scan. Tested TestQuarkus_CDIScopeResolution-style cases. |
 
 ### Transactions
 
@@ -84,9 +84,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3088) | — | Helidon SE has no AOP model; Helidon MP CDI interceptors deferred to FW-T-04 (CDI interceptor ticket) |
-| Aspect extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3088) | — | Helidon SE has no AOP model; Helidon MP CDI interceptors deferred to FW-T-04 (CDI interceptor ticket) |
-| Pointcut resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3088) | — | Helidon SE has no AOP model; Helidon MP CDI interceptors deferred to FW-T-04 (CDI interceptor ticket) |
+| Advice attribution | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3088) | — | Helidon SE has no AOP model; Helidon MP CDI interceptors deferred to FW-T-04 (CDI interceptor ticket) |
+| Aspect extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3088) | — | Helidon SE has no AOP model; Helidon MP CDI interceptors deferred to FW-T-04 (CDI interceptor ticket) |
+| Pointcut resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3088) | — | Helidon SE has no AOP model; Helidon MP CDI interceptors deferred to FW-T-04 (CDI interceptor ticket) |
 
 ### Observability
 
@@ -106,7 +106,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
 | Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/java/config_consumer.go`<br>`internal/extractors/java/config_consumer_test.go` | @Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -> config:<key> (issue #3641) |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
 | Dead code detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |
