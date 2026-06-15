@@ -6,7 +6,7 @@
 
 ## Context
 
-archigraph stores a graph per repo, plus cross-repo overlay edges per group. The total data set on a developer machine is on the order of tens of thousands of nodes and edges per repo, multiplied by perhaps a dozen repos in the largest groups. The data is read frequently (every MCP query) and written incrementally (every file save).
+grafel stores a graph per repo, plus cross-repo overlay edges per group. The total data set on a developer machine is on the order of tens of thousands of nodes and edges per repo, multiplied by perhaps a dozen repos in the largest groups. The data is read frequently (every MCP query) and written incrementally (every file save).
 
 The conventional choice for storing a graph is a graph database — Neo4j, Memgraph, JanusGraph, or similar. Each provides a query language, persistent storage, and an indexing layer. Each also imposes operational burden:
 
@@ -20,7 +20,7 @@ The MCP process from ADR-004 is the **only** consumer of the graph. There is no 
 
 ## Decision
 
-archigraph holds graphs in memory using `gonum/graph` data structures, indexed by group and repo (`map[group]map[repo]*Graph` in the broad sense). Persistence is **JSON files on disk**, one per repo, plus a separate `<group>-links.json` for cross-repo overlay edges. The on-disk layout lives under `~/.archigraph/groups/<group>/` and is human-readable.
+grafel holds graphs in memory using `gonum/graph` data structures, indexed by group and repo (`map[group]map[repo]*Graph` in the broad sense). Persistence is **JSON files on disk**, one per repo, plus a separate `<group>-links.json` for cross-repo overlay edges. The on-disk layout lives under `~/.grafel/groups/<group>/` and is human-readable.
 
 The MCP process loads JSON on startup and watches mtime to reload changed files. Writes are produced exclusively by the indexer (initial and incremental). The MCP process never writes to the graph files; this gives a clean writer/reader separation and avoids file-locking complexity.
 
@@ -47,7 +47,7 @@ Memory budget for a typical 10k-file repo is well under 200 MB including baked a
 
 ## Alternatives considered
 
-- **Neo4j** — rejected: JVM dependency, Docker-friendly but heavyweight, and the query-language benefit is not what archigraph needs.
+- **Neo4j** — rejected: JVM dependency, Docker-friendly but heavyweight, and the query-language benefit is not what grafel needs.
 - **Memgraph** — rejected: no first-class native Windows install at the required version, conflicts with ADR-001's cross-platform goal.
 - **Embedded SQLite with a property-graph schema** — rejected: SQL is not a graph query language, and the storage win over JSON is small at our data scale.
 - **DuckDB / Parquet** — rejected: optimized for analytical workloads, not point-graph traversals; query patterns do not match.

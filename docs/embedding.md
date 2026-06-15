@@ -20,7 +20,7 @@ import-path queries.
 
 ## Opt-in: HTTP backend (recommended)
 
-Point archigraph at any **OpenAI-compatible `/v1/embeddings` endpoint**.
+Point grafel at any **OpenAI-compatible `/v1/embeddings` endpoint**.
 Popular options:
 
 | Server        | Example URL                                  |
@@ -33,16 +33,16 @@ Popular options:
 ### Environment variable (quickest)
 
 ```bash
-export ARCHIGRAPH_EMBEDDING_URL=http://localhost:11434/v1
+export GRAFEL_EMBEDDING_URL=http://localhost:11434/v1
 # Optional: pick a specific model (default: no model field sent)
-export ARCHIGRAPH_EMBEDDING_MODEL=nomic-embed-text
-# Optional: tell archigraph the vector size if non-standard
-export ARCHIGRAPH_EMBEDDING_DIMS=768
+export GRAFEL_EMBEDDING_MODEL=nomic-embed-text
+# Optional: tell grafel the vector size if non-standard
+export GRAFEL_EMBEDDING_DIMS=768
 ```
 
 ### Config file (persistent)
 
-Create `~/.archigraph/embeddings.json`:
+Create `~/.grafel/embeddings.json`:
 
 ```json
 {
@@ -56,28 +56,28 @@ Create `~/.archigraph/embeddings.json`:
 ```
 
 The config file is read at daemon start. After editing it, restart the daemon
-(`archigraph stop && archigraph start`) or run `archigraph index` manually to
+(`grafel stop && grafel start`) or run `grafel index` manually to
 pick up the new config and re-embed.
 
 ---
 
 ## Opt-in: bundled MiniLM (simplego build)
 
-If you built archigraph with `-tags simplego`, the **all-MiniLM-L6-v2** model
+If you built grafel with `-tags simplego`, the **all-MiniLM-L6-v2** model
 (384 dims) is available as an in-process backend. Activate it with:
 
 ```bash
-export ARCHIGRAPH_EMBEDDING_BACKEND=builtin
+export GRAFEL_EMBEDDING_BACKEND=builtin
 ```
 
-or in `~/.archigraph/embeddings.json`:
+or in `~/.grafel/embeddings.json`:
 
 ```json
 { "backend": "builtin" }
 ```
 
 The model weights (~23 MB) are downloaded from HuggingFace on first use into
-`~/.archigraph/models/`. Subsequent runs are fully offline.
+`~/.grafel/models/`. Subsequent runs are fully offline.
 
 > **Note:** Standard release binaries do **not** include `-tags simplego`.
 > The HTTP backend is the recommended path for most users.
@@ -89,16 +89,16 @@ The model weights (~23 MB) are downloaded from HuggingFace on first use into
 To use BM25-only mode and skip embeddings entirely:
 
 ```bash
-export ARCHIGRAPH_EMBEDDING_DISABLE=true
+export GRAFEL_EMBEDDING_DISABLE=true
 ```
 
-or in `~/.archigraph/embeddings.json`:
+or in `~/.grafel/embeddings.json`:
 
 ```json
 { "backend": "disabled" }
 ```
 
-The `ARCHIGRAPH_EMBEDDING_DISABLE` env var always takes precedence, even if
+The `GRAFEL_EMBEDDING_DISABLE` env var always takes precedence, even if
 other settings are configured.
 
 ---
@@ -108,12 +108,12 @@ other settings are configured.
 S6 / #2156 restored the bundled MiniLM default. Users upgrading from older
 versions with embeddings already cached will see no changes — the daemon
 reuses existing per-repo `embeddings.bin` sidecars and cross-ref cache
-(`~/.archigraph/embeddings/`).
+(`~/.grafel/embeddings/`).
 
 If you prefer BM25-only search:
 
 ```bash
-export ARCHIGRAPH_EMBEDDING_DISABLE=true
+export GRAFEL_EMBEDDING_DISABLE=true
 ```
 
 This disables all embedding operations while keeping the daemon and search
@@ -125,10 +125,10 @@ fully functional.
 
 | Variable                        | Default    | Description                              |
 |---------------------------------|------------|------------------------------------------|
-| `ARCHIGRAPH_EMBEDDING_DISABLE`  | _(unset)_  | Set to `true`/`1` to force BM25-only mode (overrides all other settings) |
-| `ARCHIGRAPH_EMBEDDING_URL`      | _(unset)_  | HTTP endpoint; sets `backend=http` automatically |
-| `ARCHIGRAPH_EMBEDDING_BACKEND`  | `builtin`  | `builtin` / `http` / `disabled`          |
-| `ARCHIGRAPH_EMBEDDING_MODEL`    | _(unset)_  | Model name sent in the request body      |
-| `ARCHIGRAPH_EMBEDDING_API_KEY`  | _(unset)_  | Bearer token for authenticated endpoints |
-| `ARCHIGRAPH_EMBEDDING_DIMS`     | `384`      | Vector dimensionality (HTTP backend)     |
-| `ARCHIGRAPH_EMBEDDING_TTL_DAYS` | `30`       | Cross-ref cache eviction window          |
+| `GRAFEL_EMBEDDING_DISABLE`  | _(unset)_  | Set to `true`/`1` to force BM25-only mode (overrides all other settings) |
+| `GRAFEL_EMBEDDING_URL`      | _(unset)_  | HTTP endpoint; sets `backend=http` automatically |
+| `GRAFEL_EMBEDDING_BACKEND`  | `builtin`  | `builtin` / `http` / `disabled`          |
+| `GRAFEL_EMBEDDING_MODEL`    | _(unset)_  | Model name sent in the request body      |
+| `GRAFEL_EMBEDDING_API_KEY`  | _(unset)_  | Bearer token for authenticated endpoints |
+| `GRAFEL_EMBEDDING_DIMS`     | `384`      | Vector dimensionality (HTTP backend)     |
+| `GRAFEL_EMBEDDING_TTL_DAYS` | `30`       | Cross-ref cache eviction window          |

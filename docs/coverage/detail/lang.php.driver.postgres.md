@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3644) | — | Driver topology: PDO PostgreSQL ($db->query/prepare/exec) and pgsql procedural (pg_query($conn,"...")) raw-SQL literals are table-parsed via scanPHPDrivers/emitSQLDatastoreTargets (phpSqlRe + pgsql:/pg_connect backend gate) into QUERIES->Class:<table> with orm=postgres. Interpolated/concatenated SQL is honest-skipped. #4271 |
+| Query attribution | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3644) | — | Driver topology: PDO PostgreSQL ($db->query/prepare/exec) and pgsql procedural (pg_query($conn,"...")) raw-SQL literals are table-parsed via scanPHPDrivers/emitSQLDatastoreTargets (phpSqlRe + pgsql:/pg_connect backend gate) into QUERIES->Class:<table> with orm=postgres. Interpolated/concatenated SQL is honest-skipped. #4271 |
 
 ### Migrations
 

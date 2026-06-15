@@ -16,8 +16,8 @@ Agents working in a codebase today have no persistent, grounded memory of codeba
 The existing memory surfaces fall short in different ways:
 
 - **CLAUDE.md / AGENTS.md / .cursorrules** — human-authored, stale quickly, not grounded in actual code exemplars, not queryable via the graph.
-- **`archigraph_find` + `archigraph_related`** — excellent for entity lookup, but have no concept of a *recipe*: an ordered set of steps to perform when the agent needs to add, modify, or delete a class of thing.
-- **`archigraph_enrichments` findings field** (per-group unstructured memory from ADR-0015's enrichment loop) — captures one-off notes per entity; no lifecycle, no scope filtering, no discovery by task description, no reinforcement.
+- **`grafel_find` + `grafel_related`** — excellent for entity lookup, but have no concept of a *recipe*: an ordered set of steps to perform when the agent needs to add, modify, or delete a class of thing.
+- **`grafel_enrichments` findings field** (per-group unstructured memory from ADR-0015's enrichment loop) — captures one-off notes per entity; no lifecycle, no scope filtering, no discovery by task description, no reinforcement.
 
 The result is that agents repeat mistakes already observed, skip steps already learned, and produce diffs that contradict patterns already established in the codebase — forcing human correction that could have been avoided.
 
@@ -25,13 +25,13 @@ This ADR adds **Patterns**: first-class graph entities that store codebase-speci
 
 ## Decision
 
-Patterns are first-class graph entities. They are stored per-group (alongside enrichment-resolutions.json and repair.json), queryable via the same BM25 + graph-traversal machinery already used by all other archigraph tools, and managed through a single new MCP tool (`archigraph_patterns`) with five actions.
+Patterns are first-class graph entities. They are stored per-group (alongside enrichment-resolutions.json and repair.json), queryable via the same BM25 + graph-traversal machinery already used by all other grafel tools, and managed through a single new MCP tool (`grafel_patterns`) with five actions.
 
 The architectural rule: **the indexer owns structure that is statically visible; the agent owns recipes that require task-level context.** Patterns are the agent's side of that divide — not inferred from ASTs, but learned from observation and reinforced over time.
 
 ### MCP tool surface
 
-One new tool, `archigraph_patterns`, with an `action` argument matching the shape already established by `archigraph_enrichments`, `archigraph_cross_links`, and `archigraph_repairs`:
+One new tool, `grafel_patterns`, with an `action` argument matching the shape already established by `grafel_enrichments`, `grafel_cross_links`, and `grafel_repairs`:
 
 | Action  | Description |
 |---------|-------------|
@@ -42,7 +42,7 @@ One new tool, `archigraph_patterns`, with an `action` argument matching the shap
 | `reject` | Flag a pattern as stale or wrong. Decreases confidence; does not delete — pattern is retained for audit and may be refined. |
 | `promote` | Coordinator-driven action invoked during Phase 4 aggregation. Takes a `candidate_id`; sets `is_candidate=false` and surfaces to user for final approval. |
 
-No other tools are modified. The routing cascade from ADR-0004 (explicit `group` arg → CWD walk → singleton fallback) applies to `archigraph_patterns` identically to every other tool.
+No other tools are modified. The routing cascade from ADR-0004 (explicit `group` arg → CWD walk → singleton fallback) applies to `grafel_patterns` identically to every other tool.
 
 ### Pattern entity schema
 
@@ -87,7 +87,7 @@ Pattern {
 }
 ```
 
-Storage: JSON at `<group>/.archigraph/patterns.json` (same directory convention as `enrichment-resolutions.json` and `repair.json`). Migration to FlatBuffers follows ADR-0016's phase model — not required for v1.
+Storage: JSON at `<group>/.grafel/patterns.json` (same directory convention as `enrichment-resolutions.json` and `repair.json`). Migration to FlatBuffers follows ADR-0016's phase model — not required for v1.
 
 ### Edge types
 
@@ -162,9 +162,9 @@ Pattern detection has three entry points:
 
      Re-running /generate-docs regenerates the pattern docs from the current pattern store, so refinements + new applications propagate automatically. Private anti-patterns and any pattern marked `is_candidate=true` are skipped.
 
-   Non-convergent candidates persist with `is_candidate=true` for future runs; they may converge in the next doc-gen cycle. The `archigraph patterns gc` command (v1.1) prunes candidates older than `candidate_decay_days` (default 90).
+   Non-convergent candidates persist with `is_candidate=true` for future runs; they may converge in the next doc-gen cycle. The `grafel patterns gc` command (v1.1) prunes candidates older than `candidate_decay_days` (default 90).
 
-2. **Secondary — `/archigraph-patterns-discover` standalone skill.** Same detection logic as Phases 1 + 4, no doc emission. For users refreshing patterns without regenerating docs.
+2. **Secondary — `/grafel-patterns-discover` standalone skill.** Same detection logic as Phases 1 + 4, no doc emission. For users refreshing patterns without regenerating docs.
 
 3. **Tertiary — agent-task observation.** When an agent completes a task and `query` returned no applicable pattern, it can call `record(as_candidate=false)` directly to formalize what it just did. Sample size of one, immediacy of now. The most fragile path; relies on the agent's own confidence rather than convergence.
 
@@ -193,7 +193,7 @@ Below threshold the agent surfaces the pattern and asks for confirmation before 
 
 ### Configuration
 
-Tunable defaults via `archigraph patterns config <key>=<value>`:
+Tunable defaults via `grafel patterns config <key>=<value>`:
 
 | Setting                          | Default | Purpose |
 |----------------------------------|---------|---------|
@@ -206,27 +206,27 @@ Tunable defaults via `archigraph patterns config <key>=<value>`:
 ### Lifecycle flows
 
 **Flow 1 — Discover on task completion.**
-Agent receives a task, queries `archigraph_patterns(action=query, ...)` and gets no match. Agent performs the work. After the diff lands successfully, agent calls `archigraph_patterns(action=record, ...)` with the produced entities as exemplars. Pattern starts at confidence 0.4.
+Agent receives a task, queries `grafel_patterns(action=query, ...)` and gets no match. Agent performs the work. After the diff lands successfully, agent calls `grafel_patterns(action=record, ...)` with the produced entities as exemplars. Pattern starts at confidence 0.4.
 
 **Flow 2 — Reinforce on successful apply.**
-Agent queries and finds a matching pattern. Follows the steps. Task succeeds. Agent calls `archigraph_patterns(action=apply, pattern_id=..., success=true, produced_entity_id=...)`. Confidence ratchets up; `CREATED_BY` edge written from the new entity to the pattern.
+Agent queries and finds a matching pattern. Follows the steps. Task succeeds. Agent calls `grafel_patterns(action=apply, pattern_id=..., success=true, produced_entity_id=...)`. Confidence ratchets up; `CREATED_BY` edge written from the new entity to the pattern.
 
 **Flow 3 — Refine on correction.**
-Human reviews the diff and corrects a step. Agent calls `archigraph_patterns(action=refine, pattern_id=..., steps=[...updated...])`. Confidence unchanged — refinement reflects learning, not failure.
+Human reviews the diff and corrects a step. Agent calls `grafel_patterns(action=refine, pattern_id=..., steps=[...updated...])`. Confidence unchanged — refinement reflects learning, not failure.
 
 **Flow 4 — Reject stale pattern.**
-Agent applies a pattern, task fails because the codebase has moved on. Agent calls `archigraph_patterns(action=apply, success=false)` (confidence −0.15). If the agent determines the pattern is fundamentally wrong, it follows up with `archigraph_patterns(action=reject, pattern_id=..., reason=...)` (confidence −0.30 further). Pattern is retained for audit; confidence decay will eventually drop it below the discovery threshold.
+Agent applies a pattern, task fails because the codebase has moved on. Agent calls `grafel_patterns(action=apply, success=false)` (confidence −0.15). If the agent determines the pattern is fundamentally wrong, it follows up with `grafel_patterns(action=reject, pattern_id=..., reason=...)` (confidence −0.30 further). Pattern is retained for audit; confidence decay will eventually drop it below the discovery threshold.
 
 ### Skills and CLAUDE.md sync
 
 Two skill files (markdown, loaded by the agent host's skill mechanism):
 
-- **`/archigraph-patterns-discover`** — opt-in capture. Agent scans recent work in the current group, identifies recurring action sequences, and proposes candidate patterns for the owner to approve before `record` is called.
-- **`/archigraph-patterns-sync`** — diff and merge with version-controlled `CLAUDE.md` / `AGENTS.md`. Patterns are exported inside a marker-wrapped region:
+- **`/grafel-patterns-discover`** — opt-in capture. Agent scans recent work in the current group, identifies recurring action sequences, and proposes candidate patterns for the owner to approve before `record` is called.
+- **`/grafel-patterns-sync`** — diff and merge with version-controlled `CLAUDE.md` / `AGENTS.md`. Patterns are exported inside a marker-wrapped region:
   ```
-  <!-- archigraph:patterns:start v=1 -->
+  <!-- grafel:patterns:start v=1 -->
   ...generated pattern summaries...
-  <!-- archigraph:patterns:end -->
+  <!-- grafel:patterns:end -->
   ```
   The marker convention follows the gfleet pattern established in AI-Memory. Private anti-patterns (`anti_patterns[].private=true`) are **never exported** — the sync skill must enforce this as a hard constraint.
 
@@ -237,8 +237,8 @@ Two skill files (markdown, loaded by the agent host's skill mechanism):
 - Patterns are grounded in real code: every recipe links to actual exemplars in the graph, not to human prose.
 - Self-correcting: confidence rises with successful applies, falls with failures and rejections, decays with disuse.
 - Per-scope precision: a pattern scoped to `go/chi` never fires in a Django module. False matches across stacks/repos/paths are structurally impossible once scope is set correctly.
-- Reverse navigation: given any entity, `archigraph_related(entity_id)` can now surface `CREATED_BY` → Pattern → `EXEMPLAR` → peer entities. Agents can understand *why* code was written the way it was.
-- Free reuse of BM25 + graph traversal: no new query infrastructure. `archigraph_patterns(action=query)` delegates to the same index the other tools use.
+- Reverse navigation: given any entity, `grafel_related(entity_id)` can now surface `CREATED_BY` → Pattern → `EXEMPLAR` → peer entities. Agents can understand *why* code was written the way it was.
+- Free reuse of BM25 + graph traversal: no new query infrastructure. `grafel_patterns(action=query)` delegates to the same index the other tools use.
 - Lightweight bootstrap: no upfront scrape or migration. Pattern count is zero on first install; the corpus grows organically as agents work.
 - Complementary to ADR-0015 repair: repair closes structural graph gaps; patterns close recipe gaps. Neither replaces the other.
 
@@ -246,23 +246,23 @@ Two skill files (markdown, loaded by the agent host's skill mechanism):
 
 - Adds 1 entity kind (`Pattern`) and 8 edge kinds to the schema. Under ADR-0016's FlatBuffers discipline these are append-only enum additions — safe, but they grow the schema surface.
 - Stack detection is a new lightweight inference layer. It reuses existing import-graph data but requires a small new pass. Incorrect detection silently narrows scope too aggressively; mitigated by `query` returning the matched scope fields for inspection.
-- Anti-pattern export sanitization is a hard requirement. A `private=true` anti-pattern leaking to CLAUDE.md would expose internal team conventions. The `/archigraph-patterns-sync` skill must enforce this as a hard constraint. **`private=true` means "never export to version-controlled files" — it does not affect `query` visibility.** All agents connected to the daemon see all patterns. The privacy boundary is the on-disk version-controlled artifact, not the in-memory query surface.
+- Anti-pattern export sanitization is a hard requirement. A `private=true` anti-pattern leaking to CLAUDE.md would expose internal team conventions. The `/grafel-patterns-sync` skill must enforce this as a hard constraint. **`private=true` means "never export to version-controlled files" — it does not affect `query` visibility.** All agents connected to the daemon see all patterns. The privacy boundary is the on-disk version-controlled artifact, not the in-memory query surface.
 - Per-pattern confidence is harder to reason about than a single global threshold. Two patterns covering the same task may have wildly different confidence values. Mitigated by surfacing both and letting the agent (or user) choose when rankings tie.
-- `patterns.json` grows unboundedly on long-lived groups. A future `archigraph patterns gc` command (out of scope for v1) prunes patterns below a configurable floor confidence and not applied in N days.
+- `patterns.json` grows unboundedly on long-lived groups. A future `grafel patterns gc` command (out of scope for v1) prunes patterns below a configurable floor confidence and not applied in N days.
 
 ### Neutral
 
 - Patterns are per-group, matching the existing scope convention for enrichments, repairs, and cross-links.
 - Storage is JSON initially (same as enrichments). Migration to FlatBuffers is out of scope for v1 but follows the same phase model as ADR-0016.
-- The `archigraph_patterns` tool follows the same action-arg shape as `archigraph_enrichments` and `archigraph_repairs`. Agents already familiar with those tools acquire this one with minimal additional context.
+- The `grafel_patterns` tool follows the same action-arg shape as `grafel_enrichments` and `grafel_repairs`. Agents already familiar with those tools acquire this one with minimal additional context.
 
 ## Alternatives considered
 
-- **Patterns as unstructured findings inside `archigraph_enrichments`.** Rejected: findings are keyed to a single entity; patterns describe multi-entity recipes. There is no `expand` path from a finding to related code; no scope filtering; no reinforcement loop.
-- **Patterns in CLAUDE.md only (human-authored).** Rejected: human-authored docs are the current state. They stale quickly, are not queryable, and are not grounded in current exemplars. CLAUDE.md sync (via `/archigraph-patterns-sync`) is an *output* of this feature, not a replacement for it.
+- **Patterns as unstructured findings inside `grafel_enrichments`.** Rejected: findings are keyed to a single entity; patterns describe multi-entity recipes. There is no `expand` path from a finding to related code; no scope filtering; no reinforcement loop.
+- **Patterns in CLAUDE.md only (human-authored).** Rejected: human-authored docs are the current state. They stale quickly, are not queryable, and are not grounded in current exemplars. CLAUDE.md sync (via `/grafel-patterns-sync`) is an *output* of this feature, not a replacement for it.
 - **Patterns as a global (cross-group) library.** Rejected for v1: privacy and scope concerns. A team anti-pattern should not leak to another group's query results. Revisit in v1.1 when there is evidence of genuinely cross-codebase reusable patterns.
 - **Patterns embedded as entity properties (no new entity kind).** Rejected: patterns describe recipes across multiple entities. Attaching a recipe to a single entity produces an unstructured blob with no traversal path to the other entities involved, no relationship edges, and no confidence lifecycle.
-- **Single unified curation tool (`archigraph_curate(target=enrichment|link|repair|pattern, ...)`).**  Considered as a way to unify all four curation flows under one tool. Rejected: the action-arg sets for each flow differ substantially (e.g. `record` requires exemplar entity IDs and scope; `submit_repair` requires `edge_id` and `resolution`). A unified schema either mandates many optional fields or silently ignores arguments that don't apply to the selected target — both are worse than four narrow tools.
+- **Single unified curation tool (`grafel_curate(target=enrichment|link|repair|pattern, ...)`).**  Considered as a way to unify all four curation flows under one tool. Rejected: the action-arg sets for each flow differ substantially (e.g. `record` requires exemplar entity IDs and scope; `submit_repair` requires `edge_id` and `resolution`). A unified schema either mandates many optional fields or silently ignores arguments that don't apply to the selected target — both are worse than four narrow tools.
 
 ## Implementation sequence
 
@@ -271,13 +271,13 @@ Do not queue these PRs until the current HTTP overhaul and the Java/Python chain
 | PR  | Scope |
 |-----|-------|
 | α   | Pattern entity kind; per-group `patterns.json` storage; schema only (no MCP wiring). |
-| β   | `archigraph_patterns` MCP tool: `query` and `record` actions; BM25 index integration; scope derivation from exemplars. |
+| β   | `grafel_patterns` MCP tool: `query` and `record` actions; BM25 index integration; scope derivation from exemplars. |
 | γ   | Lifecycle: `refine`, `apply`, `reject`; confidence model; time decay; `CREATED_BY` edge write on apply. |
-| δ   | Skills: `/generate-docs` integration with Phases 4 + 5 + 6 (pattern proposal, cross-link, prose generation); `/archigraph-patterns-discover` standalone; `/archigraph-patterns-sync` for CLAUDE.md export. Private anti-pattern sanitization. `archigraph patterns` CLI subcommand. |
+| δ   | Skills: `/generate-docs` integration with Phases 4 + 5 + 6 (pattern proposal, cross-link, prose generation); `/grafel-patterns-discover` standalone; `/grafel-patterns-sync` for CLAUDE.md export. Private anti-pattern sanitization. `grafel patterns` CLI subcommand. |
 
 ## Open questions
 
-1. ~~**Stale-pattern GC**~~ — **RESOLVED 2026-05-19**: Retain stale patterns as dormant rather than auto-pruning. Emit a count of dormant patterns in `archigraph status`. Add a `archigraph patterns gc` CLI subcommand in v1.1 if user-driven pruning is needed. Avoids accidental loss of patterns the agent may still want to revive.
+1. ~~**Stale-pattern GC**~~ — **RESOLVED 2026-05-19**: Retain stale patterns as dormant rather than auto-pruning. Emit a count of dormant patterns in `grafel status`. Add a `grafel patterns gc` CLI subcommand in v1.1 if user-driven pruning is needed. Avoids accidental loss of patterns the agent may still want to revive.
 2. ~~**Conflicting pattern detection**~~ — **RESOLVED 2026-05-19**: When `record` creates a pattern that overlaps scope with an existing one for the same `target_entity_kinds`, auto-write a `CONFLICTS_WITH` edge between the two and surface the conflict in the `record` response so the agent (or user) can explicitly reconcile via `refine` or `reject`. Do not block the record.
 3. ~~**Private anti-pattern visibility scope**~~ — **RESOLVED 2026-05-19**: `private=true` means "never export to version-controlled files (CLAUDE.md / AGENTS.md)". It does not affect `query` visibility. All agents connected to the daemon see all patterns regardless of the `private` flag. The privacy boundary is the on-disk version-controlled artifact, not the in-memory query surface. Caller-identity ACL semantics are explicitly out of scope.
 4. ~~**Pattern versioning**~~ — **RESOLVED 2026-05-19 (v1 + v1.1 sequenced)**: v1 ships last-writer-wins. `refine` mutates in place. The only history is whatever lands in CLAUDE.md exports (tracked by git). v1.1 (when a real use case emerges) lights up the existing `SUPERSEDES` edge for major refines: `refine` with `major=true` creates a NEW Pattern with `SUPERSEDES → old_pattern`. Old pattern stays in the graph, demoted in query ranking. New lifecycle actions `history(id)` (traverses `SUPERSEDES`) and `rollback(id, to=old_id)` (creates a new pattern copying old state, supersedes current). No schema change required — the `SUPERSEDES` edge is already defined in v1; v1.1 only adds the lifecycle actions.

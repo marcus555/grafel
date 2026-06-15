@@ -36,7 +36,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Route extraction | 🟢 `partial` | — | 3090 | `internal/engine/http_endpoint_synthesis.go` | — |
-| Router pattern | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | playRoutesLineRE in play_routes.go extracts HTTP verb+path patterns from conf/routes DSL (#3178). |
+| Router pattern | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | playRoutesLineRE in play_routes.go extracts HTTP verb+path patterns from conf/routes DSL (#3178). |
 
 ### Build
 
@@ -62,13 +62,13 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
+| Tests linkage | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | — |
 
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
 | Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/java/config_consumer.go`<br>`internal/extractors/java/config_consumer_test.go` | @Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -> config:<key> (issue #3641) |
 | Constant propagation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | Framework-blind Java constant sniffer fires for all Java sources including Play (#3178). |
 | DB effect | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
@@ -84,8 +84,8 @@ Auto-generated. Back to [summary](../summary.md).
 | Mutation effect | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
 | Pure function tagging | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
 | Reachability analysis | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
-| Request shape extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
-| Response shape extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | extractPlayResponseShapes() detects Play Result factory call sites (ok/created/badRequest/notFound/redirect/status/etc.) as SCOPE.Reference response_shape entities with result_factory and controller_class properties (#3256) |
+| Request shape extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | — |
+| Response shape extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | extractPlayResponseShapes() detects Play Result factory call sites (ok/created/badRequest/notFound/redirect/status/etc.) as SCOPE.Reference response_shape entities with result_factory and controller_class properties (#3256) |
 | Sanitizer recognition | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
 | Schema drift detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | Framework-blind payload shapes sniffer fires for all Java sources; no Play-specific gate required (#3178). |
 | Taint sink detection | 🟢 `partial` | — | 3154 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/substrate/def_use_java.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/entry_points_java.go`<br>`internal/substrate/taint_sites_java.go`<br>`internal/substrate/template_pattern_java.go` | — |
@@ -97,10 +97,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
+| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | — |
 | Endpoint synthesis | 🟢 `partial` | — | 3090 | `internal/engine/http_endpoint_synthesis.go` | — |
 | Handler attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/play_routes.go` | — |
-| Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
+| Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | — |
 
 ## Provenance
 

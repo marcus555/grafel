@@ -1,6 +1,6 @@
-# Working with multiple branches in archigraph
+# Working with multiple branches in grafel
 
-archigraph indexes one graph snapshot per `(repository, git ref)` pair. When
+grafel indexes one graph snapshot per `(repository, git ref)` pair. When
 you switch branches or use `git worktree`, the daemon detects the change,
 keeps the old graph in cache, and begins indexing the new ref — so your AI
 agent always queries the graph that matches the code it is looking at.
@@ -14,11 +14,11 @@ dashboard, and MCP, and what to expect for storage and performance.
 
 ### Per-ref graph snapshots
 
-Each indexed `(repo, ref)` pair gets its own directory inside the archigraph
+Each indexed `(repo, ref)` pair gets its own directory inside the grafel
 store:
 
 ```
-~/.archigraph/store/<repo-slug>/refs/<ref-safe>/graph.fb
+~/.grafel/store/<repo-slug>/refs/<ref-safe>/graph.fb
 ```
 
 `<ref-safe>` is the branch name with `/` replaced by `%2F` so that
@@ -37,10 +37,10 @@ git checkout feature/my-thing
 automatically starts indexing `feature/my-thing`. The previous branch's graph
 stays in the cache during indexing, so you never have a gap.
 
-For faster detection, install the archigraph git hooks:
+For faster detection, install the grafel git hooks:
 
 ```sh
-archigraph install-hooks
+grafel install-hooks
 ```
 
 This adds `post-checkout`, `post-merge`, and `post-rewrite` hooks that signal
@@ -49,7 +49,7 @@ detection lag to near-zero.
 
 ### HOT / WARM / COLD tiers
 
-archigraph keeps graphs in memory according to how recently they were used:
+grafel keeps graphs in memory according to how recently they were used:
 
 | Tier    | Description                                                   |
 |---------|---------------------------------------------------------------|
@@ -65,8 +65,8 @@ worktree branches age through WARM → COLD → EXPIRED based on idle time.
 You can view the tier for every indexed ref:
 
 ```sh
-archigraph branches              # lists all indexed refs with tier + stats
-archigraph branches --evict feature/old-branch   # force-evict a ref
+grafel branches              # lists all indexed refs with tier + stats
+grafel branches --evict feature/old-branch   # force-evict a ref
 ```
 
 ---
@@ -78,17 +78,17 @@ archigraph branches --evict feature/old-branch   # force-evict a ref
 Most read commands accept `--ref <name>`:
 
 ```sh
-archigraph status --ref feature/my-thing        # status for that ref's graph
-archigraph index  --ref feature/my-thing        # force reindex that ref
-archigraph doctor --ref feature/my-thing        # health check for that ref
-archigraph remove --ref feature/my-thing        # delete that ref's snapshot
+grafel status --ref feature/my-thing        # status for that ref's graph
+grafel index  --ref feature/my-thing        # force reindex that ref
+grafel doctor --ref feature/my-thing        # health check for that ref
+grafel remove --ref feature/my-thing        # delete that ref's snapshot
 ```
 
 ### Listing all indexed refs
 
 ```sh
-archigraph branches                        # all indexed refs for all groups
-archigraph status --all-refs               # per-group status for every ref
+grafel branches                        # all indexed refs for all groups
+grafel status --all-refs               # per-group status for every ref
 ```
 
 Example output:
@@ -105,7 +105,7 @@ Group: my-api
 The daemon reindexes automatically, but if you want to trigger it immediately:
 
 ```sh
-archigraph rebuild --ref feature/my-thing
+grafel rebuild --ref feature/my-thing
 ```
 
 ---
@@ -150,7 +150,7 @@ GET /api/v2/groups/:group/repos/:repo/diff?refA=main&refB=feature%2Fmy-thing
 The MCP server resolves the correct ref from the caller's current working
 directory. When an agent runs inside a repo that has `feature/my-thing`
 checked out (or inside a linked worktree for that branch), all
-`archigraph_*` tool calls automatically target the `feature/my-thing`
+`grafel_*` tool calls automatically target the `feature/my-thing`
 graph. No flag or parameter is needed.
 
 To explicitly target a ref, pass `ref` in the tool arguments (supported by
@@ -158,7 +158,7 @@ all graph-query tools):
 
 ```json
 {
-  "tool": "archigraph_find",
+  "tool": "grafel_find",
   "arguments": {
     "query": "authentication handler",
     "ref": "feature/auth"
@@ -176,7 +176,7 @@ An agent can ask for the structural diff between two refs in a single call:
 
 ```json
 {
-  "tool": "archigraph_diff_refs",
+  "tool": "grafel_diff_refs",
   "arguments": {
     "repo": "my-repo",
     "ref_a": "main",
@@ -192,7 +192,7 @@ structurally before looking at the line-level diff.
 
 ## Git worktree workflows
 
-`git worktree add` creates a parallel checkout at a secondary path. archigraph
+`git worktree add` creates a parallel checkout at a secondary path. grafel
 detects linked worktrees automatically at daemon startup and on each watcher
 cycle via `git worktree list --porcelain`. Each discovered worktree is
 registered as a separate `(path, ref)` slot and indexed like any other branch.
@@ -203,7 +203,7 @@ git worktree add ../my-repo-hotfix hotfix/login-bug
 
 # The daemon detects the new worktree and begins indexing it.
 # You can confirm:
-archigraph branches
+grafel branches
 #   main              HOT    23.4 MB   ...
 #   hotfix/login-bug  HOT    23.5 MB   indexing (42%)...
 ```
@@ -239,31 +239,31 @@ profile or before starting the daemon):
 
 | Variable                             | Default | Effect                               |
 |--------------------------------------|---------|--------------------------------------|
-| `ARCHIGRAPH_TIER_HOT_TO_WARM_MIN`    | 5       | Minutes idle before HOT → WARM       |
-| `ARCHIGRAPH_TIER_WARM_TO_COLD_MIN`   | 60      | Minutes idle before WARM → COLD      |
-| `ARCHIGRAPH_TIER_COLD_TO_EXPIRED_H`  | 168     | Hours idle before COLD → EXPIRED (disk delete) |
+| `GRAFEL_TIER_HOT_TO_WARM_MIN`    | 5       | Minutes idle before HOT → WARM       |
+| `GRAFEL_TIER_WARM_TO_COLD_MIN`   | 60      | Minutes idle before WARM → COLD      |
+| `GRAFEL_TIER_COLD_TO_EXPIRED_H`  | 168     | Hours idle before COLD → EXPIRED (disk delete) |
 
-Setting `ARCHIGRAPH_TIER_COLD_TO_EXPIRED_H=0` disables disk eviction entirely
+Setting `GRAFEL_TIER_COLD_TO_EXPIRED_H=0` disables disk eviction entirely
 (refs are kept on disk forever until manually removed).
 
 ### Manually inspecting and evicting refs
 
 ```sh
 # Show all indexed refs with size + tier
-archigraph branches
+grafel branches
 
 # Evict (delete from disk) a specific ref
-archigraph branches --evict feature/old-branch
+grafel branches --evict feature/old-branch
 
 # Remove all non-default refs for a group
-archigraph branches --evict-all --group my-api
+grafel branches --evict-all --group my-api
 ```
 
 ---
 
 ## Cache invalidation on cross-repo links
 
-When your group contains multiple repos, archigraph builds cross-repo links
+When your group contains multiple repos, grafel builds cross-repo links
 (import chains, shared type references, HTTP call graphs) between them.
 With multi-ref indexing, these links are keyed by `(repoA, refA, repoB,
 refB)`. When you switch a ref in any member repo, the daemon automatically
@@ -283,7 +283,7 @@ rather than serving stale data.
 The ref you requested has never been indexed. Run:
 
 ```sh
-archigraph index --ref feature/my-thing
+grafel index --ref feature/my-thing
 ```
 
 Or wait for the daemon's background HEAD watcher to pick it up after the next
@@ -295,13 +295,13 @@ If the git hooks are not installed, the daemon relies on the fsnotify HEAD
 watcher, which has a short delay. Install the hooks for instant detection:
 
 ```sh
-archigraph install-hooks
+grafel install-hooks
 ```
 
 Check that the hooks were installed successfully:
 
 ```sh
-archigraph doctor
+grafel doctor
 # Should show: git-hooks: post-checkout ✓  post-merge ✓  post-rewrite ✓
 ```
 
@@ -313,8 +313,8 @@ the same TTL schedule as feature branches.
 
 **Too much disk space used**
 
-Lower `ARCHIGRAPH_TIER_COLD_TO_EXPIRED_H` to evict stale refs sooner, or
-manually evict with `archigraph branches --evict-all`. The default-branch
+Lower `GRAFEL_TIER_COLD_TO_EXPIRED_H` to evict stale refs sooner, or
+manually evict with `grafel branches --evict-all`. The default-branch
 snapshot is never evicted regardless of this setting.
 
 ---

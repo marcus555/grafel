@@ -1,4 +1,4 @@
-# Persona Architecture for archigraph
+# Persona Architecture for grafel
 
 **Status:** Canonical architectural contract — v3 (interactive hire-on-demand)
 **Scope:** Persona definition, shape, delivery, orchestration, catalog, communication styles, escalation, anti-patterns, phasing.
@@ -8,17 +8,17 @@
 
 ## 1. What is a persona?
 
-A persona is an **agent definition file** — a markdown document that instructs a user's coding agent (Claude Code, Windsurf, Cursor) to adopt a specialist role, navigate a codebase's archigraph knowledge graph + generated documentation, and **converse with the user from that lens**. Personas are **not CLI commands**, **not daemons**, **not web-UI features**, and **not auto-firing report generators**.
+A persona is an **agent definition file** — a markdown document that instructs a user's coding agent (Claude Code, Windsurf, Cursor) to adopt a specialist role, navigate a codebase's grafel knowledge graph + generated documentation, and **converse with the user from that lens**. Personas are **not CLI commands**, **not daemons**, **not web-UI features**, and **not auto-firing report generators**.
 
 ### 1.1 Paradigm: hire-on-demand interactive consultant
 
 A persona is a **consultant the user hires**. Hiring works like this:
 
-1. The user invokes the `archigraph-consult` skill (or types `/archigraph-consult`).
+1. The user invokes the `grafel-consult` skill (or types `/grafel-consult`).
 2. The skill presents the catalog of available consultants.
 3. The user picks one (or asks the skill to recommend, given a problem).
 4. The chosen persona becomes the **active consultant** for the conversation.
-5. The active consultant answers the user's questions, explores the codebase via archigraph MCP, and delivers analysis in whatever shape the question demands — prose, ASCII diagram, table, code sample, analogy, severity matrix.
+5. The active consultant answers the user's questions, explores the codebase via grafel MCP, and delivers analysis in whatever shape the question demands — prose, ASCII diagram, table, code sample, analogy, severity matrix.
 6. The user may release the consultant, switch consultants, or ask the active consultant to **Consult-Out** to a peer.
 
 There is **no auto-fan-out**, no automatic multi-persona run, no editor synthesis pass, and no implicit findings-graph materialisation. Those were the v1/v2 model and have been retired.
@@ -43,7 +43,7 @@ There is **no auto-fan-out**, no automatic multi-persona run, no editor synthesi
 
 ```yaml
 ---
-name: archigraph-<persona-name>           # lowercase, hyphens, prefixed archigraph-
+name: grafel-<persona-name>           # lowercase, hyphens, prefixed grafel-
 description: >
   One tight sentence: what this consultant is good at, and what kind of
   user question signals "hire this one".
@@ -73,7 +73,7 @@ The `model:` frontmatter field is an **opinionated suggestion** to the host agen
 | `compliance-officer` | `opus` | High false-positive risk requires careful multi-hop reasoning to avoid erroneous findings |
 | `dx-engineer` | `sonnet` | DX signals follow structured test-edge and import-graph enumeration |
 
-**Override contract:** The host agent MUST honour an explicit `--model` flag from the user (e.g. `/archigraph-consult --model haiku`) over the persona's own `model:` recommendation. The recommendation is a default, not a lock.
+**Override contract:** The host agent MUST honour an explicit `--model` flag from the user (e.g. `/grafel-consult --model haiku`) over the persona's own `model:` recommendation. The recommendation is a default, not a lock.
 
 ### 2.2 Body structure (v3)
 
@@ -109,8 +109,8 @@ answer that — don't deliver a 7-section structural audit.
 
 ## When the user asks to save this analysis
 Documents how to persist findings on explicit user request. Default path:
-`~/.archigraph/groups/<group>/findings/<persona>-<short-slug>-<YYYY-MM-DD>.md`.
-Confirm path with user if ambiguous. Also offers `archigraph_save_finding`
+`~/.grafel/groups/<group>/findings/<persona>-<short-slug>-<YYYY-MM-DD>.md`.
+Confirm path with user if ambiguous. Also offers `grafel_save_finding`
 as the canonical graph-persistence path when the MCP exposes it.
 ```
 
@@ -122,9 +122,9 @@ There is **no OUTPUT format section** in v3. Personas respond to questions in do
 
 Findings save **only on explicit user request**. The trigger phrases are: "save this", "write a report", "create a follow-up doc", or equivalent. On trigger:
 
-1. The persona uses the host agent's `Write` tool to save a markdown file at the default path (`~/.archigraph/groups/<group>/findings/<persona>-<short-slug>-<YYYY-MM-DD>.md`).
+1. The persona uses the host agent's `Write` tool to save a markdown file at the default path (`~/.grafel/groups/<group>/findings/<persona>-<short-slug>-<YYYY-MM-DD>.md`).
 2. If the path is ambiguous (e.g. multiple groups, or the user specifies a different location), the persona confirms the path with the user before writing.
-3. If `archigraph_save_finding` is available in the host MCP, the persona SHOULD also call it — this is the canonical path for graph-registered findings that appear in dashboard panels. The `Write` call and the MCP call are not mutually exclusive.
+3. If `grafel_save_finding` is available in the host MCP, the persona SHOULD also call it — this is the canonical path for graph-registered findings that appear in dashboard panels. The `Write` call and the MCP call are not mutually exclusive.
 4. The persona does **not** auto-save at confidence thresholds. There is no background materialisation. This was the v1/v2 model and is retired.
 
 ---
@@ -137,18 +137,18 @@ Personas must work across coding-agent hosts, but only Claude Code provides true
 
 | Platform | Hire mechanism | Active-state tracking | Isolation | Status |
 |---|---|---|---|---|
-| **Claude Code** | Subagent at `.claude/agents/archigraph-<name>.md` — invoked via Task tool with subagent_type | Per-subagent context (native) | Yes | **Working** |
-| **Windsurf (Cascade)** | Workflow at `.windsurf/workflows/archigraph-consult.md` prompt-injects the persona body into the shared Cascade context | Conversation-level marker ("ACTIVE PERSONA: <name>") that the workflow sets; main Cascade reads it on every turn | No (shared context) | **Working with caveats** — see 3.4 |
-| **Cursor** | Slash command at `.cursor/commands/archigraph-consult.md` + rules under `.cursor/rules/archigraph-personas.mdc`; Agents Window can run a hire in a side tab for isolation | Active persona named in command frontmatter; Agents Window provides per-tab isolation | Partial (per-tab) | **Working** |
+| **Claude Code** | Subagent at `.claude/agents/grafel-<name>.md` — invoked via Task tool with subagent_type | Per-subagent context (native) | Yes | **Working** |
+| **Windsurf (Cascade)** | Workflow at `.windsurf/workflows/grafel-consult.md` prompt-injects the persona body into the shared Cascade context | Conversation-level marker ("ACTIVE PERSONA: <name>") that the workflow sets; main Cascade reads it on every turn | No (shared context) | **Working with caveats** — see 3.4 |
+| **Cursor** | Slash command at `.cursor/commands/grafel-consult.md` + rules under `.cursor/rules/grafel-personas.mdc`; Agents Window can run a hire in a side tab for isolation | Active persona named in command frontmatter; Agents Window provides per-tab isolation | Partial (per-tab) | **Working** |
 | **Codex / others** | Markdown shim referencing the persona body | None — manual | None | **Deferred** |
 
 ### 3.2 Canonical source-of-truth
 
-The persona bodies live at `skills/archigraph-consult/personas/<name>.md` (this repo). All platform wrappers **reference** these bodies — they do not duplicate the persona content. The wrappers are thin: catalog enumeration, hire mechanic, Consult-Out plumbing.
+The persona bodies live at `skills/grafel-consult/personas/<name>.md` (this repo). All platform wrappers **reference** these bodies — they do not duplicate the persona content. The wrappers are thin: catalog enumeration, hire mechanic, Consult-Out plumbing.
 
 ### 3.3 Claude Code path (canonical)
 
-The `archigraph-consult` skill:
+The `grafel-consult` skill:
 
 1. Lists the catalog (reads `personas/*.md` frontmatter `description:` fields).
 2. Asks the user which to hire (or interprets a natural-language request).
@@ -160,8 +160,8 @@ In practice, the simplest implementation is: the parent (main Claude Code agent)
 
 Cascade has one shared context. "Hiring" works by:
 
-1. The `archigraph-consult` workflow runs in the current Cascade context.
-2. The workflow injects a system-level reminder: `ACTIVE PERSONA: archigraph-<name>. Body follows: <inlined persona body>.`
+1. The `grafel-consult` workflow runs in the current Cascade context.
+2. The workflow injects a system-level reminder: `ACTIVE PERSONA: grafel-<name>. Body follows: <inlined persona body>.`
 3. Cascade adopts the role for subsequent turns.
 4. Releasing = the user says "release the consultant" or invokes the workflow again with a different persona.
 
@@ -173,14 +173,14 @@ Cursor's Agents Window provides per-tab isolation: hiring a consultant opens a n
 
 ---
 
-## 4. Orchestration via `archigraph-consult`
+## 4. Orchestration via `grafel-consult`
 
 The skill is the single entry point. Flow:
 
 ```
-User: /archigraph-consult
-  └─ archigraph-consult skill
-       ├─ pre-flight: archigraph_whoami, tech-docs presence check
+User: /grafel-consult
+  └─ grafel-consult skill
+       ├─ pre-flight: grafel_whoami, tech-docs presence check
        ├─ enumerate catalog (read personas/*.md frontmatter)
        ├─ ask user: "which consultant would you like to hire?"
        │   (or interpret natural-language "I need an architecture review" → architect)
@@ -204,7 +204,7 @@ The active consultant signals the need with a structured callout in their respon
 
 ```
 > [CONSULT-OUT]
-> target: archigraph-performance-reviewer
+> target: grafel-performance-reviewer
 > reason: Latency optimisation is outside my (security) lens
 > depth: 1
 > chain: [security-auditor]
@@ -223,7 +223,7 @@ The active consultant signals the need with a structured callout in their respon
 The user replies yes/no. If yes, the orchestrator:
 
 1. **Claude Code:** spawns the requested persona as a true subagent (Task tool with subagent_type), passing the carry-over context as the opening message. The original consultant remains active in the parent conversation. The peer's response is summarised back to the user with `[CONSULT-IN: performance-reviewer]` tagging.
-2. **Windsurf:** appends a second `ACTIVE PERSONA` marker scoped to this turn only ("for this answer, also adopt archigraph-performance-reviewer's lens"). The shared context means both lenses inform the same response. After the answer, the marker expires.
+2. **Windsurf:** appends a second `ACTIVE PERSONA` marker scoped to this turn only ("for this answer, also adopt grafel-performance-reviewer's lens"). The shared context means both lenses inform the same response. After the answer, the marker expires.
 3. **Cursor:** opens a new Agents-Window tab with the peer, passing carry-over context.
 
 ### 5.2 Carry-over context (required)
@@ -252,7 +252,7 @@ Starting with this release (issue #2473), the `[CONSULT-OUT]` block is a structu
 
 ```yaml
 # [CONSULT-OUT] envelope (YAML fields, blockquote-formatted in persona output)
-target: archigraph-<persona-name>       # the peer being recruited
+target: grafel-<persona-name>       # the peer being recruited
 reason: <one-line justification>        # why this peer's lens is needed
 depth: <integer, 1-indexed>             # current hop number (1 = first Consult-Out)
 chain: [<persona-a>, <persona-b>, ...]  # personas already in the chain (NOT including target)
@@ -284,7 +284,7 @@ The depth cap may be raised by the user via an explicit instruction in the conve
 Before emitting a `[CONSULT-OUT]` block, the persona MUST check whether the intended `target` already appears in `chain`. If it does:
 
 - Do NOT emit the `[CONSULT-OUT]` block.
-- Inform the user: "`archigraph-<target>` is already in the consultation chain (<chain>). Consulting them again would create a loop. Would you like me to answer within my own lens instead, or switch to a different expert?"
+- Inform the user: "`grafel-<target>` is already in the consultation chain (<chain>). Consulting them again would create a loop. Would you like me to answer within my own lens instead, or switch to a different expert?"
 
 Cycles are prevented at the persona level; the orchestrator does not need a separate guard (defence-in-depth, not primary enforcement).
 
@@ -300,7 +300,7 @@ Architect emits:
 
 ```
 > [CONSULT-OUT]
-> target: archigraph-security-auditor
+> target: grafel-security-auditor
 > reason: Raw query patterns at the layering violation boundary may carry injection risk — security lens needed
 > depth: 1
 > chain: [architect]
@@ -324,7 +324,7 @@ Security-auditor appends their findings and emits:
 
 ```
 > [CONSULT-OUT]
-> target: archigraph-data-engineer
+> target: grafel-data-engineer
 > reason: Unencrypted PII column accessed via raw query — schema and migration hygiene lens needed
 > depth: 2
 > chain: [architect, security-auditor]
@@ -379,22 +379,22 @@ Each persona's body lists the subset of styles relevant to its domain (e.g. arch
 
 ## 7. Persona catalog
 
-Twelve personas ship. The catalog count must match across this doc, `SKILL.md`, and the filesystem at `skills/archigraph-consult/personas/`.
+Twelve personas ship. The catalog count must match across this doc, `SKILL.md`, and the filesystem at `skills/grafel-consult/personas/`.
 
 | # | Name | Lens | Primary graph queries | Status |
 |---|---|---|---|---|
-| 1 | `architect` | Module layering, coupling, cyclic deps, god modules, boundary violations | `archigraph_clusters`, `archigraph_expand` (IMPORTS/CALLS), `archigraph_stats` | Shipped |
-| 2 | `security-auditor` | Auth gaps, PII exposure, injection risks, secrets, attack surface | `archigraph_traces` (auth entry points), `archigraph_expand`, `archigraph_find` | Shipped |
-| 3 | `business-analyst` | Capability coverage, feature gaps, business rule completeness, user-journey gaps | `archigraph_traces`, `archigraph_find` (route entities), `archigraph_clusters` | Shipped |
-| 4 | `performance-reviewer` | Hot paths, N+1 queries, sync blocking, unbounded queries, over-fetching | `archigraph_expand`, `archigraph_traces`, `archigraph_find` (DB call patterns) | Shipped |
-| 5 | `refactor-critic` | Complexity hotspots, duplication, dead code, long call chains, tech-debt | `archigraph_stats`, `archigraph_expand` (zero-caller nodes), `archigraph_clusters` | Shipped |
-| 6 | `api-designer` | Endpoint naming, REST/RPC convention consistency, versioning, OpenAPI gaps | `archigraph_find` (http_endpoint), `archigraph_inspect`, `archigraph_cross_links` | Shipped |
-| 7 | `data-engineer` | Schema quality, migration hygiene, ORM patterns, missing indexes, FK integrity | `archigraph_find` (schema/model), `archigraph_expand`, `archigraph_traces` | Shipped |
-| 8 | `qa-reviewer` | Test coverage by module, missing test types, untested critical paths | `archigraph_expand` (TESTS edges), `archigraph_find`, `archigraph_traces` | Shipped |
-| 9 | `solutions-architect` | Cross-service boundaries, inter-repo contracts, coupling, blast-radius | `archigraph_cross_links`, `archigraph_expand`, `archigraph_traces` | Shipped (with limitations) — signal requires cross_links data populated; limited for single-repo groups |
-| 10 | `devops-reviewer` | CI/CD config, GitHub Actions pinning, build hygiene, graph-visible infra config | `archigraph_status`, `archigraph_find`, `archigraph_subgraph` | Shipped (with limitations) — does NOT index Terraform/k8s; CI/YAML slice only |
-| 11 | `compliance-officer` | PII field detection, audit-trail gaps, sensitive data flow surface scan | `archigraph_find` (field names), `archigraph_inspect`, `archigraph_expand` (READS_FIELD/WRITES_FIELD) | Shipped (with limitations) — name-match heuristics only; no data-classification layer; high false-positive rate |
-| 12 | `dx-engineer` | Test desert modules, circular imports, god entry-points, module size outliers | `archigraph_clusters`, `archigraph_expand` (TESTS/IMPORTS), `archigraph_stats` | Shipped (with limitations) — test/import-graph signals only; no docs/README or build-time review |
+| 1 | `architect` | Module layering, coupling, cyclic deps, god modules, boundary violations | `grafel_clusters`, `grafel_expand` (IMPORTS/CALLS), `grafel_stats` | Shipped |
+| 2 | `security-auditor` | Auth gaps, PII exposure, injection risks, secrets, attack surface | `grafel_traces` (auth entry points), `grafel_expand`, `grafel_find` | Shipped |
+| 3 | `business-analyst` | Capability coverage, feature gaps, business rule completeness, user-journey gaps | `grafel_traces`, `grafel_find` (route entities), `grafel_clusters` | Shipped |
+| 4 | `performance-reviewer` | Hot paths, N+1 queries, sync blocking, unbounded queries, over-fetching | `grafel_expand`, `grafel_traces`, `grafel_find` (DB call patterns) | Shipped |
+| 5 | `refactor-critic` | Complexity hotspots, duplication, dead code, long call chains, tech-debt | `grafel_stats`, `grafel_expand` (zero-caller nodes), `grafel_clusters` | Shipped |
+| 6 | `api-designer` | Endpoint naming, REST/RPC convention consistency, versioning, OpenAPI gaps | `grafel_find` (http_endpoint), `grafel_inspect`, `grafel_cross_links` | Shipped |
+| 7 | `data-engineer` | Schema quality, migration hygiene, ORM patterns, missing indexes, FK integrity | `grafel_find` (schema/model), `grafel_expand`, `grafel_traces` | Shipped |
+| 8 | `qa-reviewer` | Test coverage by module, missing test types, untested critical paths | `grafel_expand` (TESTS edges), `grafel_find`, `grafel_traces` | Shipped |
+| 9 | `solutions-architect` | Cross-service boundaries, inter-repo contracts, coupling, blast-radius | `grafel_cross_links`, `grafel_expand`, `grafel_traces` | Shipped (with limitations) — signal requires cross_links data populated; limited for single-repo groups |
+| 10 | `devops-reviewer` | CI/CD config, GitHub Actions pinning, build hygiene, graph-visible infra config | `grafel_status`, `grafel_find`, `grafel_subgraph` | Shipped (with limitations) — does NOT index Terraform/k8s; CI/YAML slice only |
+| 11 | `compliance-officer` | PII field detection, audit-trail gaps, sensitive data flow surface scan | `grafel_find` (field names), `grafel_inspect`, `grafel_expand` (READS_FIELD/WRITES_FIELD) | Shipped (with limitations) — name-match heuristics only; no data-classification layer; high false-positive rate |
+| 12 | `dx-engineer` | Test desert modules, circular imports, god entry-points, module size outliers | `grafel_clusters`, `grafel_expand` (TESTS/IMPORTS), `grafel_stats` | Shipped (with limitations) — test/import-graph signals only; no docs/README or build-time review |
 
 ---
 
@@ -411,7 +411,7 @@ This section is non-negotiable. Any implementation that violates these invariant
 - **No editor synthesis pass.** There is nothing to synthesise — there's one active consultant at a time. Cross-persona reasoning happens through Consult-Out, not post-hoc.
 - **No web-UI surface.** Findings the user explicitly saves may render in the dashboard, but personas themselves are not dashboard items.
 - **No install CLI.** Personas are markdown; install is a file copy.
-- **No CLI invocation.** There is no `archigraph architect` command.
+- **No CLI invocation.** There is no `grafel architect` command.
 
 ---
 
@@ -421,30 +421,30 @@ This section is non-negotiable. Any implementation that violates these invariant
 
 Personas share boilerplate steps (confirm the graph is loaded, orient via inspect, traverse via expand). Rather than duplicating these steps in every persona body, we extract them into a **composable shared skill** — a standalone `SKILL.md` that personas reference with a one-liner.
 
-**Canonical example:** `skills/archigraph-graph-read/SKILL.md`
+**Canonical example:** `skills/grafel-graph-read/SKILL.md`
 
 This skill documents the `status → inspect → expand` READ protocol that every persona uses as its grounding pass. Personas reference it as:
 
 ```markdown
 ## READ Protocol
-Follow `archigraph-graph-read` (status → inspect → expand). Stop reading when the entities answer the question.
+Follow `grafel-graph-read` (status → inspect → expand). Stop reading when the entities answer the question.
 ```
 
 The persona's ANALYSIS questions (which are unique per lens) remain in the persona body. Only the boilerplate navigation steps live in the shared skill.
 
 ### 9.2 Why this matters
 
-- **Single source of truth** for the READ protocol: changes to `archigraph-graph-read/SKILL.md` propagate to all 8 personas without hunting through persona files.
+- **Single source of truth** for the READ protocol: changes to `grafel-graph-read/SKILL.md` propagate to all 8 personas without hunting through persona files.
 - **Smaller persona files**: each persona body focuses on its unique analytical lens rather than repeating orientation steps.
-- **Composability signal**: future shared skills (`archigraph-graph-write`?, `archigraph-graph-search`?) follow the same `skills/<name>/SKILL.md` pattern. A skill is composable if it can be referenced from multiple persona bodies as a one-liner.
+- **Composability signal**: future shared skills (`grafel-graph-write`?, `grafel-graph-search`?) follow the same `skills/<name>/SKILL.md` pattern. A skill is composable if it can be referenced from multiple persona bodies as a one-liner.
 
 ### 9.3 Convention for future composable skills
 
 | Candidate shared skill | Would extract | Composable? |
 |---|---|---|
-| `archigraph-graph-read` | Status → inspect → expand (shipped, #2506) | Yes |
-| `archigraph-graph-write` | `archigraph_save_finding` affordance contract (shipped, #2507) | Yes — same "When the user asks to save" section appears in all 8 |
-| `archigraph-graph-search` | `archigraph_find` + `archigraph_traces` pattern | Possible — most personas use both |
+| `grafel-graph-read` | Status → inspect → expand (shipped, #2506) | Yes |
+| `grafel-graph-write` | `grafel_save_finding` affordance contract (shipped, #2507) | Yes — same "When the user asks to save" section appears in all 8 |
+| `grafel-graph-search` | `grafel_find` + `grafel_traces` pattern | Possible — most personas use both |
 
 A skill is worth extracting when: (a) the same prose appears in 3+ persona files, (b) the prose has clear boundaries (a named section), and (c) changing it in one place should change it everywhere.
 
@@ -454,7 +454,7 @@ A skill is worth extracting when: (a) the same prose appears in 3+ persona files
 
 ### 10.1 What is emitted
 
-Each persona calls `archigraph_persona_event` at two lifecycle points:
+Each persona calls `grafel_persona_event` at two lifecycle points:
 
 | Lifecycle point | `event_type` | Required fields | Optional fields |
 |---|---|---|---|
@@ -462,14 +462,14 @@ Each persona calls `archigraph_persona_event` at two lifecycle points:
 | Consult-Out (user confirms peer engagement) | `consult_out` | `persona`, `target_persona` | `depth`, `chain`, `metadata` |
 | Finding persisted via save_finding | `save_finding` | `persona` | `metadata` |
 
-The `save_finding` event_type is available for future use by the `archigraph-graph-write` shared skill; persona bodies currently only emit `invoke` and `consult_out`.
+The `save_finding` event_type is available for future use by the `grafel-graph-write` shared skill; persona bodies currently only emit `invoke` and `consult_out`.
 
 ### 10.2 Storage contract
 
 Events are appended to a daily JSONL file:
 
 ```
-~/.archigraph/events/persona-events-YYYY-MM-DD.jsonl
+~/.grafel/events/persona-events-YYYY-MM-DD.jsonl
 ```
 
 Each line is a JSON object matching the `PersonaEvent` struct in `internal/mcp/persona_telemetry.go`:
@@ -479,26 +479,26 @@ Each line is a JSON object matching the `PersonaEvent` struct in `internal/mcp/p
 {"ts":"2026-05-27T14:07:11Z","persona":"architect","event_type":"consult_out","target_persona":"performance-reviewer"}
 ```
 
-Files rotate by UTC calendar date. No compaction or deletion is performed by archigraph — the user is responsible for cleanup.
+Files rotate by UTC calendar date. No compaction or deletion is performed by grafel — the user is responsible for cleanup.
 
 ### 10.3 Privacy promise
 
-**LOCAL ONLY.** `archigraph_persona_event` writes exclusively to the local filesystem (`~/.archigraph/events/`). No data is transmitted to any remote endpoint, no aggregation service is contacted, and no identifier beyond the persona name is captured. The `metadata` field is optional and caller-controlled — personas do not populate it with user data. This promise is enforced by the handler implementation in `internal/mcp/persona_telemetry.go` — there is no HTTP client, no gRPC call, and no queue write in that file.
+**LOCAL ONLY.** `grafel_persona_event` writes exclusively to the local filesystem (`~/.grafel/events/`). No data is transmitted to any remote endpoint, no aggregation service is contacted, and no identifier beyond the persona name is captured. The `metadata` field is optional and caller-controlled — personas do not populate it with user data. This promise is enforced by the handler implementation in `internal/mcp/persona_telemetry.go` — there is no HTTP client, no gRPC call, and no queue write in that file.
 
 ### 10.4 Viewing events
 
 ```bash
 # Today's events
-cat ~/.archigraph/events/persona-events-$(date -u +%Y-%m-%d).jsonl | jq .
+cat ~/.grafel/events/persona-events-$(date -u +%Y-%m-%d).jsonl | jq .
 
 # Invoke frequency by persona
-cat ~/.archigraph/events/persona-events-*.jsonl | jq -r 'select(.event_type=="invoke") | .persona' | sort | uniq -c | sort -rn
+cat ~/.grafel/events/persona-events-*.jsonl | jq -r 'select(.event_type=="invoke") | .persona' | sort | uniq -c | sort -rn
 
 # Consult-Out pairs
-cat ~/.archigraph/events/persona-events-*.jsonl | jq -r 'select(.event_type=="consult_out") | "\(.persona) → \(.target_persona)"' | sort | uniq -c | sort -rn
+cat ~/.grafel/events/persona-events-*.jsonl | jq -r 'select(.event_type=="consult_out") | "\(.persona) → \(.target_persona)"' | sort | uniq -c | sort -rn
 ```
 
-A `archigraph personas events --tail` viewer CLI is deferred (see Section 11 Phasing).
+A `grafel personas events --tail` viewer CLI is deferred (see Section 11 Phasing).
 
 ### 10.5 Failure behaviour
 
@@ -514,11 +514,11 @@ The four deferred personas (`solutions-architect`, `devops-reviewer`, `complianc
 
 ### 11.1 Motivation
 
-The `archigraph-consult` skill is interactive and stateless by default: each invocation starts fresh. Issue #2459 adds optional persistence so a user can resume a mid-conversation consultation across sessions — same active persona, same Consult-Out chain, same accumulated context and notes.
+The `grafel-consult` skill is interactive and stateless by default: each invocation starts fresh. Issue #2459 adds optional persistence so a user can resume a mid-conversation consultation across sessions — same active persona, same Consult-Out chain, same accumulated context and notes.
 
 ### 11.2 Storage
 
-Session state persists to `~/.archigraph/sessions/<session-id>.yaml`. The directory is created on first save. No new MCP tools are introduced — personas use the host agent's `Read` and `Write` tools (inherited via the tool-inheritance contract in Section 2.1).
+Session state persists to `~/.grafel/sessions/<session-id>.yaml`. The directory is created on first save. No new MCP tools are introduced — personas use the host agent's `Read` and `Write` tools (inherited via the tool-inheritance contract in Section 2.1).
 
 ### 11.3 Schema
 
@@ -541,22 +541,22 @@ notes: |
 
 | Event | Action |
 |---|---|
-| First invocation (no `--new`/`--resume`) | Skill scans `~/.archigraph/sessions/*.yaml`, presents active sessions + "Start new session" |
+| First invocation (no `--new`/`--resume`) | Skill scans `~/.grafel/sessions/*.yaml`, presents active sessions + "Start new session" |
 | User picks existing session | Skill reads YAML, re-primes agent with active persona + context, announces resume |
 | User picks "Start new session" | Normal hire flow; a new session file is created on first save |
 | Explicit save ("save session", "checkpoint") | Persona uses `Write` to write/overwrite `<session-id>.yaml` with current state |
 | Approved Consult-Out | Skill saves session before spawning the peer |
-| `[END SESSION]` / `--release` with confirmation | Session YAML moved to `~/.archigraph/sessions/archive/<session-id>.yaml` |
+| `[END SESSION]` / `--release` with confirmation | Session YAML moved to `~/.grafel/sessions/archive/<session-id>.yaml` |
 | `last_active` > 30 days | Session shown as `[stale]` in picker; user must confirm resume or archive |
 
 ### 11.5 Cross-persona notes field
 
-The `notes` field in the session YAML is a free-form string any persona may append to during a conversation. This is the intended mechanism for mid-conversation scratch notes that don't yet warrant a formal finding (which would go through `archigraph_save_finding`). Notes are preserved across resumes.
+The `notes` field in the session YAML is a free-form string any persona may append to during a conversation. This is the intended mechanism for mid-conversation scratch notes that don't yet warrant a formal finding (which would go through `grafel_save_finding`). Notes are preserved across resumes.
 
 ### 11.6 Anti-patterns
 
 - **Do not auto-save on every turn.** Save on explicit request or Consult-Out only. Constant writes create noise and inflate the session file unnecessarily.
-- **Do not store PII or sensitive findings in `notes`.** The session file is plaintext on the local filesystem. Sensitive findings should go through `archigraph_save_finding` or the user's own secure note-taking.
+- **Do not store PII or sensitive findings in `notes`.** The session file is plaintext on the local filesystem. Sensitive findings should go through `grafel_save_finding` or the user's own secure note-taking.
 - **Do not read another session's YAML without user approval.** Each session file belongs to one conversation context. Cross-session reading would conflate unrelated consultation threads.
 
 ---
@@ -566,7 +566,7 @@ The `notes` field in the session YAML is a free-form string any persona may appe
 ### v3 (PR #2449 / this doc)
 
 - Architecture doc rewrite (this file).
-- `archigraph-consult` SKILL.md rewritten for interactive flow.
+- `grafel-consult` SKILL.md rewritten for interactive flow.
 - All 8 persona bodies updated: drop fixed OUTPUT, add Communication styles + Consult-Out triggers.
 - Cross-platform wrappers: Windsurf workflow + Cursor command (best-effort).
 
@@ -576,15 +576,15 @@ The `notes` field in the session YAML is a free-form string any persona may appe
 |---|---|
 | True multi-persona panel mode | v1/v2 attempted this; postponed until interactive model is validated |
 | Persistent active-persona sidecar for Windsurf | Needs design work; conversation-marker workaround ships in this PR. Session file (Section 11) partially mitigates by preserving context across invocations. |
-| Interactive resume session for archigraph-consult | **Shipped in #2459** — session state persisted to `~/.archigraph/sessions/<id>.yaml`; session picker on first invocation; resume, save, end/archive flows. Section 11 defines the full contract. |
+| Interactive resume session for grafel-consult | **Shipped in #2459** — session state persisted to `~/.grafel/sessions/<id>.yaml`; session picker on first invocation; resume, save, end/archive flows. Section 11 defines the full contract. |
 | Codex / generic-markdown wrappers | Low user demand; defer until requested |
 | Persona-emitted findings → graph (opt-in) | **Shipped in #2472** — "When the user asks to save this analysis" section added to all 8 persona bodies; Section 2.4 defines the contract |
 | Consult-Out depth > 1 (peer of peer) | **Shipped in #2473** — multi-hop with depth cap (3), cycle detection, and context carry-over. Section 5.4–5.7 define the full protocol. |
-| Telemetry on persona usage / Consult-Out frequency | **Shipped in #2474** — `archigraph_persona_event` MCP tool; Section 10 defines the contract and privacy promise |
+| Telemetry on persona usage / Consult-Out frequency | **Shipped in #2474** — `grafel_persona_event` MCP tool; Section 10 defines the contract and privacy promise |
 | Per-persona model selection strategy | **Shipped in #2475** — `model:` frontmatter on all 8 personas with opinionated recommendations; Section 2.3 defines the mapping and override contract |
 | Cross-platform renderer CLI | Defer until 3+ platforms stable |
 | Solutions-architect / devops / compliance / dx personas | **Shipped in #2451-#2454** — built without original gates met, per user directive. Each documents signal-quality limitations in its persona body. Closing the gate gaps is tracked separately in the personas issue queue. |
-| `archigraph personas events --tail` CLI viewer | Deferred; use `jq` one-liners from Section 10.4 in the meantime |
+| `grafel personas events --tail` CLI viewer | Deferred; use `jq` one-liners from Section 10.4 in the meantime |
 
 ---
 

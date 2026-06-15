@@ -47,7 +47,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | 🟢 `partial` | — | — | `internal/custom/csharp/middleware_extra.go`<br>`internal/custom/csharp/middleware_extra_test.go` | ServiceStack AppHostBase subclass, Plugins.Add<T>(), GlobalRequestFilters.Add, and Pre/PostResponseFilters pipeline registration patterns detected. |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/4089) | — | #4089: native rate-limit stamping not implemented for this framework. This framework runs its own request pipeline (not ASP.NET Core endpoint routing), so the .NET built-in RateLimiter (RequireRateLimiting/[EnableRateLimiting]) does not apply; its native throttling idiom is future work. AspNetCoreRateLimit can still front it at the host level but the limits are config-driven (honest-partial). |
+| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/grafel/issues/4089) | — | #4089: native rate-limit stamping not implemented for this framework. This framework runs its own request pipeline (not ASP.NET Core endpoint routing), so the .NET built-in RateLimiter (RequireRateLimiting/[EnableRateLimiting]) does not apply; its native throttling idiom is future work. AspNetCoreRateLimit can still front it at the host level but the limits are config-driven (honest-partial). |
 
 ### Schema
 
@@ -111,11 +111,11 @@ Auto-generated. Back to [summary](../summary.md).
 | Mutation effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_csharp.go` | — |
 | Pure function tagging | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/pure_function_pass.go` | — |
 | Reachability analysis | 🟢 `partial` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_csharp.go` | — |
-| Request shape extraction | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go` | — |
+| Request shape extraction | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go` | — |
 | Request sink dataflow | 🔴 `missing` | — | 3740 | — | — |
-| Response shape extraction | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go` | — |
+| Response shape extraction | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go` | — |
 | Sanitizer recognition | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_csharp.go` | — |
-| Schema drift detection | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go` | — |
+| Schema drift detection | 🟢 `partial` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_csharp.go` | — |
 | Taint sink detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_csharp.go` | — |
 | Taint source detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_csharp.go` | — |
 | Template pattern catalog | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_csharp.go` | — |

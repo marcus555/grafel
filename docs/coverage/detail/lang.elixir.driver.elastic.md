@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-06` | [link](https://github.com/cajasmota/archigraph/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | scanElixirDrivers (mentionsElixirElastic gate) attributes the ES index literal (index: "x" / "index" => "x" / .Index("x")) via the shared emitElasticTargets/esIndexKeyRe. QUERIES edge caller->Class:<index>, orm=elastic. Dynamic/variable index names honest-skipped (esIndexKeyRe captures only quoted literals). Value-asserting test TestDriver_ElixirElasticIndex (run->Class:Product). |
+| Query attribution | ✅ `full` | `2026-06-06` | [link](https://github.com/cajasmota/grafel/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | scanElixirDrivers (mentionsElixirElastic gate) attributes the ES index literal (index: "x" / "index" => "x" / .Index("x")) via the shared emitElasticTargets/esIndexKeyRe. QUERIES edge caller->Class:<index>, orm=elastic. Dynamic/variable index names honest-skipped (esIndexKeyRe captures only quoted literals). Value-asserting test TestDriver_ElixirElasticIndex (run->Class:Product). |
 
 ### Migrations
 

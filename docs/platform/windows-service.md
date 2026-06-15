@@ -1,22 +1,22 @@
-# archigraph daemon — Windows service smoke-test guide
+# grafel daemon — Windows service smoke-test guide
 
-This document is for the Windows tester validating `archigraph install` / `archigraph uninstall` / `archigraph status` on a real Windows machine after the `schtasks_windows.go` implementation lands.
+This document is for the Windows tester validating `grafel install` / `grafel uninstall` / `grafel status` on a real Windows machine after the `schtasks_windows.go` implementation lands.
 
 ## Prerequisites
 
 - Windows 10 or Windows 11 (Task Scheduler 1.4 — `version="1.4"` in the XML).
-- A built `archigraph.exe` on the target machine. See [build instructions](#building-archigraph-exe-for-windows).
+- A built `grafel.exe` on the target machine. See [build instructions](#building-grafel-exe-for-windows).
 - PowerShell or `cmd.exe` running as the **current user** (no administrator needed).
 
-## Building archigraph.exe for Windows
+## Building grafel.exe for Windows
 
 From a Unix or Windows machine with Go installed:
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -o archigraph.exe ./cmd/archigraph
+GOOS=windows GOARCH=amd64 go build -o grafel.exe ./cmd/grafel
 ```
 
-Copy `archigraph.exe` to the target Windows machine.
+Copy `grafel.exe` to the target Windows machine.
 
 ---
 
@@ -25,34 +25,34 @@ Copy `archigraph.exe` to the target Windows machine.
 ### 1. Verify initial state — no task registered
 
 ```powershell
-schtasks /query /tn com.archigraph.daemon
+schtasks /query /tn com.grafel.daemon
 # Expected: ERROR: The system cannot find the file specified.
 ```
 
 ### 2. Install the daemon service
 
 ```powershell
-.\archigraph.exe install
+.\grafel.exe install
 ```
 
 Expected output (approximate):
 
 ```
-archigraph daemon service installed.
+grafel daemon service installed.
 Status: installed=true running=true pid=<N>
 ```
 
 ### 3. Verify the task exists in Task Scheduler
 
 ```powershell
-schtasks /query /tn com.archigraph.daemon /fo list /v
+schtasks /query /tn com.grafel.daemon /fo list /v
 ```
 
 Key fields to check:
 
 | Field | Expected value |
 |---|---|
-| `Task Name` | `\com.archigraph.daemon` |
+| `Task Name` | `\com.grafel.daemon` |
 | `Status` | `Running` |
 | `Logon Mode` | `Interactive/Background` |
 | `Run As User` | current Windows user |
@@ -62,14 +62,14 @@ Key fields to check:
 
 ```powershell
 # Replace <username> with your lowercased Windows username
-Test-Path "\\.\pipe\archigraph-daemon-<username>"
+Test-Path "\\.\pipe\grafel-daemon-<username>"
 # Expected: True
 ```
 
-Or use the archigraph status command:
+Or use the grafel status command:
 
 ```powershell
-.\archigraph.exe status
+.\grafel.exe status
 # Expected: installed=true running=true pid=<N>
 ```
 
@@ -77,7 +77,7 @@ Or use the archigraph status command:
 
 ```powershell
 # %LOCALAPPDATA% = C:\Users\<user>\AppData\Local
-ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.daemon.xml"
+ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.daemon.xml"
 # Expected: file exists
 ```
 
@@ -91,48 +91,48 @@ Stop-Process -Id <pid> -Force
 Start-Sleep -Seconds 90
 
 # Check if the task restarted:
-schtasks /query /tn com.archigraph.daemon /fo list /v | Select-String "Status"
+schtasks /query /tn com.grafel.daemon /fo list /v | Select-String "Status"
 # Expected: Status: Running
 ```
 
 ### 7. Verify idempotency — running install a second time
 
 ```powershell
-.\archigraph.exe install
+.\grafel.exe install
 # Expected: no error, returns current status without modifying anything
 ```
 
 ### 8. Uninstall the daemon service
 
 ```powershell
-.\archigraph.exe uninstall
+.\grafel.exe uninstall
 ```
 
 Expected output (approximate):
 
 ```
-archigraph daemon service removed.
+grafel daemon service removed.
 ```
 
 ### 9. Verify the task is gone
 
 ```powershell
-schtasks /query /tn com.archigraph.daemon
+schtasks /query /tn com.grafel.daemon
 # Expected: ERROR: The system cannot find the file specified.
 ```
 
 ### 10. Verify the XML file was removed
 
 ```powershell
-ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.daemon.xml"
+ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.daemon.xml"
 # Expected: file not found error
 ```
 
 ### 11. Verify logon persistence (cold-boot test)
 
-1. Install the task: `.\archigraph.exe install`
+1. Install the task: `.\grafel.exe install`
 2. Log off and log back in (or restart the machine).
-3. After login, run: `.\archigraph.exe status`
+3. After login, run: `.\grafel.exe status`
 4. Expected: `running=true` — the task fired at logon.
 
 ---
@@ -141,18 +141,18 @@ ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.daemon.xml"
 
 | Artifact | Path |
 |---|---|
-| Task XML (staged) | `%LOCALAPPDATA%\archigraph\tasks\com.archigraph.daemon.xml` |
-| Daemon logs | `%APPDATA%\archigraph\logs\` |
-| Named pipe | `\\.\pipe\archigraph-daemon-<lowercased-username>` |
+| Task XML (staged) | `%LOCALAPPDATA%\grafel\tasks\com.grafel.daemon.xml` |
+| Daemon logs | `%APPDATA%\grafel\logs\` |
+| Named pipe | `\\.\pipe\grafel-daemon-<lowercased-username>` |
 
 ---
 
 ## Known limitations in this release
 
-- **No stdout/stderr log files.** Unlike macOS (plist `StandardOutPath`) and Linux (systemd journal), Windows Task Scheduler does not redirect process output to a file natively. The daemon writes logs to `%APPDATA%\archigraph\logs\` via its own logger. A future issue (#933) may wire file-based log redirection via XML `<StandardOutput>` extensions.
-- **No code-signing.** The binary is unsigned. Windows SmartScreen may warn on first run. Administrators can unblock the binary via `Unblock-File .\archigraph.exe`.
+- **No stdout/stderr log files.** Unlike macOS (plist `StandardOutPath`) and Linux (systemd journal), Windows Task Scheduler does not redirect process output to a file natively. The daemon writes logs to `%APPDATA%\grafel\logs\` via its own logger. A future issue (#933) may wire file-based log redirection via XML `<StandardOutput>` extensions.
+- **No code-signing.** The binary is unsigned. Windows SmartScreen may warn on first run. Administrators can unblock the binary via `Unblock-File .\grafel.exe`.
 - **UAC elevation not required.** The task runs at `LeastPrivilege` (user-level). If elevated tasks are needed in future, the installer would need to be updated — but that is out of scope for this release.
-- **Crash-restart limited to 3 attempts.** After 3 failures within 1 minute, Task Scheduler stops restarting. Manual intervention via `archigraph install` is required to reset the retry counter.
+- **Crash-restart limited to 3 attempts.** After 3 failures within 1 minute, Task Scheduler stops restarting. Manual intervention via `grafel install` is required to reset the retry counter.
 
 ---
 
@@ -163,10 +163,10 @@ ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.daemon.xml"
 Check whether the binary path in the task XML is correct:
 
 ```powershell
-schtasks /query /tn com.archigraph.daemon /xml
+schtasks /query /tn com.grafel.daemon /xml
 ```
 
-Look at the `<Command>` element. If the path is wrong, run `.\archigraph.exe uninstall && .\archigraph.exe install` from the directory where `archigraph.exe` lives.
+Look at the `<Command>` element. If the path is wrong, run `.\grafel.exe uninstall && .\grafel.exe install` from the directory where `grafel.exe` lives.
 
 ### `schtasks /create` fails with access denied
 
@@ -180,10 +180,10 @@ The task may have started but crashed immediately. Check the Windows Event Log:
 Get-EventLog -LogName Application -Source "Task Scheduler" -Newest 20 | Format-List
 ```
 
-Also check for archigraph-specific errors:
+Also check for grafel-specific errors:
 
 ```powershell
-Get-Content "$env:APPDATA\archigraph\logs\daemon.log" -Tail 50
+Get-Content "$env:APPDATA\grafel\logs\daemon.log" -Tail 50
 ```
 
 ---
@@ -195,61 +195,61 @@ Get-Content "$env:APPDATA\archigraph\logs\daemon.log" -Tail 50
 The watcher is a separate scheduled task — one per watched repository — and
 follows the same install/uninstall/status lifecycle as the daemon service.
 Each task name uses the reverse-DNS convention
-`com.archigraph.watcher.<group>.<repo-slug>`.
+`com.grafel.watcher.<group>.<repo-slug>`.
 
 ### W1. Install a watcher for a repo
 
 ```powershell
 # Assuming a group named "mygroup" and a repo at C:\src\myrepo
-.\archigraph.exe install --group mygroup --repo C:\src\myrepo --watchers
+.\grafel.exe install --group mygroup --repo C:\src\myrepo --watchers
 ```
 
 Expected output (approximate):
 ```
-watcher installed: com.archigraph.watcher.mygroup.myrepo  running=true
+watcher installed: com.grafel.watcher.mygroup.myrepo  running=true
 ```
 
 ### W2. Verify the watcher task exists
 
 ```powershell
-schtasks /query /tn com.archigraph.watcher.mygroup.myrepo /fo list /v
+schtasks /query /tn com.grafel.watcher.mygroup.myrepo /fo list /v
 ```
 
 Key fields:
 
 | Field | Expected value |
 |---|---|
-| `Task Name` | `\com.archigraph.watcher.mygroup.myrepo` |
+| `Task Name` | `\com.grafel.watcher.mygroup.myrepo` |
 | `Status` | `Running` |
 | `Logon Mode` | `Interactive/Background` |
 
 ### W3. Verify the task XML was staged to disk
 
 ```powershell
-ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.watcher.mygroup.myrepo.xml"
+ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo.xml"
 # Expected: file exists
 ```
 
 ### W4. Verify idempotency
 
 ```powershell
-.\archigraph.exe install --group mygroup --repo C:\src\myrepo --watchers
+.\grafel.exe install --group mygroup --repo C:\src\myrepo --watchers
 # Expected: no error; returns current status without modifying anything
 ```
 
 ### W5. Uninstall the watcher
 
 ```powershell
-.\archigraph.exe uninstall --group mygroup
+.\grafel.exe uninstall --group mygroup
 ```
 
 After uninstall:
 
 ```powershell
-schtasks /query /tn com.archigraph.watcher.mygroup.myrepo
+schtasks /query /tn com.grafel.watcher.mygroup.myrepo
 # Expected: ERROR: The system cannot find the file specified.
 
-ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.watcher.mygroup.myrepo.xml"
+ls "$env:LOCALAPPDATA\grafel\tasks\com.grafel.watcher.mygroup.myrepo.xml"
 # Expected: file not found
 ```
 
@@ -257,8 +257,8 @@ ls "$env:LOCALAPPDATA\archigraph\tasks\com.archigraph.watcher.mygroup.myrepo.xml
 
 | Artifact | Path |
 |---|---|
-| Task XML (staged) | `%LOCALAPPDATA%\archigraph\tasks\com.archigraph.watcher.<group>.<slug>.xml` |
-| Task name | `com.archigraph.watcher.<group>.<slug>` |
+| Task XML (staged) | `%LOCALAPPDATA%\grafel\tasks\com.grafel.watcher.<group>.<slug>.xml` |
+| Task name | `com.grafel.watcher.<group>.<slug>` |
 
 ---
 

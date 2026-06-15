@@ -18,7 +18,7 @@ We need a single, namespaced typology that all extractors emit into and that all
 
 ## Decision
 
-archigraph adopts the SCOPE entity-kind hierarchy as its canonical node taxonomy. Internal node types are namespaced under `SCOPE.*`:
+grafel adopts the SCOPE entity-kind hierarchy as its canonical node taxonomy. Internal node types are namespaced under `SCOPE.*`:
 
 - **Code structure**: `SCOPE.Operation`, `SCOPE.Component`, `SCOPE.Schema`, `SCOPE.Variable`, `SCOPE.Reference`
 - **Behavioral patterns**: `SCOPE.Pattern`, `SCOPE.Evolution`

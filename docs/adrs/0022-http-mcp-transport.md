@@ -8,12 +8,12 @@
 
 ## Context
 
-Today archigraph exposes its graph over MCP through a **per-machine, local-only**
+Today grafel exposes its graph over MCP through a **per-machine, local-only**
 transport chain (ADR-0004, ADR-0017):
 
 ```
 Claude Code / agent host
-  → spawns `archigraph mcp-bridge`   (short-lived stdio process, one per session)
+  → spawns `grafel mcp-bridge`   (short-lived stdio process, one per session)
      stdin/stdout = MCP JSON-RPC 2.0
   → dials the daemon's Unix-domain socket / Windows named pipe
      (internal/daemon/transport)   = daemon JSON-RPC 1.0
@@ -75,7 +75,7 @@ benefit here.
   carries its own auth and `group`/CWD routing args; no server memory per
   client. Survives daemon restarts transparently, trivially load-balanced,
   ideal for headless/CI callers. Cost: no server-driven notifications
-  (resource-change pushes) — acceptable, archigraph's tools are request/response.
+  (resource-change pushes) — acceptable, grafel's tools are request/response.
 - **Session-stateful**: enables `notifications/*` and resource subscriptions,
   at the cost of a session table + **idle session timeout** (the issue's
   "session timeout" ask). Defer unless a concrete streaming need appears.
@@ -128,14 +128,14 @@ authentication:
   one client starving others (graph queries can be CPU-heavy). Prototype leaves
   a `RateLimiter` TODO seam.
 - **Audit.** Every authenticated request should log `(identity, group, tool,
-  outcome)`. archigraph already has an activity broker / MCP activity log
+  outcome)`. grafel already has an activity broker / MCP activity log
   (`SetMCPActivityLog`); the HTTP mode should feed it the authenticated identity
   rather than an anonymous session id.
 
 ## TLS / network
 
 - **Recommended: terminate TLS at a reverse proxy** (nginx/Caddy/Traefik or a
-  cloud LB) and have archigraph speak plain HTTP on a loopback/private-network
+  cloud LB) and have grafel speak plain HTTP on a loopback/private-network
   bind. This keeps cert management out of the Go binary (consistent with
   ADR-0001's "single binary, minimal surface" ethos), lets ops reuse existing
   TLS automation, and is where mTLS would naturally live.
@@ -153,7 +153,7 @@ authentication:
 ## Decision (recommendation)
 
 **Recommend: adopt the HTTP MCP transport as an OPT-IN, OFF-BY-DEFAULT
-additional deployment mode, gated behind `ARCHIGRAPH_HTTP_MCP`, using mcp-go's
+additional deployment mode, gated behind `GRAFEL_HTTP_MCP`, using mcp-go's
 Streamable HTTP server in stateless mode, with a pluggable
 authentication + authorization middleware — and DO NOT pick the production
 security model unilaterally.** ADR-0004 remains the default and only sanctioned
@@ -164,7 +164,7 @@ Concretely, this ADR lands:
 1. A `transport.Transport` interface in `internal/mcp/transport/` that the
    existing stdio path satisfies (`StdioTransport`), establishing the seam.
 2. An `HTTPTransport` skeleton wrapping `mcp-go`'s `StreamableHTTPServer`,
-   feature-flagged via `ARCHIGRAPH_HTTP_MCP` (**default OFF**), with a
+   feature-flagged via `GRAFEL_HTTP_MCP` (**default OFF**), with a
    pluggable `Authenticator` middleware (static-token **stub**) and explicit
    TODOs where the real auth backend, `Authorizer`, and `RateLimiter` must go.
 3. **No wiring into the daemon's default path.** The skeleton is constructed
@@ -192,7 +192,7 @@ These are intentionally **NOT decided** by this ADR or prototype:
 7. **Rate-limit + audit requirements** for compliance.
 8. **Stateless vs session-stateful** and the idle **session timeout** value if stateful.
 
-Until items 2–6 are signed off, `ARCHIGRAPH_HTTP_MCP` must remain **off by
+Until items 2–6 are signed off, `GRAFEL_HTTP_MCP` must remain **off by
 default and undocumented as production-ready**; the skeleton's stub auth is a
 placeholder, not a security control.
 

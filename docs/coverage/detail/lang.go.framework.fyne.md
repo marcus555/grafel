@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Native module imports | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3218) | `internal/custom/golang/fyne.go`<br>`internal/custom/golang/fyne_gomobile_test.go` | — |
+| Native module imports | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/grafel/issues/3218) | `internal/custom/golang/fyne.go`<br>`internal/custom/golang/fyne_gomobile_test.go` | — |
 
 ### Updates
 

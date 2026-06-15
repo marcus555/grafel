@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: dynamodb.get_item(table_name:'X') captured via scanRubyDrivers/emitDynamoTargets; QUERIES edge to Class:<Table>; dynamic names honest-skipped. |
+| Query attribution | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3645) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: dynamodb.get_item(table_name:'X') captured via scanRubyDrivers/emitDynamoTargets; QUERIES edge to Class:<Table>; dynamic names honest-skipped. |
 
 ### Migrations
 

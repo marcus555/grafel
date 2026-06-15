@@ -8,7 +8,7 @@ All tool input/output schemas are JSON Schema Draft-07.
 
 ## `list_residuals`
 
-Paginates `repair_edge` candidates from `<repo>/.archigraph/enrichment-candidates.json`. The cursor is stateless and deterministic (it's the last `edge_id` returned), so an agent can resume between sessions without server-side state.
+Paginates `repair_edge` candidates from `<repo>/.grafel/enrichment-candidates.json`. The cursor is stateless and deterministic (it's the last `edge_id` returned), so an agent can resume between sessions without server-side state.
 
 ### Input
 
@@ -73,7 +73,7 @@ Paginates `repair_edge` candidates from `<repo>/.archigraph/enrichment-candidate
 
 ### Errors
 
-- `repo_not_indexed` — `.archigraph/enrichment-candidates.json` missing. Suggest the user run `archigraph index <repo>` first.
+- `repo_not_indexed` — `.grafel/enrichment-candidates.json` missing. Suggest the user run `grafel index <repo>` first.
 - `schema_version_unsupported` — file present but `schema_version != 2`.
 - `invalid_cursor` — cursor does not refer to a known `edge_id`.
 
@@ -81,7 +81,7 @@ Paginates `repair_edge` candidates from `<repo>/.archigraph/enrichment-candidate
 
 ## `submit_repair`
 
-Validates a proposed repair against the trust model (see `repair-trust-model.md`) and appends or replaces a record in `<repo>/.archigraph/repair.json`. Writes are atomic (temp file + rename). Last-writer-wins by `resolved_at` if two calls race on the same `edge_id`.
+Validates a proposed repair against the trust model (see `repair-trust-model.md`) and appends or replaces a record in `<repo>/.grafel/repair.json`. Writes are atomic (temp file + rename). Last-writer-wins by `resolved_at` if two calls race on the same `edge_id`.
 
 ### Input
 
@@ -151,7 +151,7 @@ Validates a proposed repair against the trust model (see `repair-trust-model.md`
 
 ## `reindex` (optional, Phase 1 stretch)
 
-Reuses the indexer entry point used by `cmd/archigraph/index.go` to let the agent verify bug-rate movement after a batch of `submit_repair` calls.
+Reuses the indexer entry point used by `cmd/grafel/index.go` to let the agent verify bug-rate movement after a batch of `submit_repair` calls.
 
 ### Input
 
@@ -179,7 +179,7 @@ Reuses the indexer entry point used by `cmd/archigraph/index.go` to let the agen
 }
 ```
 
-`bug_rate_before` is read from the previous run's `disposition_breakdown` (`cmd/archigraph/index.go:220`); `bug_rate_after` is the freshly-indexed value.
+`bug_rate_before` is read from the previous run's `disposition_breakdown` (`cmd/grafel/index.go:220`); `bug_rate_after` is the freshly-indexed value.
 
 ---
 

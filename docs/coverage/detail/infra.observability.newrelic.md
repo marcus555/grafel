@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | 🔴 `missing` | — | 3828 | — | No log/metric/trace extraction yet for this vendor; tracked in #3828. |
 | Metric extraction | 🔴 `missing` | — | 3828 | — | No log/metric/trace extraction yet for this vendor; tracked in #3828. |
-| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3762) | `internal/extractors/python/observability.go` | #3628 area #11: New Relic Python agent trace decorators emit INSTRUMENTS edges (enclosing op -> span:<name> stub). @newrelic.agent.function_trace() / @function_trace() / @background_task() / @web_transaction() default the span name to the function name; name="..." uses the explicit name. Honest-partial: dynamic names emit traced=true+dynamic=true without fabrication; only Python is covered. |
+| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3762) | `internal/extractors/python/observability.go` | #3628 area #11: New Relic Python agent trace decorators emit INSTRUMENTS edges (enclosing op -> span:<name> stub). @newrelic.agent.function_trace() / @function_trace() / @background_task() / @web_transaction() default the span name to the function name; name="..." uses the explicit name. Honest-partial: dynamic names emit traced=true+dynamic=true without fabrication; only Python is covered. |
 
 ## Provenance
 

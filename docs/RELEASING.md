@@ -1,8 +1,8 @@
-# Releasing archigraph
+# Releasing grafel
 
 ## Versioning policy
 
-archigraph follows [Semantic Versioning](https://semver.org/) under a
+grafel follows [Semantic Versioning](https://semver.org/) under a
 `v0.MINOR.PATCH` scheme until v1.0.
 
 | Component | Rule |
@@ -53,11 +53,11 @@ git push origin vX.Y.Z
 4. Body: paste the CHANGELOG section for this version.
 5. Tick **"This is a pre-release"** for every release until v1.0.
 6. Attach platform binaries as release assets:
-   - `archigraph-darwin-arm64`
-   - `archigraph-darwin-amd64`
-   - `archigraph-linux-amd64`
-   - `archigraph-linux-arm64`
-   - `archigraph.exe` (Windows, CGO/MinGW build)
+   - `grafel-darwin-arm64`
+   - `grafel-darwin-amd64`
+   - `grafel-linux-amd64`
+   - `grafel-linux-arm64`
+   - `grafel.exe` (Windows, CGO/MinGW build)
 
 ### 4. Post-release
 
@@ -73,6 +73,6 @@ The on-disk `graph.fb` FlatBuffers schema carries a `version` integer field
 
 ## MCP wire_version
 
-`archigraph_whoami` returns a `wire_version` field (e.g. `"0.1.0"`). Agents
+`grafel_whoami` returns a `wire_version` field (e.g. `"0.1.0"`). Agents
 can use this to detect incompatible daemon versions. The value is a constant
 in `internal/mcp/tools.go` and must be bumped on every MINOR release.

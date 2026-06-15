@@ -15,34 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Component extraction | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
+| Component extraction | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
 | Hook recognition | — `not_applicable` | — | — | — | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Data loaders | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Data loaders | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
 
 ### Server
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Hydration boundaries | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
-| Server components | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Hydration boundaries | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Server components | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
 
 ### Routing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Route extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/frameworks/astro.yaml` | — |
-| Router pattern | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/archigraph/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
+| Router pattern | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
 
 ### Build
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Static generation | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
+| Static generation | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2858_server_test.go` | — |
 
 ### Type System
 
@@ -56,7 +56,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/2858) | `internal/extractors/astro/extractor.go` | — |
+| State setter emission | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/extractors/astro/extractor.go` | — |
 
 ### Testing
 
@@ -99,8 +99,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Astro frontmatter fetch | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
-| Astro island directive | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
+| Astro frontmatter fetch | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
+| Astro island directive | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/2878) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2878_idioms_test.go` | — |
 
 ## Provenance
 

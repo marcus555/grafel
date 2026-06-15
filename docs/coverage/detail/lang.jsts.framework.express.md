@@ -33,7 +33,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ✅ `full` | `2026-05-28` | — | `cmd/archigraph/audit2852_jsauth_test.go`<br>`internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`testdata/fixtures/typescript/express_auth.ts` | — |
+| Auth coverage | ✅ `full` | `2026-05-28` | — | `cmd/grafel/audit2852_jsauth_test.go`<br>`internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`testdata/fixtures/typescript/express_auth.ts` | — |
 
 ### Validation
 
@@ -47,7 +47,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_jsts_middleware.go`<br>`internal/engine/http_endpoint_jsts_middleware_test.go`<br>`testdata/fixtures/typescript/express_middleware.ts` | — |
-| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3778) | `internal/engine/http_endpoint_jsts_ratelimit.go`<br>`internal/engine/http_endpoint_jsts_ratelimit_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | express-rate-limit / express-slow-down: resolves windowMs+max to a human rate and stamps rate_limited/rate_limit/rate_limit_scope (route|app)/rate_limit_source on the endpoint op. Imported/config-driven limiters → rate_limited=true with rate omitted (honest-partial). Negative: a limiter defined but never applied to a route is not stamped. |
+| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3778) | `internal/engine/http_endpoint_jsts_ratelimit.go`<br>`internal/engine/http_endpoint_jsts_ratelimit_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | express-rate-limit / express-slow-down: resolves windowMs+max to a human rate and stamps rate_limited/rate_limit/rate_limit_scope (route|app)/rate_limit_source on the endpoint op. Imported/config-driven limiters → rate_limited=true with rate omitted (honest-partial). Negative: a limiter defined but never applied to a route is not stamped. |
 
 ### Schema
 
@@ -127,7 +127,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Effective contract | 🟢 `partial` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4710) | `internal/authposture/express.go`<br>`internal/mcp/effective_contract_express.go`<br>`internal/mcp/effective_contract_express_4710_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go` | #4710: the expressContractResolver in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint contract for Express/Fastify/Koa/Hapi/Hono from signals already on the graph (re-extracts nothing): request fields from the handler's VALIDATES->dto:<schema> (zod/joi/celebrate, #3073/#4635) field members + Fastify schema.body via request_body_type + path/query scalars; per-branch numeric response statuses from the JSTS branch analyzer (res.status(NNN).json/reply.code(NNN), substrate analyzeBranchesJSTS); auth posture from the new authposture express resolver (passport/requireAuth/role-middleware). PARTIAL by design — Express is the loosest stack: untyped req.body with NO validation schema yields no request fields (nothing recoverable), and most Express apps carry no structured RBAC so auth resolves authenticated-only/unknown. Value-asserting test TestEffectiveContract_Express_FullContract: zod body fields + 404/409 branch statuses + authenticated posture. |
+| Effective contract | 🟢 `partial` | `2026-06-11` | [link](https://github.com/cajasmota/grafel/issues/4710) | `internal/authposture/express.go`<br>`internal/mcp/effective_contract_express.go`<br>`internal/mcp/effective_contract_express_4710_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go` | #4710: the expressContractResolver in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint contract for Express/Fastify/Koa/Hapi/Hono from signals already on the graph (re-extracts nothing): request fields from the handler's VALIDATES->dto:<schema> (zod/joi/celebrate, #3073/#4635) field members + Fastify schema.body via request_body_type + path/query scalars; per-branch numeric response statuses from the JSTS branch analyzer (res.status(NNN).json/reply.code(NNN), substrate analyzeBranchesJSTS); auth posture from the new authposture express resolver (passport/requireAuth/role-middleware). PARTIAL by design — Express is the loosest stack: untyped req.body with NO validation schema yields no request fields (nothing recoverable), and most Express apps carry no structured RBAC so auth resolves authenticated-only/unknown. Value-asserting test TestEffectiveContract_Express_FullContract: zod body fields + 404/409 branch statuses + authenticated posture. |
 
 ## Provenance
 

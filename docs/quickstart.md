@@ -19,16 +19,16 @@ This page gets you from zero to a running graph in five commands. For a full ins
 ## 1. Build
 
 ```sh
-git clone https://github.com/cajasmota/archigraph.git
-cd archigraph
-make build          # builds dashboard + binary -> ./archigraph
-./archigraph --version
+git clone https://github.com/cajasmota/grafel.git
+cd grafel
+make build          # builds dashboard + binary -> ./grafel
+./grafel --version
 ```
 
 Optional — add to `PATH`:
 
 ```sh
-go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/archigraph
+go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/grafel
 # installs to ~/go/bin -- make sure ~/go/bin is on your PATH
 ```
 
@@ -37,7 +37,7 @@ go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/archigr
 ## 2. Index your code
 
 ```sh
-./archigraph wizard
+./grafel wizard
 ```
 
 The wizard asks you to point at a folder. It accepts:
@@ -52,7 +52,7 @@ You can also use the **Add group** button in the dashboard after step 3.
 ## 3. Start the daemon + register MCP
 
 ```sh
-./archigraph install <group>
+./grafel install <group>
 ```
 
 This starts the daemon as a background service, registers the MCP server in your AI agent's config (Claude Code's `~/.claude/claude.json`, or equivalent for other clients), and installs the skill family to `~/.claude/skills/`.
@@ -60,7 +60,7 @@ This starts the daemon as a background service, registers the MCP server in your
 To verify:
 
 ```sh
-./archigraph status <group>
+./grafel status <group>
 ```
 
 Output shows `MCP: connected` when the wiring is complete.
@@ -70,7 +70,7 @@ Output shows `MCP: connected` when the wiring is complete.
 ## 4. Open the dashboard
 
 ```sh
-./archigraph dashboard    # opens http://127.0.0.1:47274 in your browser
+./grafel dashboard    # opens http://127.0.0.1:47274 in your browser
 ```
 
 The dashboard is embedded in the daemon binary — no separate server needed. Deep links and browser reloads work on every surface.
@@ -79,32 +79,32 @@ The dashboard is embedded in the daemon binary — no separate server needed. De
 
 ## 5. Query from your agent
 
-Open a new Claude Code session in one of your indexed repos. The MCP server is auto-registered, so you can call archigraph tools immediately:
+Open a new Claude Code session in one of your indexed repos. The MCP server is auto-registered, so you can call grafel tools immediately:
 
 ```
-archigraph_whoami()      -- confirm group + repo
-archigraph_stats()       -- entity counts, any unavailable repos
-archigraph_clusters()    -- module map (Louvain communities)
+grafel_whoami()      -- confirm group + repo
+grafel_stats()       -- entity counts, any unavailable repos
+grafel_clusters()    -- module map (Louvain communities)
 ```
 
-For a complete guide to navigating with the MCP tools, see [../skills/using-archigraph/SKILL.md](../skills/using-archigraph/SKILL.md).
+For a complete guide to navigating with the MCP tools, see [../skills/using-grafel/SKILL.md](../skills/using-grafel/SKILL.md).
 
 ---
 
 ## Daemon control
 
 ```sh
-archigraph start          # start daemon in background
-archigraph stop           # stop daemon
-archigraph restart        # restart daemon
-archigraph status         # health check all groups
-archigraph doctor         # full install smoke-check
+grafel start          # start daemon in background
+grafel stop           # stop daemon
+grafel restart        # restart daemon
+grafel status         # health check all groups
+grafel doctor         # full install smoke-check
 ```
 
-After upgrading archigraph:
+After upgrading grafel:
 
 ```sh
-archigraph rebuild <group>    # force AST rebuild, no cache
+grafel rebuild <group>    # force AST rebuild, no cache
 ```
 
 ---
@@ -112,6 +112,6 @@ archigraph rebuild <group>    # force AST rebuild, no cache
 ## Uninstall
 
 ```sh
-archigraph uninstall          # removes skills, MCP entry, stops daemon
-archigraph uninstall --purge  # also removes ~/.archigraph/store/ (your graphs)
+grafel uninstall          # removes skills, MCP entry, stops daemon
+grafel uninstall --purge  # also removes ~/.grafel/store/ (your graphs)
 ```

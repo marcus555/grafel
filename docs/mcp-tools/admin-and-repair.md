@@ -6,7 +6,7 @@ Enrichment and repair queues, session metrics, and local-only telemetry events.
 
 ---
 
-## `archigraph_enrichments`
+## `grafel_enrichments`
 
 Enrichment candidate queue.
 
@@ -16,7 +16,7 @@ Output: pending candidates (`list`) or a resolution acknowledgement (`submit`/`r
 
 ---
 
-## `archigraph_repairs`
+## `grafel_repairs`
 
 Residual-edge repair queue.
 
@@ -26,19 +26,19 @@ Output: pending residual edges (`list`) or a resolution acknowledgement (`submit
 
 ---
 
-## `archigraph_mcp_metrics`
+## `grafel_mcp_metrics`
 
 Current-session tool-call metrics plus persisted daily rollups.
 
 Key parameters: `days` (default 3). Group-agnostic — no `cwd` routing needed.
 
-Output: per-tool `calls`, `errors`, `p50_ms`, `p95_ms` for the current daemon session, plus up to N days of rollup records from `~/.archigraph/metrics/mcp-YYYY-MM-DD.jsonl`.
+Output: per-tool `calls`, `errors`, `p50_ms`, `p95_ms` for the current daemon session, plus up to N days of rollup records from `~/.grafel/metrics/mcp-YYYY-MM-DD.jsonl`.
 
 ---
 
-## `archigraph_persona_event`
+## `grafel_persona_event`
 
-Record a persona lifecycle event. **LOCAL ONLY** — data never leaves the machine; events land in `~/.archigraph/events/persona-events-YYYY-MM-DD.jsonl`.
+Record a persona lifecycle event. **LOCAL ONLY** — data never leaves the machine; events land in `~/.grafel/events/persona-events-YYYY-MM-DD.jsonl`.
 
 Key parameters: `persona` (required), `event_type` (required: `invoke`/`consult_out`/`save_finding`), `target_persona`, `depth` (default 0), `chain[]`, `metadata`.
 
@@ -46,7 +46,7 @@ Key parameters: `persona` (required), `event_type` (required: `invoke`/`consult_
 
 ---
 
-## `archigraph_feedback_event`
+## `grafel_feedback_event`
 
 Record agent-experience feedback for a test run. **LOCAL ONLY.**
 

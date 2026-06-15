@@ -20,7 +20,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint response codes | ✅ `full` | `2026-06-02` | — | `internal/engine/http_endpoint_reactive_posture.go`<br>`internal/engine/http_endpoint_reactive_posture_test.go`<br>`internal/engine/http_endpoint_response_codes.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3858: response_codes/success_code/response_codes_source on Vert.x Web endpoints via vertxResponseCodes (reactiveResponseCodes -> java branch of applyEndpointResponseCodes). Signal: rc.response().setStatusCode(NNN). Value-asserted TestResponseCodes_Vertx_SetStatusCodeCreated/_SetStatusCodeNotFound; negative _NoStatusNotStamped (no setStatusCode -> absent, honest-partial; dynamic setStatusCode(var) skipped). |
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/vert_x.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/vert_x.yaml` | — |
-| Route extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3086) | `internal/engine/http_endpoint_synthesis.go` | — |
+| Route extraction | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3086) | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### View
 
@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/vertx_routes.go` | #3862: framework_auth.go stamps the flat auth contract on Vert.x route entities. JWTAuthHandler/OAuth2AuthHandler/BasicAuthHandler mounted on the router → auth_required=true + auth_mechanism=jwt/oauth2/basic (medium confidence, file-level subtree attribution); @RolesAllowed → auth_roles. Value-asserting tests: JWTAuthHandler on a route → auth_required=true auth_mechanism=jwt; BasicAuthHandler + @RolesAllowed({ADMIN}) → auth_mechanism=basic auth_roles=ADMIN; router with no auth handler → auth_required absent. |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/vertx_routes.go` | #3862: framework_auth.go stamps the flat auth contract on Vert.x route entities. JWTAuthHandler/OAuth2AuthHandler/BasicAuthHandler mounted on the router → auth_required=true + auth_mechanism=jwt/oauth2/basic (medium confidence, file-level subtree attribution); @RolesAllowed → auth_roles. Value-asserting tests: JWTAuthHandler on a route → auth_required=true auth_mechanism=jwt; BasicAuthHandler + @RolesAllowed({ADMIN}) → auth_mechanism=basic auth_roles=ADMIN; router with no auth handler → auth_required absent. |
 
 ### Validation
 
@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
+| Middleware coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
 | Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
@@ -67,26 +67,26 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
-| DI injection point | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
-| DI scope resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
+| DI binding extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
+| DI injection point | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
+| DI scope resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in DI container. Applications use external DI (Guice, CDI, Spring) or manual wiring. |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3863) | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present. |
+| Transaction boundary extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3863) | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present. |
 | Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
-| Transaction propagation | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
-| Transaction rollback rules | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3863) | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework. |
+| Transaction propagation | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
+| Transaction rollback rules | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3863) | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework. |
 
 ### AOP
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Advice attribution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
-| Aspect extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
-| Pointcut resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
+| Advice attribution | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
+| Aspect extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
+| Pointcut resolution | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3086) | — | Vert.x has no built-in AOP support. Applications use external AOP (AspectJ, Spring AOP) if needed. |
 
 ### Observability
 
@@ -106,7 +106,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
+| Confidence overlay | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3093) | `internal/links/constant_propagation.go`<br>`internal/links/effect_propagation.go`<br>`internal/links/taint_flow.go`<br>`internal/substrate/effect_sinks_java.go`<br>`internal/substrate/java.go`<br>`internal/substrate/taint_sites_java.go` | Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence. |
 | Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/java/config_consumer.go`<br>`internal/extractors/java/config_consumer_test.go` | @Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -> config:<key> (issue #3641) |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
 | Dead code detection | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |

@@ -16,26 +16,26 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Task extraction | 🟢 `partial` | `2026-05-28` | — | `internal/custom/python/dramatiq.go`<br>`internal/engine/rules/python/frameworks/dramatiq.yaml` | — |
-| Task routing | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3193) | `internal/custom/python/dramatiq.go`<br>`internal/custom/python/dramatiq_routing_test.go` | queue->actor routing extracted from @dramatiq.actor(queue_name=...) decorators and actor.send_with_options(queue_name=...) dispatch overrides. Partial because broker-level routing middleware (broker.add_middleware) and dynamic/computed queue names are not modelled. |
+| Task routing | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/grafel/issues/3193) | `internal/custom/python/dramatiq.go`<br>`internal/custom/python/dramatiq_routing_test.go` | queue->actor routing extracted from @dramatiq.actor(queue_name=...) decorators and actor.send_with_options(queue_name=...) dispatch overrides. Partial because broker-level routing middleware (broker.add_middleware) and dynamic/computed queue names are not modelled. |
 
 ### Schedule
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Schedule extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | — | django-dramatiq periodiq/APScheduler integration: periodic task declarations via @dramatiq.actor + periodiq.cron are detectable via the @periodiq.cron decorator pattern but are not yet extracted by the dramatiq extractor. Partial because basic actor-based scheduling is not modelled; only per-actor retry intervals. |
+| Schedule extraction | 🟢 `partial` | — | [link](https://github.com/cajasmota/grafel/issues/3074) | — | django-dramatiq periodiq/APScheduler integration: periodic task declarations via @dramatiq.actor + periodiq.cron are detectable via the @periodiq.cron decorator pattern but are not yet extracted by the dramatiq extractor. Partial because basic actor-based scheduling is not modelled; only per-actor retry intervals. |
 
 ### Broker
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Broker binding | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/dramatiq.go` | — |
-| Result backend binding | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3074) | — | dramatiq has no result_backend concept; task results are stored via middleware (e.g. django-dramatiq result backend), not a single broker URL |
+| Broker binding | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/dramatiq.go` | — |
+| Result backend binding | — `not_applicable` | — | [link](https://github.com/cajasmota/grafel/issues/3074) | — | dramatiq has no result_backend concept; task results are stored via middleware (e.g. django-dramatiq result backend), not a single broker URL |
 
 ### Reliability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Retry policy extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/dramatiq.go` | — |
+| Retry policy extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3074) | `internal/custom/python/broker_binding_test.go`<br>`internal/custom/python/dramatiq.go` | — |
 
 ### Testing
 

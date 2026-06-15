@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-05` | [link](https://github.com/cajasmota/archigraph/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: elasticsearch-rs index literal captured in scanRustDrivers via the shared emitElasticTargets (key/value + .Index() forms) plus the Rust-specific rustEsIndexRe (lowercase .index("x") builder and SearchParts::Index(&["x"]) request-path enum); QUERIES edge to Class:<Index> with orm=elastic, gated on mentionsRustElastic (elasticsearch/SearchParts/IndexParts). Dynamic index names honest-skipped. |
+| Query attribution | ✅ `full` | `2026-06-05` | [link](https://github.com/cajasmota/grafel/issues/4271) | `internal/engine/orm_queries.go`<br>`internal/engine/orm_queries_drivers_other.go`<br>`internal/engine/orm_queries_drivers_other_test.go` | Driver topology: elasticsearch-rs index literal captured in scanRustDrivers via the shared emitElasticTargets (key/value + .Index() forms) plus the Rust-specific rustEsIndexRe (lowercase .index("x") builder and SearchParts::Index(&["x"]) request-path enum); QUERIES edge to Class:<Index> with orm=elastic, gated on mentionsRustElastic (elasticsearch/SearchParts/IndexParts). Dynamic index names honest-skipped. |
 
 ### Migrations
 

@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3545) | `internal/custom/rust/validator_test.go` | validator-specific fixtures assert exact constraint values; general rust test-linkage substrate provides edges |
+| Tests linkage | 🟢 `partial` | `2026-05-30` | [link](https://github.com/cajasmota/grafel/issues/3545) | `internal/custom/rust/validator_test.go` | validator-specific fixtures assert exact constraint values; general rust test-linkage substrate provides edges |
 
 ## Provenance
 

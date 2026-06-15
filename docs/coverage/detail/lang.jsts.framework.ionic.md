@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Context extraction | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2751) | `internal/extractors/javascript/extractor.go` | — |
+| Context extraction | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2751) | `internal/extractors/javascript/extractor.go` | — |
 
 ### Navigation
 
@@ -41,8 +41,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Branch conditions | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/discriminator.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
-| State management | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx`<br>`internal/extractors/javascript/zustand_store.go` | — |
+| Branch conditions | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/discriminator.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
+| State management | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx`<br>`internal/extractors/javascript/zustand_store.go` | — |
 
 ### Type System
 
@@ -56,7 +56,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| State setter emission | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
+| State setter emission | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
 
 ### Testing
 
@@ -99,7 +99,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| HOC wrapper recognition | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
+| HOC wrapper recognition | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2859) | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/testdata/mobile_ionic/SessionContext.tsx` | — |
 
 ## Provenance
 

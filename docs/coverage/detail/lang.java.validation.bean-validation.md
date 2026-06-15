@@ -35,7 +35,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/junit5.go` | Bean Validation integration tests use JUnit 5 with jakarta.validation.Validator. The junit5 extractor (internal/custom/java/junit5.go) captures @Test methods for the junit5 framework tag. Tests for bean-validation handlers are linked via the same JUnit 5 test-method extraction path used by other Java frameworks (e.g. Jakarta EE, Spring Boot — see #2996, #2991). |
+| Tests linkage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/junit5.go` | Bean Validation integration tests use JUnit 5 with jakarta.validation.Validator. The junit5 extractor (internal/custom/java/junit5.go) captures @Test methods for the junit5 framework tag. Tests for bean-validation handlers are linked via the same JUnit 5 test-method extraction path used by other Java frameworks (e.g. Jakarta EE, Spring Boot — see #2996, #2991). |
 
 ## Provenance
 

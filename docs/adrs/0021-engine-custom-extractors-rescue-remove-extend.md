@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-06-02 (accepted 2026-06-03)
-- **Deciders:** archigraph maintainers
+- **Deciders:** grafel maintainers
 - **Related:** ADR-0001 (Go-native single binary), ADR-0018 (agent-learned patterns), issue #3585/#3586 (dead Java pattern-extractor layer cited as coverage)
 - **Scope:** architecture evaluation. The REMOVE half (#3636 P1) is implemented: the dead
   `custom_extractors:` YAML blocks and the `CustomExtractor` struct were deleted, a
@@ -13,7 +13,7 @@
 
 ## Context
 
-archigraph began as a Python project whose framework-extraction engine read **YAML
+grafel began as a Python project whose framework-extraction engine read **YAML
 rule files**, one per framework. Those YAML files have four block types. Three are
 declarative regex/glob rules; the fourth, `custom_extractors:`, was an **escape
 hatch**: a pluggable pointer to a Python callable (`module:function`) for "patterns

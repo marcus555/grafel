@@ -47,7 +47,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/python/flask.go` | flask.go extracts @app.before_request / @app.after_request / @app.teardown_request / @bp.before_app_request decorators as request_hook pattern entities — these ARE Flask's middleware mechanism (no traditional middleware class in Flask; hooks are the canonical approach). Test: TestFlask_RequestHook proves before_request hook extraction with hook_type property. |
-| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3778) | `internal/custom/python/flask.go`<br>`internal/custom/python/rate_limit_endpoint.go`<br>`internal/custom/python/rate_limit_endpoint_test.go` | flask-limiter @limiter.limit("100/hour") and django-ratelimit @ratelimit(key='ip', rate='5/m') stamp rate_limited/rate_limit/rate_limit_scope/rate_limit_source on the route op. |
+| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/grafel/issues/3778) | `internal/custom/python/flask.go`<br>`internal/custom/python/rate_limit_endpoint.go`<br>`internal/custom/python/rate_limit_endpoint_test.go` | flask-limiter @limiter.limit("100/hour") and django-ratelimit @ratelimit(key='ip', rate='5/m') stamp rate_limited/rate_limit/rate_limit_scope/rate_limit_source on the route op. |
 
 ### Schema
 

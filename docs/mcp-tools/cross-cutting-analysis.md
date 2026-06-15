@@ -6,7 +6,7 @@ Modules, communities, HTTP surface, message topology, flows, and change impact.
 
 ---
 
-## `archigraph_clusters`
+## `grafel_clusters`
 
 Louvain communities across loaded graphs — a fast module map.
 
@@ -16,7 +16,7 @@ Output: list of community clusters with representative entities.
 
 ---
 
-## `archigraph_module_analysis`
+## `grafel_module_analysis`
 
 Module-level SCC + PageRank + betweenness.
 
@@ -26,7 +26,7 @@ Output: module SCCs (cycles), PageRank + betweenness centrality scores.
 
 ---
 
-## `archigraph_import_cycles`
+## `grafel_import_cycles`
 
 IMPORTS cycle clusters per repo (Tarjan SCC).
 
@@ -36,7 +36,7 @@ Output: per-repo import cycle clusters.
 
 ---
 
-## `archigraph_quality_cycles`
+## `grafel_quality_cycles`
 
 Detect import cycles via Tarjan SCC, with the weakest edge and a fix hint.
 
@@ -46,7 +46,7 @@ Output: SCC lists representing circular import chains, with the weakest edge ide
 
 ---
 
-## `archigraph_impact_radius`
+## `grafel_impact_radius`
 
 Inbound blast-radius: affected entities with `risk_score [0,1]`.
 
@@ -56,7 +56,7 @@ Output: list of affected entities with `risk_score [0,1]` (higher = more transit
 
 ---
 
-## `archigraph_pr_impact`
+## `grafel_pr_impact`
 
 PR impact + merge-risk: maps changes → communities → blast radius.
 
@@ -66,7 +66,7 @@ Output: changed entities, the communities they touch, and the resulting blast ra
 
 ---
 
-## `archigraph_diff_refs`
+## `grafel_diff_refs`
 
 Diff two indexed git refs.
 
@@ -76,7 +76,7 @@ Output: added/removed/modified entities and relationships between the two indexe
 
 ---
 
-## `archigraph_endpoints`
+## `grafel_endpoints`
 
 HTTP endpoints surface.
 
@@ -91,7 +91,7 @@ Filters (`path_contains`, `method`) are applied **before** `limit`.
 
 ---
 
-## `archigraph_endpoint_posture`
+## `grafel_endpoint_posture`
 
 Endpoint posture: throws/catches + rate-limit + deprecation + feature-gates + auth.
 
@@ -101,7 +101,7 @@ Output: per-endpoint posture facets.
 
 ---
 
-## `archigraph_effective_contract`
+## `grafel_effective_contract`
 
 Per-verb effective contract of a ViewSet/controller (or route).
 
@@ -111,7 +111,7 @@ Output: the resolved per-HTTP-verb contract for the controller/route.
 
 ---
 
-## `archigraph_topology`
+## `grafel_topology`
 
 Message-channel topology.
 
@@ -121,7 +121,7 @@ Output: orphan publishers/subscribers and topic detail.
 
 ---
 
-## `archigraph_flows`
+## `grafel_flows`
 
 Flow-process diagnostics.
 
@@ -131,17 +131,17 @@ Output: dead-end flows, truncated flows, and per-process detail.
 
 ---
 
-## `archigraph_graph_patterns`
+## `grafel_graph_patterns`
 
 Indexer-extracted structural patterns (not the agent store).
 
 Key parameters: `action` (required: `list`/`get`), `pattern_id`, `needs_attention` (bool), `status`, `confidence_min`, `limit` (default 50), `repo_filter[]`.
 
-Output: browse (`list`) or detail (`get`) of patterns extracted by the indexer. See [`archigraph_patterns`](findings-and-docs.md#archigraph_patterns) for the agent-learned store.
+Output: browse (`list`) or detail (`get`) of patterns extracted by the indexer. See [`grafel_patterns`](findings-and-docs.md#grafel_patterns) for the agent-learned store.
 
 ---
 
-## `archigraph_payload_drift`
+## `grafel_payload_drift`
 
 Schema-drift findings on cross-repo HTTP endpoints.
 
@@ -151,7 +151,7 @@ Output: drift findings (schema/envelope) on linked cross-repo endpoints.
 
 ---
 
-## `archigraph_cross_links`
+## `grafel_cross_links`
 
 Cross-repo link candidates.
 

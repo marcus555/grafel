@@ -15,17 +15,17 @@ Static analysis can see what is written in source: imports, calls, class hierarc
 
 These dynamic connections are precisely the ones developers and AI agents most need help understanding, because they are invisible at code-read time.
 
-archigraph already indexes markdown documentation alongside code (heading entities, code-block entities, link edges). Generated documentation read by AI writer agents (or by humans following a documentation discipline) routinely names code identifiers in headings and prose. If we treat those mentions as graph signals, documentation becomes a way to encode dynamic connections that static analysis cannot see.
+grafel already indexes markdown documentation alongside code (heading entities, code-block entities, link edges). Generated documentation read by AI writer agents (or by humans following a documentation discipline) routinely names code identifiers in headings and prose. If we treat those mentions as graph signals, documentation becomes a way to encode dynamic connections that static analysis cannot see.
 
 ## Decision
 
-archigraph indexes markdown documentation as first-class graph content. Markdown headings and code blocks become nodes in the same graph as code symbols. The key collision rule: when a markdown heading uses a backticked code identifier (e.g., `` `OrderViewSet` ``), the **slug derived from the heading collides with the code symbol's slug**, so the two nodes merge in the graph.
+grafel indexes markdown documentation as first-class graph content. Markdown headings and code blocks become nodes in the same graph as code symbols. The key collision rule: when a markdown heading uses a backticked code identifier (e.g., `` `OrderViewSet` ``), the **slug derived from the heading collides with the code symbol's slug**, so the two nodes merge in the graph.
 
 A documentation page that says:
 
 > ## How `OrderViewSet` calls `BillingService`
 
-becomes a node that the graph treats as the same entity as the code symbol `OrderViewSet`, with edges to the doc page that mentions `BillingService`. The doc page therefore becomes a queryable bridge between two code symbols that have **no static edge** between them. Writer agents (via archigraph's doc-generation skill) effectively contribute graph edges by writing prose, with the slug-collision rule turning prose into structured data.
+becomes a node that the graph treats as the same entity as the code symbol `OrderViewSet`, with edges to the doc page that mentions `BillingService`. The doc page therefore becomes a queryable bridge between two code symbols that have **no static edge** between them. Writer agents (via grafel's doc-generation skill) effectively contribute graph edges by writing prose, with the slug-collision rule turning prose into structured data.
 
 Two conventions support this in practice:
 
@@ -44,7 +44,7 @@ Two conventions support this in practice:
 - Stale documentation degrades the bridge until regenerated; the graph trusts the docs, and out-of-date docs can mislead.
 - Heading-text changes mutate the slug ID, so renaming a heading silently breaks bridge edges. Mitigation: writer agents are instructed not to rename headings without intent.
 - Authors who do not follow the backtick convention create headings that look right to humans but do not bridge in the graph. The convention must be taught, tooled, and lint-enforced.
-- Increases the importance of doc quality; archigraph effectively makes documentation part of the architecture.
+- Increases the importance of doc quality; grafel effectively makes documentation part of the architecture.
 
 ### Neutral
 - This decision treats documentation as a peer of code in the data model, which is consistent with the SCOPE taxonomy in ADR-003 (markdown content can map to `SCOPE.Component` / `SCOPE.Reference` and similar kinds).

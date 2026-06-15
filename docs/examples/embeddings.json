@@ -1,5 +1,5 @@
 {
-  "_doc": "Copy to ~/.archigraph/embeddings.json. Env vars (ARCHIGRAPH_EMBEDDING_BACKEND, _URL, _MODEL, _API_KEY, _DIMS) override every field below. See ADR-0019.",
+  "_doc": "Copy to ~/.grafel/embeddings.json. Env vars (GRAFEL_EMBEDDING_BACKEND, _URL, _MODEL, _API_KEY, _DIMS) override every field below. See ADR-0019.",
   "_examples": {
     "default": { "backend": "builtin" },
     "ollama": {

@@ -1,12 +1,12 @@
 # Agent host configuration — Haiku for graph enrichment
 
-The graph-enrichment pass (`/archigraph-graph-enrich`) runs hundreds to
+The graph-enrichment pass (`/grafel-graph-enrich`) runs hundreds to
 thousands of LLM calls in batches. Using the wrong model (Sonnet or Opus)
 inflates cost by 10–20× without meaningfully improving enrichment quality for
 most entities. This page shows how to set `claude-3-haiku-20240307` as the
 active model in each supported agent host **before** starting enrichment.
 
-> **Model selection rule** (from [`skills/archigraph-graph-enrich/SKILL.md`](../skills/archigraph-graph-enrich/SKILL.md)):
+> **Model selection rule** (from [`skills/grafel-graph-enrich/SKILL.md`](../skills/grafel-graph-enrich/SKILL.md)):
 > Haiku for `high`, `medium`, and `low` criticality bands (the vast majority
 > of a corpus). Sonnet only for the small `critical` tier (score ≥ 80).
 > The skill enforces this automatically — but only when the host allows
@@ -19,8 +19,8 @@ active model in each supported agent host **before** starting enrichment.
 | Host | Can set model? | Supports MCP? | Per-call override? | Notes |
 |------|---------------|--------------|-------------------|-------|
 | [Claude Code](#claude-code) | Yes — CLI flag, slash command, or `settings.json` | Yes (native) | Yes — skill drives model selection per batch | Full support; recommended |
-| [Cursor](#cursor) | Yes — model picker per session | Yes (via MCP JSON config) | No — one model for the whole session | Switch to Haiku before invoking `/archigraph-graph-enrich` |
-| [Windsurf](#windsurf-codeium) | Yes — Cascade model picker | Yes (via MCP JSON config) | No — one model for the whole session | Switch to Haiku before invoking `/archigraph-graph-enrich` |
+| [Cursor](#cursor) | Yes — model picker per session | Yes (via MCP JSON config) | No — one model for the whole session | Switch to Haiku before invoking `/grafel-graph-enrich` |
+| [Windsurf](#windsurf-codeium) | Yes — Cascade model picker | Yes (via MCP JSON config) | No — one model for the whole session | Switch to Haiku before invoking `/grafel-graph-enrich` |
 | [Continue](#continue) | Yes — `config.json` or inline picker | Yes (via MCP JSON config) | No | Set `defaultModel` to Haiku in config |
 | [Aider](#aider) | Yes — `--model` CLI flag or `.aider.conf.yml` | No (no MCP client) | No | Run enrichment outside Aider; use Claude Code instead |
 | [Cline](#cline) | Yes — model picker in VS Code sidebar | Yes (via MCP JSON config) | No — one model per task | Switch to Haiku before starting the task |
@@ -29,7 +29,7 @@ active model in each supported agent host **before** starting enrichment.
 
 ## Claude Code
 
-Enrichment runs inside Claude Code and the `/archigraph-graph-enrich` skill drives model
+Enrichment runs inside Claude Code and the `/grafel-graph-enrich` skill drives model
 selection automatically (Haiku for non-critical batches, Sonnet for the
 critical tier). You can still lock the session to Haiku to prevent accidental
 Sonnet fallback.
@@ -43,7 +43,7 @@ claude --model claude-3-haiku-20240307
 Then invoke:
 
 ```
-/archigraph-graph-enrich
+/grafel-graph-enrich
 ```
 
 The skill's enrichment will use Haiku for all non-critical batches and will
@@ -84,8 +84,8 @@ Expected output: `Current model: claude-3-haiku-20240307`
 ### Recommended workflow for enrichment
 
 1. `claude --model claude-3-haiku-20240307` — start the session locked to Haiku.
-2. Run `archigraph status <group>` to confirm the daemon is up and MCP is connected.
-3. Invoke `/archigraph-graph-enrich` — the skill fetches the pending enrichment
+2. Run `grafel status <group>` to confirm the daemon is up and MCP is connected.
+3. Invoke `/grafel-graph-enrich` — the skill fetches the pending enrichment
    queue, then prints a cost estimate and asks for confirmation before
    dispatching batches. The non-critical batches go to Haiku; the skill will ask
    you to confirm the model switch to Sonnet for the critical tier before sending
@@ -123,7 +123,7 @@ There is no CLI command to query it.
 ### Recommended workflow for enrichment
 
 Because Cursor does not allow mid-run model switching, all batches — including
-the critical tier — will use the model active when you invoke `/archigraph-graph-enrich`.
+the critical tier — will use the model active when you invoke `/grafel-graph-enrich`.
 Choose one of:
 
 - **Option A (preferred):** use Claude Code for enrichment (supports per-batch
@@ -219,7 +219,7 @@ The current model is shown in the Continue chat panel footer.
 ## Aider
 
 Aider is a terminal-based AI coding tool. It does not have an MCP client, so
-it cannot call `archigraph_*` MCP tools directly. **enrichment cannot run inside
+it cannot call `grafel_*` MCP tools directly. **enrichment cannot run inside
 Aider.** Use Claude Code for enrichment.
 
 If you use Aider for your normal coding sessions but want to run enrichment,
@@ -248,7 +248,7 @@ model: claude-3-haiku-20240307
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `archigraph_*` tools not found in Aider | Aider has no MCP client | Use Claude Code for enrichment |
+| `grafel_*` tools not found in Aider | Aider has no MCP client | Use Claude Code for enrichment |
 | Aider rejects the model name | Aider version too old | `pip install --upgrade aider-chat` |
 
 ---
@@ -264,15 +264,15 @@ per-task (set before starting the task).
 2. Click the **model selector** (gear icon or model name label near the top).
 3. Choose **claude-3-haiku-20240307**.
 
-### Wire up MCP (required for `archigraph_*` tools)
+### Wire up MCP (required for `grafel_*` tools)
 
 Cline reads MCP server config from its VS Code extension settings.
-`archigraph install <group>` writes the server entry to `~/.claude/claude.json`,
+`grafel install <group>` writes the server entry to `~/.claude/claude.json`,
 but Cline uses its own config file. Copy the server entry:
 
 ```sh
-# After archigraph install, inspect the generated entry:
-cat ~/.claude/claude.json | grep -A 10 '"archigraph"'
+# After grafel install, inspect the generated entry:
+cat ~/.claude/claude.json | grep -A 10 '"grafel"'
 ```
 
 Then add the equivalent entry to the Cline MCP config (VS Code settings →
@@ -280,8 +280,8 @@ Then add the equivalent entry to the Cline MCP config (VS Code settings →
 
 ```json
 {
-  "archigraph": {
-    "command": "archigraph",
+  "grafel": {
+    "command": "grafel",
     "args": ["mcp"],
     "type": "stdio"
   }
@@ -302,33 +302,33 @@ tier-aware enrichment.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `archigraph_*` tools not available | MCP entry not in Cline's config | Add the server entry as shown above |
+| `grafel_*` tools not available | MCP entry not in Cline's config | Add the server entry as shown above |
 | Model selector not showing Haiku | Anthropic API key not configured in Cline | VS Code settings → **Cline → API Provider** → set Anthropic key |
-| Task spins with no progress | MCP server not started | Run `archigraph start` and verify `archigraph status` shows "running" |
+| Task spins with no progress | MCP server not started | Run `grafel start` and verify `grafel status` shows "running" |
 
 ---
 
 ## Recommended minimal setup
 
-If you are onboarding to archigraph enrichment for the first time, this is
+If you are onboarding to grafel enrichment for the first time, this is
 the fastest path to a working, cost-safe enrichment environment:
 
 ```sh
-# 1. Install archigraph
-curl -fsSL https://raw.githubusercontent.com/cajasmota/archigraph/main/install.sh | bash
+# 1. Install grafel
+curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
 
 # 2. Register your repos and start the daemon
-archigraph wizard          # creates group config
-archigraph install <group> # starts daemon, wires MCP, writes ~/.claude/claude.json
+grafel wizard          # creates group config
+grafel install <group> # starts daemon, wires MCP, writes ~/.claude/claude.json
 
 # 3. Confirm MCP is connected
-archigraph status <group>  # should show "MCP: connected"
+grafel status <group>  # should show "MCP: connected"
 
 # 4. Open Claude Code locked to Haiku
 claude --model claude-3-haiku-20240307
 
 # 5. Run the enrichment pass
-/archigraph-graph-enrich
+/grafel-graph-enrich
 ```
 
 Total setup time: ~5 minutes. Enrichment will then run at Haiku rates for most
@@ -338,6 +338,6 @@ entities, with a cost-estimate confirmation gate before any Sonnet batches.
 
 ## Related
 
-- [`skills/archigraph-graph-enrich/SKILL.md`](../skills/archigraph-graph-enrich/SKILL.md) — full enrichment procedure, model selection table, batching rules, and resume semantics.
-- [`docs/settings.md`](settings.md) — archigraph daemon settings reference.
-- [MCP Activity surface (`/mcp-activity`)](http://127.0.0.1:47274/mcp-activity) — live view of MCP tool calls; useful to confirm the daemon is receiving archigraph calls from your agent host.
+- [`skills/grafel-graph-enrich/SKILL.md`](../skills/grafel-graph-enrich/SKILL.md) — full enrichment procedure, model selection table, batching rules, and resume semantics.
+- [`docs/settings.md`](settings.md) — grafel daemon settings reference.
+- [MCP Activity surface (`/mcp-activity`)](http://127.0.0.1:47274/mcp-activity) — live view of MCP tool calls; useful to confirm the daemon is receiving grafel calls from your agent host.

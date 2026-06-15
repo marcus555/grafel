@@ -1,12 +1,12 @@
 # Concepts
 
-This page explains the mental model behind archigraph: what the graph contains, how it gets built, and what happens when the indexer cannot fully resolve a relationship.
+This page explains the mental model behind grafel: what the graph contains, how it gets built, and what happens when the indexer cannot fully resolve a relationship.
 
 ---
 
 ## The knowledge graph
 
-archigraph represents a codebase as a directed graph of **entities** (nodes) connected by **edges** (relationships). The graph is built once during indexing and reloaded from disk on every tool call (lazy, mtime-driven). There is no external database — the graph lives in memory as a loaded `.archigraph/graph.fb` file per repo.
+grafel represents a codebase as a directed graph of **entities** (nodes) connected by **edges** (relationships). The graph is built once during indexing and reloaded from disk on every tool call (lazy, mtime-driven). There is no external database — the graph lives in memory as a loaded `.grafel/graph.fb` file per repo.
 
 Multiple repos can be indexed together as a **group**. Cross-repo edges are stored as overlay links with a confidence score (default 0.7 for cross-repo edges vs. 0.95 for intra-repo edges).
 
@@ -54,7 +54,7 @@ Each edge has a **confidence** value between 0 and 1. Statically resolved edges 
 
 Not every call can be resolved at index time. Dynamic dispatch, string-keyed lookups, reflection, and cross-repo calls where the target repo has not been indexed all produce **residual edges** — stubs in the graph that point to an unresolved target.
 
-The indexer records these stubs in the enrichment queue rather than dropping them. The `/archigraph-resolve` skill surfaces the queue, automatically resolves unambiguous cases via pattern matching, and walks you through the rest interactively.
+The indexer records these stubs in the enrichment queue rather than dropping them. The `/grafel-resolve` skill surfaces the queue, automatically resolves unambiguous cases via pattern matching, and walks you through the rest interactively.
 
 Residual edges are not failures — they are honest signals that the relationship exists but the target is not yet certain. A high residual count on a specific entity means that entity has significant dynamic behavior that is worth resolving manually.
 
@@ -64,19 +64,19 @@ Residual edges are not failures — they are honest signals that the relationshi
 
 Beyond residual edges, the enrichment queue holds three types of candidates:
 
-- **Residual repairs** — unresolved stubs from the indexer (`archigraph_repairs`)
-- **Cross-repo link candidates** — edges where the target might be in a sibling repo (`archigraph_cross_links`)
-- **Enrichment candidates** — `http_endpoint`, `process_flow`, and `message_topic` entities that the indexer flagged for LLM annotation (`archigraph_enrichments`)
+- **Residual repairs** — unresolved stubs from the indexer (`grafel_repairs`)
+- **Cross-repo link candidates** — edges where the target might be in a sibling repo (`grafel_cross_links`)
+- **Enrichment candidates** — `http_endpoint`, `process_flow`, and `message_topic` entities that the indexer flagged for LLM annotation (`grafel_enrichments`)
 
 The dashboard **Pending** surface (`/g/:groupId/pending`) shows the full queue tiered by priority (Critical / High / Medium / Low).
 
-The `/archigraph-graph-enrich` skill emits YAML frontmatter for HTTP endpoints, flows, and topics — this makes the **Paths**, **Flows**, and **Topology** dashboard panels display data.
+The `/grafel-graph-enrich` skill emits YAML frontmatter for HTTP endpoints, flows, and topics — this makes the **Paths**, **Flows**, and **Topology** dashboard panels display data.
 
 ---
 
 ## Groups and repos
 
-A **group** is archigraph's unit of multi-repo management. A group has:
+A **group** is grafel's unit of multi-repo management. A group has:
 - A slug (name) used in all CLI commands and MCP routing
 - One or more repo entries, each pointing at a local directory
 - A `cross-repo-links.yaml` file that declares known cross-repo relationships
@@ -87,7 +87,7 @@ The daemon resolves which group to use for a given agent session by matching the
 
 ## Multi-branch support
 
-archigraph stores one graph snapshot per `(repo, ref)` pair. When you switch branches, the daemon detects the change via `.git/HEAD` watch and loads the appropriate snapshot. Snapshots are tiered HOT/WARM/COLD to keep RAM bounded.
+grafel stores one graph snapshot per `(repo, ref)` pair. When you switch branches, the daemon detects the change via `.git/HEAD` watch and loads the appropriate snapshot. Snapshots are tiered HOT/WARM/COLD to keep RAM bounded.
 
 See [user-guide/multi-branch.md](user-guide/multi-branch.md) for the full guide.
 
@@ -95,7 +95,7 @@ See [user-guide/multi-branch.md](user-guide/multi-branch.md) for the full guide.
 
 ## Patterns
 
-As agents work with the graph, they can save findings via `archigraph_save_finding`. Over time, recurring structural patterns are extracted and stored as first-class entities. These are visible in the **Patterns** dashboard surface and manageable via the `/archigraph-patterns-discover` and `/archigraph-patterns-sync` skills.
+As agents work with the graph, they can save findings via `grafel_save_finding`. Over time, recurring structural patterns are extracted and stored as first-class entities. These are visible in the **Patterns** dashboard surface and manageable via the `/grafel-patterns-discover` and `/grafel-patterns-sync` skills.
 
 See [ADR-0018](adrs/0018-agent-learned-patterns.md) for the full design.
 
@@ -131,4 +131,4 @@ The available surfaces (routes defined in `webui-v2/src/routes/router.tsx`):
 | Missing | `/g/:groupId/missing` | Unresolved / missing targets |
 
 Most surfaces light up only after the graph is indexed and (for Paths, Flows,
-and Topology) enriched via `/archigraph-graph-enrich`.
+and Topology) enriched via `/grafel-graph-enrich`.
