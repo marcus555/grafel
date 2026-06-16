@@ -1,0 +1,363 @@
+name: acceptance
+
+# Cross-OS release acceptance gate (#5226 / #5227, epic #5223).
+#
+# Proves a real grafel artifact installs, passes the functional acceptance
+# ladder (`grafel selftest`), and uninstalls CLEANLY on every supported OS.
+#
+# Per OS the job:
+#   1. Gets the binary — downloads the REAL release archive (binary + bundled
+#      dashboard) built by release.yml when triggered by a release, else builds
+#      it locally (dashboard SPA + `go build -tags osusergo`). We prefer the
+#      released artifact so we test exactly what users get.
+#   2. Installs it the way a user does — extracts into ~/.grafel/bin and puts it
+#      on PATH (the same prefix install.sh/install.ps1 use; we extract the local
+#      archive directly because the shell installers download from a *published*
+#      release, which does not exist yet on a pre-release build).
+#   3. Post-install integrity — binary on PATH, `grafel --version`, `grafel
+#      doctor`, ~/.grafel created, MCP config written (`grafel install --copy`).
+#   4. Runs `grafel selftest` — the functional ladder (daemon-ready → MCP →
+#      cold-index → incremental → persistence → teardown). This is the heart of
+#      the gate; it must exit 0. selftest is FULLY ISOLATED (its own temp
+#      GRAFEL_DAEMON_ROOT + dynamic dashboard port) so it needs no service
+#      manager and never touches the user/runner ~/.grafel.
+#   5. Uninstalls (`grafel uninstall`) and asserts CLEAN teardown — no MCP
+#      config, no install.json, prefix gone.
+#
+# ── #5227 trigger / cost strategy ────────────────────────────────────────────
+# The repo is public (Actions minutes are free) but we keep PR feedback fast and
+# stay cheap if it ever goes private:
+#   * FULL matrix (ubuntu + windows + macos) runs ONLY on release tags (v*) and
+#     manual workflow_dispatch. NEVER on pull_request — see the `matrix` job's
+#     `if` guard and the `on:` triggers below.
+#   * PRs get a CHEAP Linux-only job (`pr-linux`) that builds + runs selftest,
+#     and only when install/release/daemon/cmd code actually changed (paths
+#     filter). No Windows/macOS is ever scheduled by a PR.
+#   * `concurrency` cancels superseded runs; the Go build+module cache is reused.
+#
+# ── macOS headless caveat ────────────────────────────────────────────────────
+# GitHub macOS runners are HEADLESS, so launchd service-supervision (the
+# `grafel start` → LaunchAgent path) cannot be authoritatively validated here.
+# We therefore exercise the FUNCTIONAL ladder via `grafel selftest`, which runs
+# its own isolated in-process daemon (no launchd). Real launchd validation
+# happens on a physical Mac per the #5229 runbook.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    # Cheap PR signal only — gated to install/release/daemon/cmd surface so docs
+    # and unrelated changes don't spend minutes. This NEVER schedules the full
+    # matrix (the matrix job is guarded to release/dispatch only).
+    paths:
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/acceptance.yml'
+      - 'cmd/grafel/**'
+      - 'internal/daemon/**'
+      - 'internal/install/**'
+      - 'go.mod'
+      - 'go.sum'
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per ref; a new push/tag cancels the previous in-flight run so we
+  # never burn minutes (2x on Windows/macOS) on a superseded commit.
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  # ── PR signal: Linux-only, cheap, paths-gated ──────────────────────────────
+  # Build + acceptance ladder on ubuntu only. Never Windows/macOS on a PR.
+  pr-linux:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # -tags osusergo matches the release build (pure-Go os/user). No dashboard
+      # SPA build here — selftest does not need the embedded UI (it polls the
+      # dashboard *listener*, which serves a placeholder when unbuilt), so we
+      # skip the npm build to keep the PR job fast.
+      - name: Build grafel
+        run: go build -trimpath -tags osusergo -o /tmp/grafel ./cmd/grafel
+
+      - name: grafel --version
+        run: /tmp/grafel --version
+
+      - name: grafel selftest (acceptance ladder)
+        run: /tmp/grafel selftest
+
+  # ── Full cross-OS acceptance matrix: release tags + manual dispatch ONLY ────
+  # GUARD: this job can never run on pull_request (see `if`), so no PR ever
+  # schedules Windows or macOS minutes.
+  acceptance:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 1a. On a release tag: download the REAL artifact for this OS ────────
+      # The release archive carries the binary + the bundled dashboard, so this
+      # tests exactly what ships. Falls through to a local build on dispatch.
+      - name: Resolve artifact arch label
+        id: arch
+        shell: bash
+        run: |
+          case "${{ matrix.os }}" in
+            ubuntu-latest)  echo "os=linux"   >> "$GITHUB_OUTPUT"; echo "arch=x86_64" >> "$GITHUB_OUTPUT"; echo "ext=tar.gz" >> "$GITHUB_OUTPUT" ;;
+            macos-14)       echo "os=macos"   >> "$GITHUB_OUTPUT"; echo "arch=arm64"  >> "$GITHUB_OUTPUT"; echo "ext=tar.gz" >> "$GITHUB_OUTPUT" ;;
+            windows-latest) echo "os=windows" >> "$GITHUB_OUTPUT"; echo "arch=x86_64" >> "$GITHUB_OUTPUT"; echo "ext=zip"    >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Download released archive (release tags only)
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="grafel_${VERSION}_${{ steps.arch.outputs.os }}_${{ steps.arch.outputs.arch }}.${{ steps.arch.outputs.ext }}"
+          mkdir -p artifact
+          echo "Fetching release asset $NAME for tag ${GITHUB_REF_NAME}"
+          # The release.yml build job uploads workflow artifacts AND the release
+          # assets; on a tag push the release is created in the same run, so the
+          # asset may not be published the instant this matrix starts. Retry.
+          for i in 1 2 3 4 5 6; do
+            if gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+                 --pattern "$NAME" --dir artifact 2>/dev/null; then
+              echo "downloaded $NAME"; break
+            fi
+            echo "asset not ready yet (attempt $i); sleeping 20s"; sleep 20
+          done
+          test -f "artifact/$NAME" || { echo "FAIL: release asset $NAME not found"; exit 1; }
+          echo "ARCHIVE=$PWD/artifact/$NAME" >> "$GITHUB_ENV"
+
+      # ── 1b. On manual dispatch (no release): build the binary locally ───────
+      # Build the dashboard SPA first so the embed is the real UI (mirrors
+      # release.yml), then `go build -tags osusergo` with CGO (tree-sitter).
+      - name: Setup Node (local build)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: webui-v2/package-lock.json
+
+      - name: Build dashboard SPA (local build)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd webui-v2 && npm ci && npx vite build)
+          rm -rf internal/dashboard/dist
+          cp -r webui-v2/dist internal/dashboard/dist
+
+      - name: Setup MSYS2 + MinGW (Windows local build)
+        if: github.event_name == 'workflow_dispatch' && matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+          update: false
+
+      - name: Enable CGO on Windows (local build)
+        if: github.event_name == 'workflow_dispatch' && matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+          echo "CC=x86_64-w64-mingw32-gcc" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Cache Go build + module cache (local build)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-acceptance-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-acceptance-go-
+
+      - name: Build grafel + package archive (local build)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -euo pipefail
+          BIN=grafel
+          [ "${{ matrix.os }}" = "windows-latest" ] && BIN=grafel.exe
+          EXTRA=""
+          [ "${{ matrix.os }}" = "windows-latest" ] && EXTRA="-extldflags=-static"
+          mkdir -p dist artifact
+          go build -trimpath -tags osusergo \
+            -ldflags "-s -w ${EXTRA}" \
+            -o "dist/${BIN}" ./cmd/grafel
+          cp LICENSE README.md dist/
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            NAME="grafel_dispatch_${{ steps.arch.outputs.os }}_${{ steps.arch.outputs.arch }}.zip"
+            (cd dist && 7z a -tzip "../artifact/${NAME}" grafel.exe LICENSE README.md)
+          else
+            NAME="grafel_dispatch_${{ steps.arch.outputs.os }}_${{ steps.arch.outputs.arch }}.tar.gz"
+            (cd dist && tar czf "../artifact/${NAME}" grafel LICENSE README.md)
+          fi
+          echo "ARCHIVE=$PWD/artifact/${NAME}" >> "$GITHUB_ENV"
+
+      # ── 2. Install the artifact the way a user does (unix) ──────────────────
+      # Extract into the real install prefix ($HOME/.grafel/bin) and add it to
+      # PATH via $GITHUB_PATH — the same prefix + PATH wiring install.sh uses.
+      # We extract the local archive directly (the shell installer's *download*
+      # step targets a published release that doesn't exist on a pre-release).
+      - name: Install (unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="$HOME/.grafel"
+          BIN_DIR="$PREFIX/bin"
+          mkdir -p "$BIN_DIR" "$PREFIX/extract"
+          tar -xzf "$ARCHIVE" -C "$PREFIX/extract"
+          install -m 0755 "$PREFIX/extract/grafel" "$BIN_DIR/grafel"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          echo "GRAFEL_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+
+      - name: Install (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Prefix = Join-Path $env:USERPROFILE '.grafel'
+          $BinDir = Join-Path $Prefix 'bin'
+          $Extract = Join-Path $Prefix 'extract'
+          New-Item -ItemType Directory -Force -Path $BinDir, $Extract | Out-Null
+          Expand-Archive -Path $env:ARCHIVE -DestinationPath $Extract -Force
+          $src = Get-ChildItem -Path $Extract -Recurse -Filter 'grafel.exe' | Select-Object -First 1
+          if (-not $src) { throw "archive did not contain grafel.exe" }
+          Copy-Item -Path $src.FullName -Destination (Join-Path $BinDir 'grafel.exe') -Force
+          Add-Content -Path $env:GITHUB_PATH -Value $BinDir
+          Add-Content -Path $env:GITHUB_ENV  -Value "GRAFEL_PREFIX=$Prefix"
+
+      # ── 3. Post-install integrity ───────────────────────────────────────────
+      - name: Integrity — binary on PATH + version (unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v grafel
+          grafel --version
+          grafel doctor || echo "doctor returned non-zero (no service in headless CI) — tolerated"
+
+      - name: Integrity — binary on PATH + version (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          (Get-Command grafel).Source
+          grafel --version
+          try { grafel doctor } catch { Write-Host "doctor non-zero (no service in headless CI) — tolerated" }
+
+      # MCP config + install.json via the real `grafel install --copy` path.
+      # Service registration (launchd/systemd) is expected to warn in headless
+      # CI; --copy still writes install.json + MCP, which is what we assert.
+      - name: Integrity — MCP config + install.json (unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.claude"
+          echo '{}' > "$HOME/.claude/.claude.json"
+          grafel install --copy \
+            --skills-source-dir ./skills \
+            --claude-config-dirs "$HOME/.claude/.claude.json" \
+            --force || echo "install: service step warned (no service manager in CI) — tolerated"
+          test -f "$HOME/.grafel/install.json" || { echo "FAIL: install.json not written"; exit 1; }
+          test -d "$HOME/.grafel" || { echo "FAIL: ~/.grafel not created"; exit 1; }
+          grep -q grafel "$HOME/.claude/.claude.json" || { echo "FAIL: MCP not registered in .claude.json"; exit 1; }
+          echo "integrity OK: ~/.grafel + install.json + MCP config present"
+
+      - name: Integrity — MCP config + install.json (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $claudeDir = Join-Path $env:USERPROFILE '.claude'
+          New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
+          $claudeCfg = Join-Path $claudeDir '.claude.json'
+          '{}' | Set-Content -Path $claudeCfg
+          try {
+            grafel install --copy --skills-source-dir ./skills --claude-config-dirs $claudeCfg --force
+          } catch { Write-Host "install: service step warned (no service manager in CI) — tolerated" }
+          $prefix = Join-Path $env:USERPROFILE '.grafel'
+          if (-not (Test-Path (Join-Path $prefix 'install.json'))) { throw "install.json not written" }
+          if (-not (Test-Path $prefix)) { throw "~/.grafel not created" }
+          if (-not (Select-String -Path $claudeCfg -Pattern 'grafel' -Quiet)) { throw "MCP not registered in .claude.json" }
+          Write-Host "integrity OK: ~/.grafel + install.json + MCP config present"
+
+      # ── 4. THE HEART: grafel selftest (functional acceptance ladder) ────────
+      # Fully isolated (own temp GRAFEL_DAEMON_ROOT + dynamic dashboard port);
+      # needs no service manager, so it is the authoritative functional check on
+      # the HEADLESS macOS runner too (real launchd validation = #5229 runbook).
+      - name: grafel selftest (acceptance ladder)
+        run: grafel selftest
+
+      # ── 5. Uninstall → assert CLEAN teardown ────────────────────────────────
+      - name: Uninstall + assert clean (unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafel uninstall --yes --purge --remove-binary \
+            --claude-config-dirs "$HOME/.claude/.claude.json" || echo "uninstall: service step warned — tolerated"
+          fail=0
+          if [ -f "$HOME/.grafel/install.json" ]; then echo "FAIL: install.json still present"; fail=1; fi
+          if grep -q grafel "$HOME/.claude/.claude.json"; then echo "FAIL: MCP entry still present"; fail=1; fi
+          if [ -x "$HOME/.grafel/bin/grafel" ]; then echo "FAIL: binary still present after --remove-binary"; fail=1; fi
+          [ "$fail" -eq 0 ] && echo "teardown CLEAN: no install.json, no MCP entry, no binary"
+          exit $fail
+
+      - name: Uninstall + assert clean (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $claudeCfg = Join-Path (Join-Path $env:USERPROFILE '.claude') '.claude.json'
+          $prefix = Join-Path $env:USERPROFILE '.grafel'
+          try {
+            grafel uninstall --yes --purge --remove-binary --claude-config-dirs $claudeCfg
+          } catch { Write-Host "uninstall: service step warned — tolerated" }
+          $fail = $false
+          if (Test-Path (Join-Path $prefix 'install.json')) { Write-Host "FAIL: install.json still present"; $fail = $true }
+          if (Select-String -Path $claudeCfg -Pattern 'grafel' -Quiet) { Write-Host "FAIL: MCP entry still present"; $fail = $true }
+          if (Test-Path (Join-Path (Join-Path $prefix 'bin') 'grafel.exe')) { Write-Host "FAIL: binary still present after --remove-binary"; $fail = $true }
+          if ($fail) { exit 1 }
+          Write-Host "teardown CLEAN: no install.json, no MCP entry, no binary"
