@@ -6,7 +6,7 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
-## [Unreleased]
+## [0.1.2] — 2026-06-23
 
 ### Added
 
