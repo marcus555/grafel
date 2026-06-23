@@ -8,6 +8,8 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-06-23
+
 ### Fixed
 - **`TestOverlay_NoTornRead` greens on Windows CI:** the writer now tolerates a
   transient atomic-rename failure under the artificial 4-reader stress (a failed
