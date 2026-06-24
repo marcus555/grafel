@@ -10,6 +10,32 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.5.1] — 2026-06-24
+
+**Patch — working `grafel update` + update-aware installer.** The published
+release archives didn't match the asset names `grafel update` looked for, so the
+in-place update path was broken. This aligns the updater to the real archives,
+makes the one-liner installer restart the daemon on re-run, and ships the
+consolidated-tool fuzzy enum-correction.
+
+### Fixed
+- **`grafel update` consumes release archives (#5581):** the updater resolves the
+  latest tag from the GitHub Releases API and downloads + extracts the published
+  `grafel_<version>_<os>_<arch>.tar.gz` / `.zip`, instead of looking for
+  nonexistent raw-binary assets. A regression test ties the asset-name
+  construction to the release-workflow naming convention.
+- **Update-aware one-liner installer (#5582):** `install.sh` / `install.ps1` detect
+  a registered daemon and restart it onto the freshly-installed binary, so
+  re-running the install one-liner performs a full update with no uninstall.
+
+### Added
+- **Fuzzy enum-correction for the consolidated tools (#5578):** passing an invalid
+  discriminator value (e.g. `aspect=shape`) returns a helpful error naming the
+  closest valid value and the full set, instead of a hard failure — plus
+  per-discriminator parameter clarity on the polymorphic tools (notably `diff`).
+
+---
+
 ## [0.1.5] — 2026-06-24
 
 **MCP-surface consolidation + TypeScript-stack & broad-language coverage
