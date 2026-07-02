@@ -32,7 +32,7 @@ fall back to the defaults below.
 | `update_channel` | string | `"stable"` | `"stable"` \| `"dev"` | `"dev"` includes release candidates |
 | `refresh_schedule` | string | `""` | cron expression or `""` | Empty = manual-only refresh; e.g. `"0 3 * * *"` for 03:00 daily |
 | `telemetry_enabled` | bool | `false` | `true` \| `false` | Opt-in anonymous usage metrics |
-| `daemon_rss_budget_mb` | int | `512` | 100–2000 | Maximum RSS the daemon may use before it sheds loaded graphs. **Requires daemon restart.** |
+| `daemon_rss_budget_mb` | int | `512` | 100–32768 | Admission budget, in MB, for predicted concurrent index-job RSS. **Requires daemon restart.** |
 | `watcher_debounce_secs` | int | `2` | 1–60 | How long to wait after a file change before triggering a re-index |
 | `indexer_parallelism` | int | `4` | 1–32 | Number of parallel goroutines used during indexing. **Requires daemon restart.** |
 | `log_level` | string | `"info"` | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | Daemon log verbosity |

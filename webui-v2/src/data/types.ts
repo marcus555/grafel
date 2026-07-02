@@ -1220,6 +1220,11 @@ export interface SystemStatus {
   pid: number;
   rss_mb: number;
   rss_budget_mb?: number;
+  rss_budget_source?: string;
+  go_mem_limit_mb?: number;
+  go_mem_limit_source?: string;
+  daemon_mode?: string;
+  rebuild_cap?: number;
   socket_path?: string;
   dashboard_url?: string;
   version: string;
@@ -1850,6 +1855,10 @@ export interface DaemonModeReply {
   description: string;
   /** Env-var defaults the effective mode applies on daemon boot. */
   env_defaults: Record<string, string>;
+  runtime_settings?: {
+    rss_admission_budget_mb?: number;
+    recommended_budget_mb?: number;
+  };
   /** Full catalogue of all three modes for rendering the selection UI. */
   all_modes: DaemonModeInfo[];
 }

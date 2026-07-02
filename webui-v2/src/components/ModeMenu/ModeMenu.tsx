@@ -153,6 +153,8 @@ export function ModeMenu({ open, onOpenChange, children }: ModeMenuProps) {
 
   const effectiveMode = data?.effective_mode ?? "background";
   const allModes: DaemonModeInfo[] = data?.all_modes ?? [];
+  const rssBudget = data?.runtime_settings?.rss_admission_budget_mb;
+  const recommendedBudget = data?.runtime_settings?.recommended_budget_mb;
 
   function handleSwitchRequest(name: string) {
     setConfirmTarget(name);
@@ -198,6 +200,10 @@ export function ModeMenu({ open, onOpenChange, children }: ModeMenuProps) {
               <p className="text-xs font-semibold text-text uppercase tracking-wider">Daemon Mode</p>
               <p className="text-xs text-text-3 mt-0.5">
                 Controls memory usage, background activity, and feature activation.
+              </p>
+              <p className="text-xs text-text-3 mt-1 font-mono">
+                RSS admission: {rssBudget ? `${rssBudget} MB` : "auto"}
+                {recommendedBudget ? ` · workstation target ${recommendedBudget} MB` : ""}
               </p>
             </div>
             <div className="flex flex-col gap-2">

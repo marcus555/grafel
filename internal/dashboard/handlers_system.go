@@ -26,6 +26,9 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/daemon/client"
+	"github.com/cajasmota/grafel/internal/daemon/mode"
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/version"
 )
 
@@ -38,12 +41,17 @@ import (
 // future additions.
 type SystemReply struct {
 	// Process state
-	Status        string  `json:"status"` // "running" | "stopped" | "unhealthy"
-	UptimeSeconds int64   `json:"uptime_seconds,omitempty"`
-	UptimeHuman   string  `json:"uptime_human,omitempty"`
-	PID           int     `json:"pid"`
-	RSSMb         float64 `json:"rss_mb"`
-	RSSBudgetMb   float64 `json:"rss_budget_mb,omitempty"`
+	Status           string  `json:"status"` // "running" | "stopped" | "unhealthy"
+	UptimeSeconds    int64   `json:"uptime_seconds,omitempty"`
+	UptimeHuman      string  `json:"uptime_human,omitempty"`
+	PID              int     `json:"pid"`
+	RSSMb            float64 `json:"rss_mb"`
+	RSSBudgetMb      float64 `json:"rss_budget_mb,omitempty"`
+	RSSBudgetSource  string  `json:"rss_budget_source,omitempty"`
+	GoMemLimitMb     float64 `json:"go_mem_limit_mb,omitempty"`
+	GoMemLimitSource string  `json:"go_mem_limit_source,omitempty"`
+	DaemonMode       string  `json:"daemon_mode,omitempty"`
+	RebuildCap       int     `json:"rebuild_cap,omitempty"`
 
 	// Paths
 	SocketPath   string `json:"socket_path,omitempty"`
@@ -282,16 +290,28 @@ func (s *Server) buildSystemReply() SystemReply {
 	// Socket path (best-effort — may fail in test mode)
 	if layout, err := daemon.DefaultLayout(); err == nil {
 		reply.SocketPath = layout.SocketPath
-	}
-
-	// RSS budget from env (mirrors daemon startup logic)
-	budgetMB := int64(500)
-	if v := os.Getenv("GRAFEL_MAX_RSS_BUDGET_MB"); v != "" {
-		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed >= 0 {
-			budgetMB = parsed
+		if c, err := client.DialPath(layout.SocketPath); err == nil {
+			if st, err := c.Status(); err == nil {
+				reply.RebuildCap = st.RebuildConcurrencyCap
+			}
+			_ = c.Close()
 		}
 	}
+
+	budgetMB, budgetSource := resolvedSystemRSSBudgetMB()
 	reply.RSSBudgetMb = float64(budgetMB)
+	reply.RSSBudgetSource = budgetSource
+	if mb, src := daemon.MemLimitSummary(); mb > 0 {
+		reply.GoMemLimitMb = float64(mb)
+		reply.GoMemLimitSource = src
+	} else {
+		reply.GoMemLimitSource = src
+	}
+	if cfg, err := mode.LoadConfig(mode.DefaultConfigPath(s.daemonRoot())); err == nil && cfg.Mode != "" {
+		reply.DaemonMode = string(cfg.Mode)
+	} else {
+		reply.DaemonMode = "background"
+	}
 
 	// Build staleness
 	if version.Date != "unknown" && version.Date != "" {
@@ -303,6 +323,26 @@ func (s *Server) buildSystemReply() SystemReply {
 	}
 
 	return reply
+}
+
+func resolvedSystemRSSBudgetMB() (int64, string) {
+	if v := os.Getenv("GRAFEL_MAX_RSS_BUDGET_MB"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil && parsed >= 0 {
+			return parsed, "GRAFEL_MAX_RSS_BUDGET_MB"
+		}
+	}
+	if configured := daemon.ConfiguredRSSBudgetMB(); configured > 0 {
+		return configured, "settings.json"
+	}
+	sysMB := process.TotalMemoryMB()
+	if sysMB <= 0 {
+		return 500, "fallback"
+	}
+	budget := sysMB / 8
+	if budget > 2048 {
+		budget = 2048
+	}
+	return budget, "auto"
 }
 
 // tailLogFile reads up to n lines from the end of logPath, optionally
