@@ -200,6 +200,21 @@ export function rowsTerminal(rows: ProgressRow[], expectedRepos?: number): boole
   return rows.every((r) => r.phase === "done" || r.phase === "error");
 }
 
+/**
+ * Terminal state for the whole progress stream. Per-repo terminal is useful,
+ * but the daemon also emits a group-scoped terminal event (repo_slug == group)
+ * after the cross-repo pass finishes. If some per-repo terminal events were
+ * dropped, that group event is the authoritative "the rebuild is over" signal.
+ */
+export function streamTerminal(
+  rows: ProgressRow[],
+  expectedRepos?: number,
+  groupPhaseValue?: ProgressRow["phase"],
+): boolean {
+  if (groupPhaseValue === "done" || groupPhaseValue === "error") return true;
+  return rowsTerminal(rows, expectedRepos);
+}
+
 /* ------------------------------------------------------------------
    Aggregate progress + phase label (#5332).
 

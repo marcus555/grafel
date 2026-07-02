@@ -2,11 +2,11 @@
    routes/pending.tsx — Repair + enrichment inbox (#1442, EPIC #1432).
 
    Layout (three horizontal strips):
-   1. Stat bar (unresolved pill) — 40px
+   1. Stat bar (task-count pill) — 40px
    2. Tab bar (44px): tabs left · filter + groupBy right
    3. Split pane: left list (440px) + right detail (flex-1)
 
-   The AppShell TopBar handles the outer breadcrumb (grafel › group › Pending).
+   The AppShell TopBar handles the outer breadcrumb (grafel › group › Enrichment).
    ============================================================ */
 
 import { useState, useMemo, useRef, useEffect } from "react";
@@ -595,10 +595,10 @@ const PENDING_INSIGHT: InsightValue = {
   storageKey: "pending",
   human: (
     <>
-      Pending candidates — edits grafel has queued but not yet
-      applied to the graph: repairs (resolving an unresolved reference)
-      and enrichments (adding inferred metadata). Review each, then
-      accept or dismiss it.
+      Enrichment tasks — optional agent work for entities grafel already
+      indexed. Repairs can resolve graph issues; enrichments add summaries,
+      tags, or other inferred metadata. These tasks do not mean source files
+      are still being indexed.
     </>
   ),
   agent: {
@@ -698,7 +698,7 @@ export default function PendingScreen() {
     return Array.from(map.values());
   }, [filtered, groupBy, tab]);
 
-  const totalUnresolved =
+  const totalTasks =
     (data?.repairs?.length ?? 0) + (data?.enrichments?.length ?? 0);
   const focusedItem = focusedId
     ? allItems.find((i) => i.id === focusedId) ?? null
@@ -736,7 +736,7 @@ export default function PendingScreen() {
           </span>
         ) : (
           <Badge tone="neutral" className="font-mono">
-            {totalUnresolved} unresolved
+            {totalTasks} agent tasks
           </Badge>
         )}
       </div>
@@ -804,7 +804,7 @@ export default function PendingScreen() {
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
           >
-            <option value="type">Issue type</option>
+            <option value="type">{tab === "repairs" ? "Issue type" : "Task type"}</option>
             <option value="severity">Severity</option>
             <option value="repo">Repository</option>
             <option value="none">None</option>

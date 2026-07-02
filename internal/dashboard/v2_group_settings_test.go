@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/quality"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -363,6 +365,34 @@ func TestV2GetGroup_RealFidelityViaServer(t *testing.T) {
 	}
 	if hlth != healthWarning {
 		t.Errorf("health: want %q, got %q", healthWarning, hlth)
+	}
+}
+
+func TestRepoStatsFallsBackToGraphFBWhenSidecarMissing(t *testing.T) {
+	stateDir := t.TempDir()
+	indexedAt := time.Now().Add(-3 * time.Minute).UTC().Truncate(time.Second)
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: indexedAt,
+		Stats:       graph.Stats{Entities: 2, Relationships: 1, Files: 7},
+		Entities: []graph.Entity{
+			{ID: "a", Name: "A", Kind: "function", SourceFile: "a.go", Language: "go"},
+			{ID: "b", Name: "B", Kind: "function", SourceFile: "b.go", Language: "go"},
+		},
+	}
+	if err := fbwriter.WriteAtomic(filepath.Join(stateDir, "graph.fb"), doc); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+
+	files, entities, gotIndexedAt := repoStats(stateDir)
+	if files != 0 {
+		t.Errorf("files = %d, want 0 without graph-stats sidecar", files)
+	}
+	if entities != 2 {
+		t.Errorf("entities = %d, want 2 from graph.fb", entities)
+	}
+	if !gotIndexedAt.Equal(indexedAt) {
+		t.Errorf("indexedAt = %v, want %v", gotIndexedAt, indexedAt)
 	}
 }
 

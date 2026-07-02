@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/client"
@@ -213,7 +214,9 @@ func (s *Server) handleV2SetDaemonMode(w http.ResponseWriter, r *http.Request) {
 
 	// Attempt a daemon stop+start. Not fatal if the daemon is not running —
 	// the new mode config is already persisted for the next manual start.
-	restartInitiated := triggerDaemonRestart()
+	// The restart is intentionally delayed so the HTTP response can flush before
+	// this process exits.
+	restartInitiated := scheduleDaemonRestart()
 
 	writeV2JSON(w, http.StatusOK, v2OK(v2SetModeReply{
 		Mode:             string(m),
@@ -222,12 +225,12 @@ func (s *Server) handleV2SetDaemonMode(w http.ResponseWriter, r *http.Request) {
 	}))
 }
 
-// triggerDaemonRestart stops and starts the daemon via the Unix socket.
+// scheduleDaemonRestart stops and starts the daemon via the CLI restart path.
 // Returns true when a restart was initiated (daemon was running), false when
 // the daemon was not reachable (not running, or the stop/start failed).
 // Errors are intentionally swallowed — the config write already succeeded
 // and the caller (UI) will poll /api/v2/meta to confirm the daemon came back.
-func triggerDaemonRestart() bool {
+func scheduleDaemonRestart() bool {
 	c, err := client.Dial()
 	if err != nil {
 		// Daemon not running; the new config will be picked up on next start.
@@ -242,10 +245,13 @@ func triggerDaemonRestart() bool {
 	if err != nil || bin == "" {
 		return false
 	}
-	cmd := exec.Command(bin, "restart")
-	if err := cmd.Start(); err != nil {
-		return false
-	}
-	go func() { _ = cmd.Wait() }()
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cmd := exec.Command(bin, "restart")
+		if err := cmd.Start(); err != nil {
+			return
+		}
+		_ = cmd.Wait()
+	}()
 	return true
 }

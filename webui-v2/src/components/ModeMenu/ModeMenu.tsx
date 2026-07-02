@@ -47,11 +47,26 @@ interface ModeCardProps {
 
 function ModeCard({ info, isActive, onSwitch }: ModeCardProps) {
   const colors = modeColors(info.name);
+  const switchMode = () => {
+    if (!isActive) onSwitch(info.name);
+  };
   return (
     <div
+      role={!isActive ? "button" : undefined}
+      tabIndex={!isActive ? 0 : undefined}
+      onClick={switchMode}
+      onKeyDown={(e) => {
+        if (isActive) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          switchMode();
+        }
+      }}
       className={[
-        "rounded-lg border p-3 flex flex-col gap-2",
-        isActive ? `${colors.accent} bg-surface` : "border-border bg-bg",
+        "rounded-lg border p-3 flex flex-col gap-2 transition-colors",
+        isActive
+          ? `${colors.accent} bg-surface`
+          : "border-border bg-bg cursor-pointer hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)]",
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-2">
@@ -66,14 +81,9 @@ function ModeCard({ info, isActive, onSwitch }: ModeCardProps) {
           )}
         </div>
         {!isActive && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="h-6 text-xs px-2"
-            onClick={() => onSwitch(info.name)}
-          >
+          <span className="inline-flex h-6 items-center rounded-md border border-border bg-surface px-2 text-xs font-medium text-text-2">
             Switch
-          </Button>
+          </span>
         )}
         {isActive && (
           <span className="text-xs text-text-3">active</span>
@@ -103,7 +113,8 @@ function ConfirmDialog({ targetMode, open, onConfirm, onCancel, isPending }: Con
             <h2 className="text-base font-semibold text-text">Switch to {targetMode} mode?</h2>
             <p className="mt-1.5 text-sm text-text-2 leading-relaxed">
               The daemon will restart. Any ongoing indexing queries will be interrupted and will
-              resume automatically after the daemon comes back up.
+              resume automatically after the daemon comes back up. On Windows this can take up to a
+              minute.
             </p>
           </div>
           <div className="flex justify-end gap-2">
