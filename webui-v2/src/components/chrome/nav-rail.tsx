@@ -4,10 +4,10 @@
 
    This is the PRIMARY navigation: it navigates the screens of the
    CURRENT project (Graph · Topology · Paths · Flows · Docs ·
-   Operations · Pending · Settings). The active screen is the
+   Operations · Enrichment · Settings). The active screen is the
    highlighted row. Screens come from the chrome/screens.ts registry.
 
-   Brand mark at top, screen nav in the middle, divider + Pending,
+   Brand mark at top, screen nav in the middle, divider + Enrichment,
    then theme toggle / All-groups / Settings at the foot.
    Active row = filled surface card (no left accent bar).
 
@@ -78,7 +78,7 @@ export function NavRail() {
 
         <div className="my-1.5 mx-3 border-t border-border" />
 
-        <NavLink to={`${base}/${PENDING_SCREEN.to}`} className={({ isActive }) => rowClass(isActive)} title="Pending suggestions">
+        <NavLink to={`${base}/${PENDING_SCREEN.to}`} className={({ isActive }) => rowClass(isActive)} title="Enrichment tasks">
           <PendingIcon size={18} className="shrink-0" />
           <span className="flex-1 whitespace-nowrap text-md opacity-0 group-hover/rail:opacity-100 transition-opacity">
             {PENDING_SCREEN.label}

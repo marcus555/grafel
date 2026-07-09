@@ -389,7 +389,7 @@ function DaemonStatusCard({
         {[
           { label: "PID", value: String(status.pid), mono: true, truncate: false },
           {
-            label: "Memory",
+            label: "RSS admission",
             value: status.rss_budget_mb
               ? `${status.rss_mb.toFixed(0)} / ${status.rss_budget_mb.toFixed(0)} MB`
               : `${status.rss_mb.toFixed(0)} MB`,
@@ -397,6 +397,15 @@ function DaemonStatusCard({
             truncate: false,
             memory: true,
           },
+          {
+            label: "Go soft limit",
+            value: status.go_mem_limit_mb
+              ? `${status.go_mem_limit_mb.toFixed(0)} MB`
+              : status.go_mem_limit_source ?? "unbounded",
+            mono: true,
+            truncate: true,
+          },
+          { label: "Mode", value: status.daemon_mode ?? "—", mono: true, truncate: false },
           { label: "Socket", value: status.socket_path ?? "—", mono: true, truncate: true },
           { label: "Dashboard URL", value: status.dashboard_url ?? "—", mono: true, truncate: true },
         ].map(({ label, value, mono, truncate, memory }) => (

@@ -96,7 +96,7 @@ func TestHandlePutSettings_rssOutOfRange(t *testing.T) {
 	srv, cleanup := setupSettingsServer(t)
 	defer cleanup()
 
-	patch := map[string]any{"daemon_rss_budget_mb": 9999}
+	patch := map[string]any{"daemon_rss_budget_mb": 40000}
 	body, _ := json.Marshal(patch)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
 	w := httptest.NewRecorder()

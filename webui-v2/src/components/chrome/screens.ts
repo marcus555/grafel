@@ -55,10 +55,10 @@ export const SCREENS: ScreenDef[] = [
   { to: "operations", label: "Operations", Icon: Wrench, shortcut: "O" },
 ];
 
-/** Pending lives below the divider in the rail (carries a badge). */
+/** Enrichment lives below the divider in the rail (carries a badge). */
 export const PENDING_SCREEN: ScreenDef = {
   to: "pending",
-  label: "Pending",
+  label: "Enrichment",
   Icon: Inbox,
   shortcut: "I",
 };

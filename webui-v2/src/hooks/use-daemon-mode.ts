@@ -39,10 +39,14 @@ export function useSetDaemonMode() {
   return useMutation({
     mutationFn: (newMode: string) => api.setDaemonMode(newMode),
     onSuccess: () => {
-      // Delay invalidation so the new daemon has time to start up.
-      setTimeout(() => {
-        void qc.invalidateQueries({ queryKey: daemonModeQueryKey });
-      }, 2_500);
+      // Restart time varies by platform and current daemon load; poll a few
+      // times so the badge catches the replacement daemon without a manual
+      // refresh.
+      for (const delay of [2_500, 7_500, 15_000, 30_000, 60_000]) {
+        setTimeout(() => {
+          void qc.invalidateQueries({ queryKey: daemonModeQueryKey });
+        }, delay);
+      }
     },
   });
 }

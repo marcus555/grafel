@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -246,7 +247,8 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 }
 
 // repoStats reads graph-stats.json for a repo's state dir and returns
-// (files, entities, lastIndexed). Zero values on any read error.
+// (files, entities, lastIndexed). When the sidecar is absent, fall back to the
+// graph.fb header/vector lengths so ref-store graphs still surface as indexed.
 // repoGitMeta reads the Phase-0 git metadata and M4 coverage status from
 // graph.fb cheaply via fbreader (no entity/relationship decode). Returns zero
 // values for non-git repos or graphs written before these fields were added.
@@ -269,11 +271,22 @@ func repoStats(stateDir string) (files, entities int, lastIndexed time.Time) {
 	}
 	b, err := os.ReadFile(filepath.Join(stateDir, "graph-stats.json"))
 	if err != nil {
+		if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			return 0, ps.Entities, ps.ComputedAt
+		}
 		return
 	}
 	var s statsShape
 	if json.Unmarshal(b, &s) != nil {
+		if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			return 0, ps.Entities, ps.ComputedAt
+		}
 		return
+	}
+	if s.TotalEntities == 0 && s.ComputedAt.IsZero() {
+		if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			return 0, ps.Entities, ps.ComputedAt
+		}
 	}
 	return s.TotalFiles, s.TotalEntities, s.ComputedAt
 }

@@ -8,7 +8,6 @@
    ============================================================ */
 
 import { useState } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ModeMenu } from "@/components/ModeMenu/ModeMenu";
 import { useDaemonMode } from "@/hooks/use-daemon-mode";
 
@@ -37,33 +36,25 @@ export function ModeBadge() {
 
   return (
     <ModeMenu open={menuOpen} onOpenChange={setMenuOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* The ModeMenu passes a trigger ref through here */}
-          <button
-            aria-label={`Daemon mode: ${effectiveMode}. Click to switch.`}
-            onClick={() => setMenuOpen(true)}
-            className={[
-              "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full",
-              "text-xs font-medium select-none cursor-pointer transition-opacity",
-              "border border-current/20",
-              colors.bg,
-              colors.text,
-              "hover:opacity-80",
-            ].join(" ")}
-          >
-            <span
-              className={`size-1.5 rounded-full shrink-0 ${colors.dot}`}
-              aria-hidden="true"
-            />
-            {effectiveMode}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-[220px]">
-          <p className="text-xs leading-snug">{description || `Daemon running in ${effectiveMode} mode.`}</p>
-          <p className="text-xs text-text-3 mt-0.5">Click to switch mode</p>
-        </TooltipContent>
-      </Tooltip>
+      <button
+        aria-label={`Daemon mode: ${effectiveMode}. Click to switch.`}
+        title={`${description || `Daemon running in ${effectiveMode} mode.`}\nClick to switch mode`}
+        onClick={() => setMenuOpen(true)}
+        className={[
+          "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full",
+          "text-xs font-medium select-none cursor-pointer transition-opacity",
+          "border border-current/20",
+          colors.bg,
+          colors.text,
+          "hover:opacity-80",
+        ].join(" ")}
+      >
+        <span
+          className={`size-1.5 rounded-full shrink-0 ${colors.dot}`}
+          aria-hidden="true"
+        />
+        {effectiveMode}
+      </button>
     </ModeMenu>
   );
 }

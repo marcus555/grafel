@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -48,6 +50,14 @@ type v2DaemonModeReply struct {
 	// AllModes lists all three available modes with name + description for the
 	// UI to render the mode-selection cards without hard-coding strings.
 	AllModes []v2ModeInfo `json:"all_modes"`
+	// RuntimeSettings surfaces the relevant persisted daemon knobs that affect
+	// the active mode so the UI can display real values rather than infer them.
+	RuntimeSettings v2ModeRuntimeSettings `json:"runtime_settings"`
+}
+
+type v2ModeRuntimeSettings struct {
+	RSSAdmissionBudgetMB int64 `json:"rss_admission_budget_mb,omitempty"`
+	RecommendedBudgetMB  int64 `json:"recommended_budget_mb,omitempty"`
 }
 
 // v2ModeInfo describes one mode option for the AllModes list.
@@ -138,6 +148,10 @@ func (s *Server) handleV2GetDaemonMode(w http.ResponseWriter, r *http.Request) {
 		Description:   modeDescription(effective),
 		EnvDefaults:   defaults,
 		AllModes:      allModeInfos(),
+		RuntimeSettings: v2ModeRuntimeSettings{
+			RSSAdmissionBudgetMB: daemon.ConfiguredRSSBudgetMB(),
+			RecommendedBudgetMB:  daemon.WorkstationRSSBudgetMB(),
+		},
 	}
 	writeV2JSON(w, http.StatusOK, v2OK(reply))
 }
@@ -188,10 +202,21 @@ func (s *Server) handleV2SetDaemonMode(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusInternalServerError, "config_write_error", "save daemon config: "+err.Error())
 		return
 	}
+	if m == mode.Workstation {
+		rec := daemon.WorkstationRSSBudgetMB()
+		if cur := daemon.ConfiguredRSSBudgetMB(); cur < rec {
+			if err := daemon.PersistConfiguredRSSBudgetMB(rec); err != nil {
+				writeV2Err(w, http.StatusInternalServerError, "settings_write_error", "save workstation RSS budget: "+err.Error())
+				return
+			}
+		}
+	}
 
 	// Attempt a daemon stop+start. Not fatal if the daemon is not running —
 	// the new mode config is already persisted for the next manual start.
-	restartInitiated := triggerDaemonRestart()
+	// The restart is intentionally delayed so the HTTP response can flush before
+	// this process exits.
+	restartInitiated := scheduleDaemonRestart()
 
 	writeV2JSON(w, http.StatusOK, v2OK(v2SetModeReply{
 		Mode:             string(m),
@@ -200,12 +225,12 @@ func (s *Server) handleV2SetDaemonMode(w http.ResponseWriter, r *http.Request) {
 	}))
 }
 
-// triggerDaemonRestart stops and starts the daemon via the Unix socket.
+// scheduleDaemonRestart stops and starts the daemon via the CLI restart path.
 // Returns true when a restart was initiated (daemon was running), false when
 // the daemon was not reachable (not running, or the stop/start failed).
 // Errors are intentionally swallowed — the config write already succeeded
 // and the caller (UI) will poll /api/v2/meta to confirm the daemon came back.
-func triggerDaemonRestart() bool {
+func scheduleDaemonRestart() bool {
 	c, err := client.Dial()
 	if err != nil {
 		// Daemon not running; the new config will be picked up on next start.
@@ -216,18 +241,17 @@ func triggerDaemonRestart() bool {
 	}
 	defer c.Close()
 
-	// Best-effort stop; daemon may exit before we read the reply.
-	_ = c.Stop()
-
-	// Brief pause to let the previous process release the socket.
-	time.Sleep(200 * time.Millisecond)
-
-	// Start is done out-of-process (the dashboard IS the daemon process) so we
-	// cannot call runDaemonStart here. The UI polls /api/v2/meta after sending
-	// this request — the new daemon process will answer once it's up.
-	//
-	// For now we report restart_initiated=true as long as we could stop the
-	// existing process (confirming the daemon was running). The user will see
-	// the badge flicker to "restarting…" while the UI polls healthz.
+	bin, err := os.Executable()
+	if err != nil || bin == "" {
+		return false
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cmd := exec.Command(bin, "restart")
+		if err := cmd.Start(); err != nil {
+			return
+		}
+		_ = cmd.Wait()
+	}()
 	return true
 }
