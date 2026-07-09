@@ -39,12 +39,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -189,10 +191,11 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		}
 		totalEntities += entities
 
+		repoStack := settingsRepoStack(r)
 		sr := v2SettingsRepo{
 			Slug:  r.Slug,
 			Path:  r.Path,
-			Stack: r.Stack.Primary(),
+			Stack: repoStack,
 			Files: files,
 		}
 		sr.Entities = entities
@@ -203,20 +206,8 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		// Phase 0 git metadata (#2088) + M4 sparse badge (#2181). Read cheaply
 		// from graph.fb header — no entity decode required.
 		sr.IndexedRef, sr.IndexedSHA, sr.IsWorktree, sr.CoverageStatus = repoGitMeta(stateDir)
-		// Monorepo: if the repo has Modules, surface them as a stub MonorepoInfo.
-		if len(r.Modules) > 0 {
-			pkgs := make([]v2MonorepoPkg, 0, len(r.Modules))
-			for _, mod := range r.Modules {
-				pkgs = append(pkgs, v2MonorepoPkg{
-					Path:    mod,
-					Stack:   r.Stack.Primary(),
-					Indexed: true,
-				})
-			}
-			sr.Monorepo = &v2MonorepoInfo{
-				Detector: "modules",
-				Packages: pkgs,
-			}
+		if mono := settingsMonorepoInfo(r, repoStack); mono != nil {
+			sr.Monorepo = mono
 		}
 		sg.Repos = append(sg.Repos, sr)
 	}
@@ -244,6 +235,71 @@ func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 		sg.Health = healthWarning
 	}
 	return sg, nil
+}
+
+func settingsRepoStack(r registry.Repo) string {
+	stack := r.Stack.Primary()
+	if stack != "" && stack != "unknown" {
+		return stack
+	}
+	if detected := detect.Stack(r.Path); detected != "" && detected != "unknown" {
+		return detected
+	}
+	return stack
+}
+
+func settingsMonorepoInfo(r registry.Repo, repoStack string) *v2MonorepoInfo {
+	selected := make(map[string]struct{}, len(r.Modules))
+	for _, mod := range r.Modules {
+		mod = filepath.ToSlash(strings.TrimSpace(mod))
+		if mod == "" {
+			continue
+		}
+		selected[mod] = struct{}{}
+	}
+
+	candidates := make(map[string]struct{}, len(selected))
+	detector := "modules"
+	if mono, err := detect.DetectMonorepo(r.Path); err == nil && mono.Kind != detect.KindNone {
+		detector = string(mono.Kind)
+		for _, mod := range mono.Packages {
+			mod = filepath.ToSlash(strings.TrimSpace(mod))
+			if mod == "" {
+				continue
+			}
+			candidates[mod] = struct{}{}
+		}
+	}
+	for mod := range selected {
+		candidates[mod] = struct{}{}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	paths := make([]string, 0, len(candidates))
+	for mod := range candidates {
+		paths = append(paths, mod)
+	}
+	sort.Strings(paths)
+
+	pkgs := make([]v2MonorepoPkg, 0, len(paths))
+	for _, mod := range paths {
+		stack := detect.Stack(filepath.Join(r.Path, filepath.FromSlash(mod)))
+		if stack == "" || stack == "unknown" {
+			stack = repoStack
+		}
+		_, indexed := selected[mod]
+		pkgs = append(pkgs, v2MonorepoPkg{
+			Path:    mod,
+			Stack:   stack,
+			Indexed: indexed,
+		})
+	}
+	return &v2MonorepoInfo{
+		Detector: detector,
+		Packages: pkgs,
+	}
 }
 
 // repoStats reads graph-stats.json for a repo's state dir and returns

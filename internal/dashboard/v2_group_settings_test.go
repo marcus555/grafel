@@ -396,6 +396,57 @@ func TestRepoStatsFallsBackToGraphFBWhenSidecarMissing(t *testing.T) {
 	}
 }
 
+func TestSettingsRepoStackFallsBackToDotnetDetector(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Platform.slnx"), []byte(""), 0o644); err != nil {
+		t.Fatalf("write slnx: %v", err)
+	}
+	repo := registry.Repo{Slug: "platform", Path: dir, Stack: registry.StackList{"unknown"}}
+	if got := settingsRepoStack(repo); got != "dotnet" {
+		t.Fatalf("settingsRepoStack = %q, want dotnet", got)
+	}
+}
+
+func TestSettingsMonorepoInfoKeepsUnselectedDetectedPackages(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pnpm-workspace.yaml"), []byte("packages:\n  - 'apps/*'\n"), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+	for _, p := range []string{"apps/admin/package.json", "apps/platform/package.json"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, p)), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", p, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, p), []byte(`{"name":"x"}`), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	repo := registry.Repo{
+		Slug:    "assessment",
+		Path:    dir,
+		Stack:   registry.StackList{"node"},
+		Modules: []string{"apps/admin"},
+	}
+	mono := settingsMonorepoInfo(repo, "node")
+	if mono == nil {
+		t.Fatal("settingsMonorepoInfo returned nil")
+	}
+	got := map[string]bool{}
+	for _, p := range mono.Packages {
+		got[p.Path] = p.Indexed
+	}
+	if got["apps/admin"] != true {
+		t.Fatalf("apps/admin indexed = %v, want true; packages=%+v", got["apps/admin"], mono.Packages)
+	}
+	indexed, ok := got["apps/platform"]
+	if !ok {
+		t.Fatalf("apps/platform missing from detected package candidates: %+v", mono.Packages)
+	}
+	if indexed {
+		t.Fatalf("apps/platform indexed = true, want false")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // DELETE /api/v2/groups/{group} — per-repo state cleanup (#1635)
 // ---------------------------------------------------------------------------
