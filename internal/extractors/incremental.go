@@ -213,6 +213,57 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		}
 	}
 
+	// --- #5710: HEAD-advance detection ---
+	// diff.FilterWithGit / diff.GitChangedFiles only ever compute
+	// `git diff --name-only HEAD` — working-tree vs the CURRENT HEAD. After a
+	// fetch+reset / checkout / pull the working tree already matches the new
+	// HEAD, so that diff is empty even though the indexed graph is still
+	// pinned at manifest.GitCommit (the commit we last actually indexed).
+	// Compare the persisted manifest commit against the repo's current HEAD
+	// and, when they differ, union in the commit-RANGE diff so those files
+	// enter the changed-file set and flow through the normal trigger-limit /
+	// AST-hash-gate machinery below (a large advance correctly trips the
+	// too-many-changed full-reindex fallback).
+	//
+	// headAdvanceUnconfirmed is set when HEAD moved but we could NOT compute
+	// the range diff (e.g. manifest.GitCommit is no longer reachable — gc,
+	// shallow clone, history rewrite). In that case we must not trust a
+	// totalChanged==0 result below: report unresolved-range-diff as an
+	// explicit fallback so a full reindex reconciles the graph rather than
+	// silently no-op'ing.
+	headAdvanceUnconfirmed := false
+	currentHead := diff.HeadCommit(absRepo)
+	if manifest.GitCommit != "" && currentHead != "" && manifest.GitCommit != currentHead {
+		rangeChanged, rErr := diff.GitChangedFilesSince(absRepo, manifest.GitCommit)
+		if rErr != nil {
+			headAdvanceUnconfirmed = true
+			logger.Printf("incremental: head-advance range-diff unconfirmed old=%s new=%s err=%v",
+				manifest.GitCommit, currentHead, rErr)
+		} else if len(rangeChanged) > 0 {
+			seen := make(map[string]bool, len(changedFiles))
+			for _, f := range changedFiles {
+				seen[f] = true
+			}
+			for f := range rangeChanged {
+				if allFilesSet[f] && !seen[f] {
+					changedFiles = append(changedFiles, f)
+					seen[f] = true
+				}
+			}
+		}
+	}
+	if headAdvanceUnconfirmed {
+		// We cannot trust the changed-file accounting when the commit-range
+		// diff itself failed to confirm what moved between manifest.GitCommit
+		// and currentHead. Force a full-reindex fallback WITHOUT touching the
+		// manifest — advancing manifest.GitCommit here (as the pre-fix
+		// totalChanged==0/too-many-changed paths unconditionally did) would
+		// reproduce the exact #5710 self-conceal bug: the manifest would
+		// claim "indexed to HEAD" while the graph never actually caught up,
+		// and every subsequent poll would see 0 changes forever.
+		return fallback(t0, fmt.Sprintf("head-advance-unconfirmed old=%s new=%s", manifest.GitCommit, currentHead))
+	}
+
 	// --- Manifest GC (#2170): eagerly remove entries for deleted files ---
 	// Remove them from the manifest NOW so that if we fall back to full reindex
 	// or succeed incrementally, the manifest saved at the end does not contain
@@ -248,7 +299,41 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			totalChanged, limit))
 	}
 	if totalChanged == 0 {
-		// Nothing to do — manifest is already up-to-date.
+		// --- #5710 (follow-up): absent-graph guard ---
+		// A no-op is only SAFE when the ref pin resolves to a MATERIALIZED
+		// graph.fb. After a store relocation/recreation (repo moved → new
+		// path-keyed store, store hash changed) the ref→graph pin can survive
+		// while the NEW store has NO graph.fb at all. HEAD still equals
+		// manifest.GitCommit, so the HEAD-advance guard above sees no advance —
+		// and the pre-fix code reported success (Done:true) over that absent
+		// graph while the working tree was full of source. That is silent
+		// success over an empty graph: `grafel index --async` "completes" fast
+		// + cheap and leaves 0 entities.
+		//
+		// The guard fires on ABSENCE only (graph.fb missing), NOT on a
+		// present-but-0-entity graph. This is deliberate and loop-proof:
+		//   - The real reported case starts with an absent graph.fb in the
+		//     fresh store, so !ok still catches it and forces the reindex.
+		//   - A forced reindex WRITES a graph.fb (present, even if 0 entities),
+		//     so the next cycle sees ok=true → clean no-op. No infinite loop.
+		//   - A genuinely codeless repo whose walked files (e.g. .txt / LICENSE
+		//     / extensionless — no registered extractor) yield 0 entities keeps
+		//     a present-0-entity graph and correctly no-ops. Firing on
+		//     0-entities would re-index it every cycle forever (~9min each) on
+		//     the hot reactive path — the loop the reviewer reproduced.
+		//
+		// PersistedStatsFromDir reads the graph.fb header cheaply (no entity
+		// materialization) and reports ok=false only when graph.fb is absent
+		// or unreadable. When absent AND the walked working-tree set is
+		// non-empty, do NOT no-op and do NOT advance the manifest (which would
+		// self-conceal the absence on every later poll) — force a full reindex
+		// via the same fallback signal the too-many-changed path emits.
+		if _, ok := graph.PersistedStatsFromDir(stateDir); !ok && len(allFiles) > 0 {
+			logger.Printf("incremental: absent-graph-nonempty-tree files=%d → force full reindex", len(allFiles))
+			return fallback(t0, fmt.Sprintf("absent-graph-nonempty-tree files=%d", len(allFiles)))
+		}
+		// Nothing to do — manifest is already up-to-date and the graph is a
+		// genuine reflection of the (possibly empty / codeless) tree.
 		diff.UpdateManifest(absRepo, allFiles, manifest)
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return Result{Done: true, Duration: time.Since(t0)}
