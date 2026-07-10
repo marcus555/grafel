@@ -440,6 +440,25 @@ func Run(ctx context.Context, cfg Config) error {
 		svc.scheduler = scheduler
 		defer scheduler.Stop()
 
+		// #5725/#5729-W1: status-plane heartbeat file. startStatusWriter runs a
+		// SINGLE serialized writer goroutine that refreshes every known repo's
+		// on-disk status sidecar (internal/statusfile): promptly on each
+		// scheduler state transition (via a coalescing notify hook) and
+		// periodically on a heartbeat tick, so a reader can detect a
+		// wedged/crashed engine via a stale heartbeat. Serializing through one
+		// goroutine makes concurrent same-repo writes impossible (review #5734)
+		// and coalesces bursts. The returned stop func unregisters the hook and
+		// joins the goroutine; it defer-unwinds alongside scheduler.Stop() above.
+		//
+		// Deliberately NOT cfg.ReposToWatch: that callback is invoked exactly
+		// once by the boot-path watcher-subscription goroutine below, and some
+		// callers (e.g. TestBoot_WatcherSubscriptionDoesNotBlockBind) construct
+		// it with one-shot side effects. knownRepoPathsForStatus is a
+		// side-effect-free repo lister safe to call on every tick/refresh.
+		statusRepos := func() []string { return knownRepoPathsForStatus(logger) }
+		stopStatusWriter := startStatusWriter(statusRepos, statusHeartbeatInterval(), logger)
+		defer stopStatusWriter()
+
 		// #5690: hand a read-only warming accessor to the wiring layer so the
 		// MCP surface can report warming state. Closes over the live scheduler;
 		// no scheduling authority.
