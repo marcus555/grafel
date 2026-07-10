@@ -17,6 +17,8 @@ import (
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
@@ -96,8 +98,10 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 	pathToGroup := s.repoPathToGroup()
 
 	states := indexstate.RepoStates()
+	seen := make(map[string]bool, len(states))
 	out := indexStatusReply{Repos: make([]indexStatusRepo, 0, len(states))}
 	for _, st := range states {
+		seen[st.Path] = true
 		group := pathToGroup[st.Path]
 
 		if groupFilter != "" && group != groupFilter {
@@ -120,6 +124,35 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 			out.AnyIndexing = true
 		}
 	}
+
+	// #5710: disk-backed fallback. A repo indexed by a PREVIOUS daemon
+	// lifetime, or via `grafel rebuild` (which bypasses Scheduler.runIndex),
+	// never populates indexstate's live snapshot — RepoStates() has no entry
+	// for it even though a materialized graph exists on disk. Without this,
+	// grafel_index_status disagreed with the CLI (`grafel status`, which reads
+	// the on-disk store/sidecars via ComputeStatusSummary): MCP reported
+	// repos:[] for a repo the CLI showed as fully indexed. This loop only
+	// fills repos ABSENT from the live snapshot (seen[path]==false) — a repo
+	// WITH a live entry (indexing/queued/dirty/current) is never touched here,
+	// so a genuinely in-flight repo's state is never masked.
+	for path, group := range pathToGroup {
+		if seen[path] {
+			continue
+		}
+		if groupFilter != "" && group != groupFilter {
+			continue
+		}
+		if repoFilter != "" && !repoMatches(path, repoFilter) {
+			continue
+		}
+		row, ok := diskFallbackRow(path, group)
+		if !ok {
+			continue
+		}
+		out.Repos = append(out.Repos, row)
+		// A disk-only row is by definition idle (`current`) — it never
+		// contributes to AnyIndexing.
+	}
 	// #5493: surface the daemon-wide gate counts so "indexing 2, queued 28" is
 	// visible (a 30-module group draining 2-at-a-time, not stalled).
 	ic := indexstate.GetIndexConcurrency()
@@ -136,6 +169,51 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 		out.AnyIndexing = true
 	}
 	return jsonResult(out), nil
+}
+
+// diskFallbackRow synthesizes a `current` grafel_index_status row for
+// repoPath by reading the on-disk graph's HEADER only — NEVER a full decode.
+// grafel_index_status is a frequent, must-be-fast status probe; on a large
+// repo (hundreds of thousands of entities) a full graph.LoadGraphFromDir
+// would O(N)-decode+alloc every entity and relationship just to read one
+// header string, discarded immediately. Instead this uses the same cheap
+// header path as graph.PersistedStatsFromDir: fbreader.Open + LoadGraphMeta,
+// which reads header fields off the mmap WITHOUT touching any vector.
+//
+// Note this is NOT the CLI's `grafel status` code path — that
+// (ComputeStatusSummary → graph-stats.json sidecar, falling back to
+// graph.PersistedStatsFromDir) is likewise header/sidecar-only; we agree with
+// it on the answer while avoiding any full-graph decode.
+//
+// Returns ok=false when neither graph.fb nor graph.json exists for repoPath
+// — i.e. the repo is genuinely never-indexed, so no row should be fabricated.
+func diskFallbackRow(repoPath, group string) (indexStatusRepo, bool) {
+	graphPath, _ := daemon.FindGraphFile(repoPath)
+	if graphPath == "" {
+		return indexStatusRepo{}, false
+	}
+	row := indexStatusRepo{
+		Repo:  repoPath,
+		Group: group,
+		State: indexstate.StateCurrent,
+	}
+	// Best-effort: attach the indexed ref if the graph.fb header carries Phase
+	// 0 git metadata (#2088). Read via the cheap header path — no entity or
+	// relationship is decoded. Only attempted for an actual graph.fb file:
+	// fbreader.Open interprets the bytes as FlatBuffers and PANICS on a
+	// graph.json (or otherwise non-fb) file, so a json-only repo is skipped
+	// here — the row is still valid without the ref. A disk-only row has no
+	// in-flight work, so head_ref mirrors indexed_ref (nothing pending beyond
+	// what's indexed).
+	if strings.HasSuffix(graphPath, ".fb") {
+		if r, err := fbreader.Open(graphPath); err == nil {
+			meta := r.LoadGraphMeta()
+			r.Close()
+			row.IndexedRef = meta.IndexedRef
+			row.HeadRef = meta.IndexedRef
+		}
+	}
+	return row, true
 }
 
 // repoPathToGroup builds a path→group lookup from the registry. A repo path may
