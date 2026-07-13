@@ -2422,14 +2422,18 @@ func matchBalancedParen(content string, open int) int {
 // function name is captured from the next `def` line. We accept anything
 // up to a bare `)` followed by end-of-line because Flask decorators may
 // carry trailing kwargs (defaults={}, strict_slashes=False, etc.).
-var flaskRouteVerbDecoratorRe = regexp.MustCompile(`@\w+\.(get|post|put|patch|delete)\s*\(\s*["']([^"'\n\r]+)["'][^\n\r]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)`)
+// Group 1 captures the receiver so #5688's FastAPI-APIRouter exclusion
+// (below) can recognise and skip a receiver that is actually a same-file
+// `APIRouter(...)` variable rather than a Flask app/Blueprint.
+var flaskRouteVerbDecoratorRe = regexp.MustCompile(`@(\w+)\.(get|post|put|patch|delete)\s*\(\s*["']([^"'\n\r]+)["'][^\n\r]*\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)`)
 
 // flaskRouteRe captures the generic @<obj>.route("/path", ...) form and
 // the handler function name. The trailing kwargs (including a
 // methods=[...] or methods=(...) argument) are captured for parseFlaskMethods.
 // We tolerate one level of nested parens / brackets in the kwargs by
 // matching greedily up to the end of the line that closes the decorator.
-var flaskRouteRe = regexp.MustCompile(`@\w+\.route\s*\(\s*["']([^"'\n\r]+)["']([^\n\r]*)\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)`)
+// Group 1 captures the receiver (see flaskRouteVerbDecoratorRe above).
+var flaskRouteRe = regexp.MustCompile(`@(\w+)\.route\s*\(\s*["']([^"'\n\r]+)["']([^\n\r]*)\)[ \t]*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*def\s+(\w+)`)
 
 // flaskMethodsArgRe extracts the list of HTTP methods from a
 // `methods=["GET", "POST"]` or `methods=("GET", "POST")` keyword argument
@@ -2560,30 +2564,54 @@ func synthesizeFlask(content string, emit emitDefFn) {
 	// or app.add_url_rule('/x', 'endpoint', UserView.as_view('x')). Works for
 	// blueprint receivers (bp.add_url_rule) identically.
 	synthesizeFlaskAddURLRule(content, emit)
+
+	// #5688 — Flask's generic `@<obj>.<verb>(...)` decorator shape overlaps
+	// FastAPI's, and Flask's regexes accept ANY receiver name (they predate
+	// FastAPI's named-router convention). Without this guard, a receiver that
+	// is actually a same-file FastAPI `APIRouter(prefix=...)` variable would
+	// be double-matched here with the BARE (unfolded) path, producing a
+	// phantom sibling endpoint alongside the correctly prefix-folded FastAPI
+	// synthetic (whose canonical path differs once a prefix is folded in, so
+	// the two no longer collide via ID-based dedup as they did pre-fold).
+	// Skip any receiver recognised as an APIRouter variable so only the
+	// FastAPI synthesizer emits for it.
+	var fastapiRouterRecvs map[string]string
+	if strings.Contains(content, "APIRouter") {
+		fastapiRouterRecvs = fastapiRouterPrefixes(content)
+	}
+
 	// Shorthand verbs first — they have an unambiguous verb. Use the
 	// SubmatchIndex variant so we can derive the 1-based line of the
-	// handler `def` (capture group 3) for issue #2678 attribution.
+	// handler `def` (capture group 4) for issue #2678 attribution.
 	for _, idx := range flaskRouteVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(idx) < 8 {
+		if len(idx) < 10 {
 			continue
 		}
-		verb := strings.ToUpper(content[idx[2]:idx[3]])
-		raw := content[idx[4]:idx[5]]
-		handler := content[idx[6]:idx[7]]
+		recv := content[idx[2]:idx[3]]
+		if _, isFastAPIRouter := fastapiRouterRecvs[recv]; isFastAPIRouter {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[4]:idx[5]])
+		raw := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFlask, raw)
-		defLine := lineOfOffset(content, idx[6])
+		defLine := lineOfOffset(content, idx[8])
 		emit(verb, canonical, "flask", "Controller", handler, defLine)
 	}
 	// Generic .route(...) form.
 	for _, idx := range flaskRouteRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(idx) < 8 {
+		if len(idx) < 10 {
 			continue
 		}
-		raw := content[idx[2]:idx[3]]
-		extras := content[idx[4]:idx[5]]
-		handler := content[idx[6]:idx[7]]
+		recv := content[idx[2]:idx[3]]
+		if _, isFastAPIRouter := fastapiRouterRecvs[recv]; isFastAPIRouter {
+			continue
+		}
+		raw := content[idx[4]:idx[5]]
+		extras := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFlask, raw)
-		defLine := lineOfOffset(content, idx[6])
+		defLine := lineOfOffset(content, idx[8])
 		methods := parseFlaskMethods(extras)
 		if len(methods) == 0 {
 			// Flask's default: no `methods` kwarg means GET only.
@@ -2687,14 +2715,92 @@ func parseFlaskMethods(args string) []string {
 // ---------------------------------------------------------------------------
 
 // fastapiVerbDecoratorRe captures @app.<verb>("/path") and
-// @router.<verb>("/path") forms. The handler function follows on the next
-// `def`/`async def` line; intermediate decorators (e.g. @app.middleware,
-// @Depends) are allowed.
+// @<recv>.<verb>("/path") forms. The receiver is captured unrestricted so a
+// same-file `APIRouter(prefix=...)` mount-prefix fold (#5688) can be applied
+// regardless of naming convention; synthesizeFastAPI then gates each match on
+// recognizedRecv so a receiver that is NOT a same-file app/router (e.g.
+// `@feature_flags.options(...)`) is not emitted as a phantom endpoint. The
+// handler function follows on the next `def`/`async def` line; intermediate
+// decorators (e.g. @app.middleware, @Depends) are allowed.
 // The decorator argument tail tolerates ONE level of nested parens so a
 // `dependencies=[Depends(verify_token)]` / `response_model=Foo()` kwarg does not
 // terminate the match prematurely (the inner `)` previously aborted the scan,
 // dropping the whole endpoint — #3628).
-var fastapiVerbDecoratorRe = regexp.MustCompile(`@(?:app|router|api|\w+_router)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]+)["'](?:[^()]*(?:\([^()]*\)[^()]*)*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
+//
+// Capture groups: 1 = receiver, 2 = verb, 3 = path, 4 = handler name.
+var fastapiVerbDecoratorRe = regexp.MustCompile(`@(\w+)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]+)["'](?:[^()]*(?:\([^()]*\)[^()]*)*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
+
+// fastapiApiRouteDecoratorRe captures the generic `@<recv>.api_route("/path",
+// methods=[...])` decorator form. FastAPI's `api_route` differs from the
+// single-verb shorthands (`.get`/`.post`/...) in that the HTTP verb(s) are
+// declared via a `methods=[...]` kwarg rather than the method name itself.
+//
+// Capture groups: 1 = receiver, 2 = path, 3 = kwargs tail, 4 = handler name.
+var fastapiApiRouteDecoratorRe = regexp.MustCompile(`@(\w+)\.api_route\s*\(\s*["']([^"'\n\r]+)["']((?:[^()]*(?:\([^()]*\)[^()]*)*))\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
+
+// fastapiRouterConstructorRe captures a same-file `<var> = APIRouter(...)`
+// constructor call (#5688). Group 1 is the receiver variable, group 2 is the
+// constructor argument tail (which may or may not carry a `prefix=` kwarg).
+// An optional PEP-526 type annotation between the identifier and `=` is
+// tolerated so the idiomatic typed form `router: APIRouter = APIRouter(...)`
+// (used in FastAPI's own docs) is recognised and prefix-folded. One level of
+// nested parens is tolerated so kwargs like `dependencies=[Depends(x)]` don't
+// abort the match early.
+var fastapiRouterConstructorRe = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z_]\w*)\s*(?::\s*[\w\[\]., ]+?)?\s*=\s*APIRouter\s*\(((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+)
+
+// fastapiRouterPrefixKwargRe extracts a `prefix="/x"` (or single-quoted)
+// STRING-LITERAL kwarg from an APIRouter constructor tail. Non-literal
+// prefixes (env vars, config, string concatenation) are intentionally left
+// unmatched — those routes fall back to the unprefixed path, which the
+// byPath linker normalises (v0.1.9 follow-up).
+var fastapiRouterPrefixKwargRe = regexp.MustCompile(`\bprefix\s*=\s*["']([^"'\n\r]*)["']`)
+
+// fastapiAppConstructorRe captures a same-file `<var> = FastAPI(...)`
+// application instance. Group 1 is the receiver variable. Used together with
+// fastapiRouterPrefixes to gate decorator synthesis to receivers that are
+// actually a recognised app/router in this file (#5688), so a non-router
+// decorator such as `@feature_flags.options("some-key")` cannot synthesise a
+// phantom endpoint.
+var fastapiAppConstructorRe = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z_]\w*)\s*=\s*FastAPI\s*\(`,
+)
+
+// fastapiAppInstances returns the set of same-file `<var> = FastAPI(...)`
+// application-instance variable names.
+func fastapiAppInstances(content string) map[string]struct{} {
+	apps := map[string]struct{}{}
+	for _, m := range fastapiAppConstructorRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		apps[m[1]] = struct{}{}
+	}
+	return apps
+}
+
+// fastapiRouterPrefixes builds a same-file map of {APIRouter receiver
+// variable → mount prefix} from every `<var> = APIRouter(...)` constructor in
+// the file (#5688). A router with no `prefix=` kwarg (or a non-literal one)
+// maps to "" so it is still recognised as a router receiver, but composes as
+// a no-op — this keeps the fold regression-safe for the dominant
+// no-prefix-router convention.
+func fastapiRouterPrefixes(content string) map[string]string {
+	prefixes := map[string]string{}
+	for _, m := range fastapiRouterConstructorRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 3 {
+			continue
+		}
+		recv := m[1]
+		if pm := fastapiRouterPrefixKwargRe.FindStringSubmatch(m[2]); len(pm) >= 2 {
+			prefixes[recv] = strings.TrimRight(pm[1], "/")
+		} else {
+			prefixes[recv] = ""
+		}
+	}
+	return prefixes
+}
 
 func synthesizeFastAPI(content string, emit emitDefFn) {
 	if !strings.Contains(content, "FastAPI") && !strings.Contains(content, "APIRouter") &&
@@ -2705,18 +2811,88 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 	// #4383 — programmatic registration: app.add_api_route('/items', get_items,
 	// methods=['GET']) / router.add_api_route(...).
 	synthesizeFastAPIAddRoute(content, emit)
+
+	// #5688 — same-file APIRouter(prefix="/x") mount-prefix fold. Build the
+	// receiver → prefix map once and compose it into every decorator route
+	// registered on that receiver. Receivers absent from the map (e.g. `app`,
+	// the FastAPI application itself) compose as a no-op.
+	prefixes := fastapiRouterPrefixes(content)
+	compose := func(recv, raw string) string {
+		if pfx, ok := prefixes[recv]; ok && pfx != "" {
+			return joinPathFragments(pfx, raw)
+		}
+		return raw
+	}
+
+	// #5688 — the verb/api_route decorator regexes capture an unrestricted
+	// receiver name so any router variable is supported regardless of naming
+	// convention. That must be scoped to receivers that are actually a router
+	// or the FastAPI app, otherwise a non-router decorator such as
+	// `@feature_flags.options("some-key")` or `@mock.head(...)` in a file that
+	// merely contains a FastAPI marker would synthesise a phantom endpoint —
+	// and head/options/trace are FastAPI-only verbs, so no other synthesizer
+	// masks them. Recognised =
+	//   - the conventional app-instance names (`app`, `api`);
+	//   - the conventional router names (`router`, or any `*_router`) — these
+	//     are accepted BY NAME regardless of construction so an imported router
+	//     (`from .deps import router` + `@router.get(...)`, constructed in
+	//     another file) is still recognised, matching the pre-#5688 allowlist;
+	//   - any same-file `<var> = FastAPI(...)` instance;
+	//   - any same-file `<var> = APIRouter(...)` variable (also carries its
+	//     mount prefix for folding).
+	// `@feature_flags.options(...)` / `@mock.head(...)` match none of these, so
+	// the phantom-endpoint fix stays intact.
+	appInstances := fastapiAppInstances(content)
+	recognizedRecv := func(recv string) bool {
+		if recv == "app" || recv == "api" || recv == "router" || strings.HasSuffix(recv, "_router") {
+			return true
+		}
+		if _, ok := prefixes[recv]; ok {
+			return true
+		}
+		_, ok := appInstances[recv]
+		return ok
+	}
+
 	// SubmatchIndex variant so the 1-based line of the handler `def`
-	// (capture group 3) can be recovered for issue #2678 attribution.
+	// (capture group 4) can be recovered for issue #2678 attribution.
 	for _, idx := range fastapiVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(idx) < 8 {
+		if len(idx) < 10 {
 			continue
 		}
-		verb := strings.ToUpper(content[idx[2]:idx[3]])
-		raw := content[idx[4]:idx[5]]
-		handler := content[idx[6]:idx[7]]
-		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, raw)
-		defLine := lineOfOffset(content, idx[6])
+		recv := content[idx[2]:idx[3]]
+		if !recognizedRecv(recv) {
+			continue
+		}
+		verb := strings.ToUpper(content[idx[4]:idx[5]])
+		raw := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, compose(recv, raw))
+		defLine := lineOfOffset(content, idx[8])
 		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
+	}
+
+	// Generic @<recv>.api_route("/path", methods=[...]) form.
+	for _, idx := range fastapiApiRouteDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 10 {
+			continue
+		}
+		recv := content[idx[2]:idx[3]]
+		if !recognizedRecv(recv) {
+			continue
+		}
+		raw := content[idx[4]:idx[5]]
+		tail := content[idx[6]:idx[7]]
+		handler := content[idx[8]:idx[9]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, compose(recv, raw))
+		defLine := lineOfOffset(content, idx[8])
+		methods := parseFlaskMethods(tail) // same methods=[...] shape
+		if len(methods) == 0 {
+			methods = []string{"GET"}
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "fastapi", "Controller", handler, defLine)
+		}
 	}
 }
 
