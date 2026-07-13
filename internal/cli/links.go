@@ -75,6 +75,10 @@ func RunLinksForGroup(group string) error {
 		srcPaths[r.Slug] = r.Path
 	}
 	links.SetRepoSourcePaths(srcPaths)
+	// #5692: time the cross-repo link phase so its duration can be persisted
+	// into each affected repo's graph-stats.json sidecar (link_ms) for
+	// index-timing observability. Pure measurement — no behaviour change.
+	linkStart := time.Now()
 	res, err := links.RunAllPasses(group, graphsDir, "")
 	if err != nil {
 		return err
@@ -83,6 +87,24 @@ func RunLinksForGroup(group string) error {
 	if _, perr := runPhantomEdgePass(group, cfg, res.OutLinks); perr != nil {
 		// Best-effort: log but don't fail the link pass.
 		fmt.Fprintf(os.Stderr, "grafel: phantom-edge pass warning: %v\n", perr)
+	}
+	// #5692: record link_ms into each group repo's dedicated link-stats.json.
+	// The link pass is the SOLE writer of that file, so this never races the
+	// reindex worker's graph-stats.json write. Best-effort — a write failure
+	// never fails the link pass (pure observability).
+	side := &graph.LinkStatsSidecar{
+		Version:    1,
+		ComputedAt: time.Now().UTC(),
+		LinkMS:     time.Since(linkStart).Milliseconds(),
+	}
+	for _, r := range cfg.Repos {
+		stateDir := daemon.StateDirForRepo(r.Path)
+		if stateDir == "" {
+			continue
+		}
+		if serr := graph.WriteLinkStats(stateDir, side); serr != nil {
+			fmt.Fprintf(os.Stderr, "grafel: link-stats write warning (%s): %v\n", r.Slug, serr)
+		}
 	}
 	return nil
 }
@@ -341,6 +363,13 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		// phantom-edge injection. Phase 1 walker is single-doc only;
 		// the Phase 3 companion-aware variant will swap in here.
 		_ = engine.RunEventFlow(doc, engine.DefaultEventFlowConfig())
+
+		// #5686 — re-synthesise async-trigger DELIVERS_TO edges. Idempotent:
+		// existing DELIVERS_TO edges survive stripProcessEntities, so this is a
+		// no-op unless a phantom-edge injection introduced a new same-repo
+		// subscription. Keeps the async inbound-trigger surface consistent with
+		// a full re-index.
+		_ = engine.ApplyAsyncTriggerEdges(doc)
 
 		// Update stats.
 		doc.Stats.Entities = len(doc.Entities)

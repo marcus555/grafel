@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -96,11 +97,20 @@ func buildMinimalGraph(t *testing.T, stateDir string, entities []graph.Entity, r
 // seedManifest writes a diff manifest for the current state of the files in repo.
 func seedManifest(t *testing.T, repo, stateDir string) {
 	t.Helper()
-	// Walk repo to get all files.
+	// Walk repo to get all files. Skip .git — walkSourceFiles (the production
+	// path, via walk.WalkRepo) never surfaces it, so including it here would
+	// make the seeded manifest disagree with TryIncremental's own walk and
+	// spuriously report every .git internal as "deleted".
 	var paths []string
 	_ = filepath.WalkDir(repo, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
 			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		rel, _ := filepath.Rel(repo, path)
 		paths = append(paths, filepath.ToSlash(rel))
@@ -111,6 +121,41 @@ func seedManifest(t *testing.T, repo, stateDir string) {
 	if err := diff.SaveManifest(stateDir, repo, m); err != nil {
 		t.Fatalf("save manifest: %v", err)
 	}
+}
+
+// runGit runs a git subcommand in dir, failing the test on error. Used by the
+// #5710 HEAD-advance tests, which need a REAL git repo (unlike the rest of
+// this file's tests, which run against plain non-git temp dirs and exercise
+// the hash-based Filter fallback rather than the git-aware path).
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// initGitRepo initializes dir as a git repo with a committed identity config,
+// so `git commit` works without relying on global user config.
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	runGit(t, dir, "init", "-q")
+	runGit(t, dir, "config", "user.email", "test@test")
+	runGit(t, dir, "config", "user.name", "Test")
+}
+
+// gitCommitAll stages every change in dir and commits it, returning the new
+// short HEAD commit hash.
+func gitCommitAll(t *testing.T, dir, msg string) string {
+	t.Helper()
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-q", "-m", msg)
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	return string(bytes.TrimSpace(out))
 }
 
 // loadGraphEntityNames loads graph.fb from stateDir and returns a sorted
@@ -779,6 +824,214 @@ func TestIncremental_NoChanges_DoneWithoutWork(t *testing.T) {
 	}
 	if res.ChangedFiles != 0 {
 		t.Errorf("ChangedFiles should be 0 when nothing changed, got %d", res.ChangedFiles)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #5710 — incremental indexer no-ops on a HEAD advance with a clean
+// working tree (fetch+reset / checkout / pull), silently serving a stale
+// graph. `git diff --name-only HEAD` (working-tree-vs-HEAD) is empty in this
+// scenario because the working tree already matches the NEW HEAD, so the
+// pre-fix code reported changed_files=0 and — worse — advanced the persisted
+// manifest.GitCommit to the new HEAD anyway, self-concealing the staleness on
+// every subsequent poll.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncremental_HeadAdvance_CleanWorkingTree_DetectsChange is the RED test
+// for #5710. It indexes at commit A, advances HEAD to commit B via a real git
+// commit (leaving a clean working tree diffed against B), and asserts
+// TryIncremental does NOT silently no-op: it must either report the changed
+// files from the A..B range or trip the too-many-changed fallback — anything
+// but Done:true with ChangedFiles:0 while the manifest still claims commit A.
+// It also asserts the manifest is not advanced to commit B while the graph
+// itself is still at commit A (no self-conceal).
+func TestIncremental_HeadAdvance_CleanWorkingTree_DetectsChange(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	initGitRepo(t, repo)
+
+	// Commit A: baseline with one function.
+	writeFile(t, repo, "core.go", "package core\n\nfunc Alpha() {}\n")
+	commitA := gitCommitAll(t, repo, "commit A")
+
+	entityAlpha := graph.Entity{
+		ID:   graph.EntityID("test-repo", "SCOPE.Operation", "Alpha", "core.go"),
+		Name: "Alpha", Kind: "SCOPE.Operation", SourceFile: "core.go", Language: "go",
+	}
+	buildMinimalGraph(t, stateDir, []graph.Entity{entityAlpha}, nil)
+	seedManifest(t, repo, stateDir)
+
+	// Sanity: the manifest we just seeded recorded commit A as the indexed HEAD.
+	mA := diff.LoadManifest(stateDir)
+	if mA.GitCommit != commitA {
+		t.Fatalf("sanity: manifest.GitCommit = %q, want seeded commit %q", mA.GitCommit, commitA)
+	}
+
+	// Advance HEAD to commit B via a real commit — the working tree ends up
+	// clean against B, exactly like a fetch+reset/checkout/pull would leave it.
+	writeFile(t, repo, "core.go", "package core\n\nfunc Alpha() {}\n\nfunc Beta() {}\n")
+	commitB := gitCommitAll(t, repo, "commit B")
+	if commitB == commitA {
+		t.Fatalf("sanity: HEAD did not advance")
+	}
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+
+	if res.Done && res.ChangedFiles == 0 {
+		t.Fatalf("#5710 regression: TryIncremental silently no-op'd on a HEAD advance "+
+			"(commit %s -> %s) with a clean working tree: Done=true ChangedFiles=0", commitA, commitB)
+	}
+
+	// The manifest must not claim we're at commit B unless the graph actually
+	// reflects it. A Done:false (fallback) result must leave the manifest
+	// pinned at A (or at whatever commit the graph truly reflects) so the
+	// caller's full-reindex retry is not itself skipped by a stale manifest.
+	mAfter := diff.LoadManifest(stateDir)
+	if !res.Done && mAfter.GitCommit == commitB {
+		t.Errorf("#5710 self-conceal: manifest.GitCommit advanced to %s (new HEAD) even though "+
+			"TryIncremental did not complete the reindex (Done=false, reason=%s) — graph is still stale "+
+			"but the manifest now claims it is current", commitB, res.FallbackReason)
+	}
+}
+
+// TestIncremental_HeadUnchanged_CleanTree_StillNoOps is the steady-state
+// regression guard for #5710: a repo whose HEAD has NOT moved since the last
+// index (manifest.GitCommit == current HEAD) and has a clean working tree
+// must still report ChangedFiles=0 — the fix must not turn every incremental
+// poll into an unconditional git-range diff / reindex.
+func TestIncremental_HeadUnchanged_CleanTree_StillNoOps(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	initGitRepo(t, repo)
+	writeFile(t, repo, "stable.go", "package p\n\nfunc Stable() {}\n")
+	gitCommitAll(t, repo, "commit A")
+
+	entities := []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "Stable", "stable.go"),
+			Name: "Stable", Kind: "SCOPE.Operation", SourceFile: "stable.go", Language: "go"},
+	}
+	buildMinimalGraph(t, stateDir, entities, nil)
+	seedManifest(t, repo, stateDir)
+
+	// No mutation, no commit — HEAD is exactly what the manifest recorded.
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+	if !res.Done {
+		t.Fatalf("TryIncremental: unexpected fallback on a genuinely unchanged git repo: %s", res.FallbackReason)
+	}
+	if res.ChangedFiles != 0 {
+		t.Errorf("ChangedFiles should be 0 on a genuinely unchanged git repo, got %d", res.ChangedFiles)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #5710 (follow-up) — empty-graph / non-empty-tree silent success.
+//
+// A store relocation/recreation (repo moved → new path-keyed store, store hash
+// changed) can retain the ref→graph pin while the backing graph in the new
+// store is EMPTY (0 entities). Because HEAD == manifest.GitCommit here, the
+// HEAD-advance guard finds no advance; the pre-fix totalChanged==0 path then
+// happily no-op'd and reported success (Done:true) over a 0-entity graph while
+// the working tree was full of indexable source. The result: `grafel index
+// --async` "completes" in ~1m20s with peak heap ~74MB (vs ~9min/~450MB) and
+// leaves an empty graph, with `status` showing indexes=1. This is silent
+// success over an empty graph.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncremental_AbsentGraphNonEmptyTree_ForcesFullParse is the RED test for
+// the follow-up. It reproduces the real store-recreation case: the ref pin
+// survives but the NEW store has NO graph.fb, while the manifest is fully in
+// sync (GitCommit == HEAD, every file stamped) so nothing "changed" and the
+// working tree contains indexable source. TryIncremental must NOT silently
+// no-op — it must force a full reindex (Done:false) rather than reporting
+// success over the absent graph.
+func TestIncremental_AbsentGraphNonEmptyTree_ForcesFullParse(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	initGitRepo(t, repo)
+	writeFile(t, repo, "core.go", "package core\n\nfunc Alpha() {}\n")
+	gitCommitAll(t, repo, "commit A")
+
+	// Simulate the relocated/recreated store: the manifest is fully in sync
+	// with the working tree (so the change-set is empty), but there is NO
+	// materialized graph.fb in the fresh store.
+	seedManifest(t, repo, stateDir)
+	if _, err := os.Stat(filepath.Join(stateDir, "graph.fb")); !os.IsNotExist(err) {
+		t.Fatalf("sanity: expected no graph.fb in fresh store, stat err=%v", err)
+	}
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+
+	if res.Done && res.ChangedFiles == 0 {
+		t.Fatalf("#5710 absent-graph regression: TryIncremental silently no-op'd with an absent graph.fb " +
+			"and a non-empty indexable working tree: Done=true ChangedFiles=0 (should force full reindex)")
+	}
+	if res.Done {
+		t.Fatalf("#5710 absent-graph: expected a forced full-reindex fallback, got Done=true ChangedFiles=%d", res.ChangedFiles)
+	}
+	if res.FallbackReason == "" {
+		t.Errorf("expected a non-empty FallbackReason on the absent-graph forced fallback")
+	}
+	t.Logf("forced-fallback reason: %s", res.FallbackReason)
+}
+
+// TestIncremental_EmptyGraphEmptyTree_StillNoOps is the negative guard: a
+// genuinely-empty repo (no indexable files in the working tree) with a present
+// empty graph must still no-op cleanly. The absent-graph guard must not force a
+// pointless full parse of an actually-empty tree.
+func TestIncremental_EmptyGraphEmptyTree_StillNoOps(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	initGitRepo(t, repo)
+	// No source files — an empty tree. Commit --allow-empty so HEAD exists.
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "empty")
+
+	buildMinimalGraph(t, stateDir, nil, nil) // present, 0 entities — legitimately empty
+	seedManifest(t, repo, stateDir)          // stamps nothing (no files)
+
+	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+	if !res.Done {
+		t.Fatalf("TryIncremental: unexpected fallback on a genuinely-empty repo: %s", res.FallbackReason)
+	}
+	if res.ChangedFiles != 0 {
+		t.Errorf("ChangedFiles should be 0 on a genuinely-empty repo, got %d", res.ChangedFiles)
+	}
+}
+
+// TestIncremental_CodelessRepo_PresentZeroEntityGraph_NoLoop is the reviewer's
+// loop-regression guard. A repo whose walked files are all non-extractable
+// (e.g. only notes.txt / LICENSE — no registered extractor) legitimately
+// produces a PRESENT graph.fb with 0 entities. The absent-graph guard must
+// treat this as a clean no-op, NOT force a reindex — otherwise the hot
+// reactive path loops a full reindex forever (~9min each cycle). Run two
+// cycles to prove it converges (does not loop).
+func TestIncremental_CodelessRepo_PresentZeroEntityGraph_NoLoop(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	initGitRepo(t, repo)
+	// Non-extractable content only: a plain-text note and a LICENSE. walk.WalkRepo
+	// surfaces these, but no registered extractor handles them → 0 entities.
+	writeFile(t, repo, "notes.txt", "just some notes, not code\n")
+	writeFile(t, repo, "LICENSE", "MIT License\n\nCopyright ...\n")
+	gitCommitAll(t, repo, "docs only")
+
+	// A full index of this repo produces a present-but-0-entity graph.fb.
+	buildMinimalGraph(t, stateDir, nil, nil) // present, 0 entities
+	seedManifest(t, repo, stateDir)
+
+	for cycle := 1; cycle <= 2; cycle++ {
+		res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+		if !res.Done {
+			t.Fatalf("cycle %d: codeless repo must no-op (present 0-entity graph), got fallback reason=%q — "+
+				"the absent-graph guard is looping on a present-but-empty graph", cycle, res.FallbackReason)
+		}
+		if res.ChangedFiles != 0 {
+			t.Errorf("cycle %d: ChangedFiles should be 0 for a codeless repo, got %d", cycle, res.ChangedFiles)
+		}
 	}
 }
 

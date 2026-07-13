@@ -26,6 +26,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/caps"
 	"github.com/cajasmota/grafel/internal/daemon/extract"
+	"github.com/cajasmota/grafel/internal/daemon/fdlimit"
 	"github.com/cajasmota/grafel/internal/daemon/mode"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
@@ -35,6 +36,7 @@ import (
 	"github.com/cajasmota/grafel/internal/docgen"
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/extractors"
+	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/indexstate"
@@ -45,6 +47,7 @@ import (
 	"github.com/cajasmota/grafel/internal/quality"
 	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/repolock"
 	"github.com/cajasmota/grafel/internal/resolve"
 )
 
@@ -392,14 +395,57 @@ func envPositiveInt2(name string) int {
 	return n
 }
 
-// runDaemon is the long-running mode of the grafel binary. It is
-// wired into the CLI as a hidden `grafel daemon` subcommand —
-// users normally reach it via `grafel start`, which forks this
-// process and detaches.
+// daemonRunMode selects which of the daemon.Config-driven entrypoints
+// runDaemonMode hands off to at the end of its shared runtime-tune +
+// config-assembly prelude (ADR-0024 Phase 1: entrypoint/config carve).
+type daemonRunMode int
+
+const (
+	daemonRunModeServe daemonRunMode = iota
+	daemonRunModeEngine
+)
+
+// runDaemon is the long-running mode of the grafel binary. It is wired
+// into the CLI as a hidden `grafel daemon` subcommand — users normally
+// reach it via `grafel start`, which forks this process and detaches.
+//
+// ADR-0024 (serve/engine split, Phase 1): `daemon` is now a back-compat
+// shim that runs the SAME path as `grafel serve` (runServe below), so an
+// existing OS unit that still execs `grafel daemon` transparently becomes
+// a serve process. Zero client-visible change.
+func runDaemon(argv []string) error {
+	return runServe(argv)
+}
+
+// runServe is the `grafel serve` entrypoint (ADR-0024): the MCP socket +
+// dashboard plane. As of PR6/epic #5729 the capability flag
+// (daemon.SplitModeEnabled) is ON BY DEFAULT, so serve spawns and supervises
+// a separate `grafel engine` child for the scheduler/watcher/extraction/
+// fbwriter. The escape hatch — GRAFEL_SPLIT_MODE=0 (or "false"/"off"/"no") —
+// falls back to running the engine plane in-process, identically to the
+// pre-split daemon. It shares the entire runtime-tune + daemon.Config
+// assembly prelude with runEngine via runDaemonMode.
+func runServe(argv []string) error {
+	return runDaemonMode(argv, daemonRunModeServe)
+}
+
+// runEngine is the `grafel engine` entrypoint (ADR-0024 Phase 1): the
+// scheduler/watcher/extraction/fbwriter plane. In this PR it shares the
+// same config-assembly prelude as runServe but hands off to
+// daemon.RunEngine, which — until PR2 lands the real process split —
+// deliberately refuses to run standalone (see daemon.RunEngine's doc).
+func runEngine(argv []string) error {
+	return runDaemonMode(argv, daemonRunModeEngine)
+}
+
+// runDaemonMode holds the runtime-tune prelude (GC/GOMAXPROCS/fd-limit
+// tuning, flag parsing, layout/mode resolution, daemon.Config assembly)
+// shared by runServe and runEngine (ADR-0024 Phase 1 config carve), then
+// dispatches to daemon.RunServe or daemon.RunEngine depending on mode.
 //
 // All extractor + registry + linker work happens here. The CLI's other
 // subcommands are thin RPC clients (see internal/daemon/client).
-func runDaemon(argv []string) error {
+func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	// Fix root-cause E (#2141): lower the GC trigger from the default 100%
 	// heap-growth to 50%. This trades ~5% additional CPU for ~30% lower
 	// steady-state heap by collecting unreachable objects twice as often.
@@ -436,6 +482,22 @@ func runDaemon(argv []string) error {
 	parseCap := runtime.GOMAXPROCS(0)
 	indexstate.SetParseConcurrency(parseCap)
 	gcLog.Printf("cpu-tune: in-process parse concurrency cap=%d (#5630)", parseCap)
+
+	// #5675: raise RLIMIT_NOFILE toward the hard limit so a worktree indexing
+	// storm (each subscribed working tree costs ~1 fd per directory on Linux
+	// inotify) cannot exhaust fds and crash the daemon into a KeepAlive/Restart
+	// relaunch loop. Best-effort and NON-FATAL: never lowers an already-high
+	// limit; a failure to raise is logged and startup continues. Overridable
+	// via GRAFEL_DAEMON_FD_LIMIT.
+	fdTarget := fdlimit.DefaultTarget
+	if v := envPositiveInt2("GRAFEL_DAEMON_FD_LIMIT"); v > 0 {
+		fdTarget = uint64(v)
+	}
+	if oldFD, newFD, ferr := fdlimit.Raise(fdTarget); ferr != nil {
+		gcLog.Printf("fd-tune: WARN could not raise RLIMIT_NOFILE (target=%d, current=%d): %v", fdTarget, oldFD, ferr)
+	} else {
+		gcLog.Printf("fd-tune: RLIMIT_NOFILE soft limit %d -> %d (target=%d)", oldFD, newFD, fdTarget)
+	}
 
 	// Parse daemon-only flags. The root cobra command has flag parsing
 	// disabled for "daemon" so we own the argv. Unknown flags exit
@@ -606,6 +668,12 @@ func runDaemon(argv []string) error {
 		Rebuild:      makeDaemonRebuildFunc(maxConcurrentGroups),
 		QualityAudit: daemonQualityAuditFunc,
 
+		// Split-mode progress bridge (ADR-0024 / epic #5729): the SAME broker the
+		// dashboard SSE subscribes to (srv.SetProgressBroker below). In split mode
+		// the serve plane's sidecarTailer republishes the engine's per-group
+		// progress sidecars into it.
+		ProgressBroker: daemonProgressBroker,
+
 		// Phase B — wire the watcher + scheduler. The fast reactive
 		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
 		// file becomes queryable as soon as the basic graph lands;
@@ -627,10 +695,12 @@ func runDaemon(argv []string) error {
 		// Issue #2406: capture extractorCfg at construction time so the closure
 		// owns an immutable pointer — no package-level singleton needed.
 		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
-			stateDir := daemon.StateDirForRepoRef(repoPath, ref)
-			if stateDir == "" {
-				stateDir = daemon.StateDirForRepo(repoPath)
-			}
+			// Issue #5719: ref can be "" (unknown at enqueue time). Resolve it
+			// to HEAD via ResolveIncrementalStateDir instead of encoding the
+			// empty ref as the "refs/_unknown/" sentinel — otherwise the
+			// incremental pass can never find the real graph and falls back
+			// forever.
+			stateDir := daemon.ResolveIncrementalStateDir(repoPath, ref)
 			// Use the caller-supplied ctx (the scheduler's shutdownCtx) so that
 			// daemon SIGTERM cancels any in-flight incremental subprocess —
 			// matching the fix applied to runIndex in issue #2176/#2491.
@@ -645,6 +715,20 @@ func runDaemon(argv []string) error {
 				FallbackReason: res.FallbackReason,
 				ChangedFiles:   res.ChangedFiles,
 			}
+		},
+		// #5710 follow-up: cheap entity count for the "indexer: completed" log so
+		// a silent 0-entity completion (empty-graph store recreation) is visible.
+		// Reads the graph.fb header (no entity materialization); -1 when the
+		// materialized graph is absent/unreadable.
+		SchedulerEntityCount: func(repoPath string, ref string) int {
+			stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+			if stateDir == "" {
+				stateDir = daemon.StateDirForRepo(repoPath)
+			}
+			if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+				return ps.Entities
+			}
+			return -1
 		},
 		// Single source of truth for the incremental toggle (issue #2397).
 		ExtractorConfig: &extractorCfg,
@@ -667,6 +751,11 @@ func runDaemon(argv []string) error {
 		// Daemon.MCPToolList / Daemon.MCPToolCall over the socket.
 		MCPListTools: daemonMCPListTools,
 		MCPCallTool:  daemonMCPCallTool,
+
+		// #5690: publish the scheduler's read-only warming accessor so the MCP
+		// surface (grafel_whoami / grafel_status) can report whether a group is
+		// still warming (post-index enrichment in flight) vs a slow query.
+		OnSchedulerReady: setDaemonWarmingFn,
 
 		// #2224: on every branch switch, invalidate stale CrossLinkCache
 		// entries in the MCP server so the next cross-repo query recomputes
@@ -753,7 +842,16 @@ func runDaemon(argv []string) error {
 	// begins serving requests. The scanner goroutine runs until ctx is cancelled.
 	startDaemonTierManager(ctx, logger)
 
-	return daemon.Run(ctx, cfg)
+	// ADR-0024 Phase 1: dispatch to the serve or engine entrypoint. Both
+	// currently execute the identical in-process daemon.Run body while the
+	// capability flag is off (the default); PR2 diverges these behind the
+	// real process split. See daemon.RunServe / daemon.RunEngine docs.
+	switch runMode {
+	case daemonRunModeEngine:
+		return daemon.RunEngine(ctx, daemon.EngineConfig{Config: cfg})
+	default:
+		return daemon.RunServe(ctx, daemon.ServeConfig{Config: cfg})
+	}
 }
 
 // daemonReposToWatch returns every repo from every registered group
@@ -869,6 +967,10 @@ func daemonWorktreeParents() []worktree.ParentRepo {
 		return nil
 	}
 	seen := map[string]bool{}
+	// Memoize git common-dir resolution within this call: a monorepo has many
+	// slugs whose paths resolve to the same root, and even distinct paths may
+	// repeat, so resolve each abs path at most once.
+	commonDir := map[string]string{}
 	var out []worktree.ParentRepo
 	for _, g := range groups {
 		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
@@ -883,9 +985,26 @@ func daemonWorktreeParents() []worktree.ParentRepo {
 			if aerr != nil {
 				abs = r.Path
 			}
-			// Dedup on (group, path): a repo may legitimately appear in
-			// multiple groups, but within a group the path is unique.
-			key := g.Name + "\x00" + abs
+			// Dedup on (group, git common-dir), NOT (group, path). In a
+			// monorepo the N module slugs are N distinct subdir paths of ONE
+			// git root; they all share a single git common-dir and therefore
+			// report the SAME `git worktree list`. Keying on the common-dir
+			// collapses them to a single representative parent (the first slug
+			// seen) instead of N parents that each re-discover the same
+			// worktrees — the #5675 reindex storm. Independent repos have
+			// distinct common-dirs and so remain distinct parents.
+			root, ok := commonDir[abs]
+			if !ok {
+				root = gitmeta.ResolveCommonDir(abs)
+				commonDir[abs] = root
+			}
+			// Fall back to path-keyed dedup when common-dir resolution fails
+			// (path is not a git repo / git unavailable) so nothing is dropped.
+			keyBase := root
+			if keyBase == "" {
+				keyBase = abs
+			}
+			key := g.Name + "\x00" + keyBase
 			if seen[key] {
 				continue
 			}
@@ -1162,6 +1281,35 @@ func daemonRebuildFuncCore(
 		resolve.RegisterExtraStdlibFilter(lang, names)
 	}
 
+	// Split-mode progress bridge — WRITE side (ADR-0024 / epic #5729). In SPLIT
+	// mode this rebuild runs inside the ENGINE process; the dashboard/wizard SSE
+	// lives in the separate SERVE process reading serve's own broker, so events
+	// published only into daemonProgressBroker here never reach it. Bridge them
+	// by teeing the broker with a per-GROUP NDJSON SidecarWriter that serve's
+	// sidecarTailer tails and republishes. progressPub is handed to BOTH the
+	// per-repo indexer publisher AND the group link tracker so per-module Tick
+	// events and the group-phase (cross-repo link) events all reach the sidecar.
+	//
+	// In MONOLITH mode (escape hatch GRAFEL_SPLIT_MODE=0) the publisher stays the
+	// broker directly — no sidecar is created and nothing is written under
+	// GRAFEL_HOME/progress, so monolith behavior is byte-for-byte unchanged.
+	var progressPub progress.Publisher = daemonProgressBroker
+	if daemon.SplitModeEnabled() {
+		sidecarWriter, swErr := progress.NewSidecarWriter(args.Group)
+		if swErr != nil {
+			// Best-effort: a sidecar-writer failure must never fail the rebuild.
+			// Fall back to the broker-only publisher (the split-mode dashboard
+			// simply won't see live progress for this run).
+			fmt.Fprintf(os.Stderr,
+				"grafel: rebuild: progress sidecar writer for group=%s failed: %v (dashboard progress bridge disabled for this run)\n",
+				args.Group, swErr)
+		} else {
+			// Flush the terminal + join the goroutine at the end of the rebuild.
+			defer sidecarWriter.Close()
+			progressPub = progress.NewTeePublisher(daemonProgressBroker, sidecarWriter)
+		}
+	}
+
 	// Collect repos to index, respecting the optional single-slug filter.
 	var work []repoWork
 	for _, r := range cfg.Repos {
@@ -1219,13 +1367,29 @@ func daemonRebuildFuncCore(
 			// Publish granular per-repo progress into the shared broker so the
 			// WebUI Index step renders live rows + file counters (#1531).
 			opts = append(opts,
-				WithPublisher(daemonProgressBroker),
+				WithPublisher(progressPub),
 				WithProgressSlugs(args.Group, rw.r.Slug))
 			// #5328: run at the foreground (higher) CPU cap only for human-awaited
 			// rebuilds; an automatic watcher/git-hook-triggered rebuild stays at
 			// the throttled background cap. This appears AFTER indexFn's prepended
 			// default so it is the effective WithInteractive value.
 			opts = append(opts, WithInteractive(foreground))
+			// Cross-path mutual exclusion (#5729 concurrency bug): this rebuild
+			// indexes the repo DIRECTLY and never touches the engine scheduler,
+			// so the scheduler's per-repo in-flight guard cannot see it. Without
+			// a shared claim, a scheduler-enqueued reindex of the same repo (e.g.
+			// from the wizard-installed `grafel watch` process, a git-HEAD switch,
+			// or a drained KindReindex request) races this rebuild, both
+			// rewriting the same graph.fb — the runaway re-index the live daemon
+			// exhibited. ClaimForeground takes PRIORITY: the scheduler yields the
+			// repo while we own it; we only block on a background index already
+			// mid-write. Acquired/released INSIDE this index goroutine so the
+			// claim tracks the index's real completion — a rebuild whose outer
+			// per-repo timeout fires but whose goroutine keeps running still holds
+			// the claim until the write finishes, and the release is idempotent
+			// (safe alongside the panic-recovery defer above).
+			releaseClaim := repolock.DefaultRegistry.ClaimForeground(rw.r.Path)
+			defer releaseClaim()
 			// #1576: tag the graph with the CONFIG slug (not the on-disk
 			// directory basename) so doc.Repo matches the slug the dashboard
 			// keys nodes by and the slug the cross-repo link pass emits as the
@@ -1330,7 +1494,7 @@ func daemonRebuildFuncCore(
 	// label and the CLI's live line advance to "Detecting cross-repo links…".
 	// The phantom-edge pass re-runs process-flow inside linksFn, so the same
 	// phase also covers the group-level flow recompute.
-	linkTrk := progress.NewTracker(daemonProgressBroker, args.Group, args.Group)
+	linkTrk := progress.NewTracker(progressPub, args.Group, args.Group)
 	linkTrk.Phase(progress.PhaseDetectLinks, "cross-repo links", 0)
 
 	// Cross-repo link passes run after every member is indexed.

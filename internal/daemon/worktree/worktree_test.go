@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -215,6 +217,117 @@ func TestWatcher_cap_15_worktrees_keeps_10(t *testing.T) {
 	active := store.Active()
 	if len(active) != 10 {
 		t.Fatalf("want 10 active (cap=10), got %d", len(active))
+	}
+}
+
+func TestMaxWorktrees_resolves_env(t *testing.T) {
+	cases := []struct {
+		name string
+		set  bool
+		val  string
+		want int
+	}{
+		{name: "unset defaults to 10", set: false, want: 10},
+		{name: "positive value honored", set: true, val: "5", want: 5},
+		{name: "explicit zero disables", set: true, val: "0", want: 0},
+		{name: "invalid string defaults to 10", set: true, val: "abc", want: 10},
+		{name: "negative defaults to 10", set: true, val: "-3", want: 10},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.set {
+				t.Setenv("GRAFEL_MAX_WORKTREES_PER_REPO", tc.val)
+			} else {
+				os.Unsetenv("GRAFEL_MAX_WORKTREES_PER_REPO")
+			}
+			if got := worktree.MaxWorktreesForTest(); got != tc.want {
+				t.Fatalf("maxWorktrees()=%d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWatcher_cap_0_disables_indexing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	t.Setenv("GRAFEL_MAX_WORKTREES_PER_REPO", "0")
+
+	for i := 0; i < 5; i++ {
+		wtDir := filepath.Join(tmp, "wt", string(rune('a'+i)))
+		addWorktree(t, repoDir, wtDir, "feat/branch-"+string(rune('a'+i)))
+	}
+
+	storePath := filepath.Join(tmp, "worktrees.json")
+	store := worktree.NewStore(storePath)
+
+	parents := func() []worktree.ParentRepo {
+		return []worktree.ParentRepo{
+			{GroupName: "grp", Slug: "repo", Path: repoDir},
+		}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+	w.Poll()
+
+	active := store.Active()
+	if len(active) != 0 {
+		t.Fatalf("want 0 active (cap=0 disables indexing), got %d", len(active))
+	}
+}
+
+// TestWatcher_cap_0_tears_down_active_children verifies that flipping
+// GRAFEL_MAX_WORKTREES_PER_REPO to 0 on an already-melting daemon does not just
+// stop onboarding new worktrees — it also reaps children that were activated
+// under a previous cap>0. The expiry pass must run (not be short-circuited) so
+// OnExpire fires and the daemon unsubscribes the working tree.
+func TestWatcher_cap_0_tears_down_active_children(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+
+	for i := 0; i < 3; i++ {
+		wtDir := filepath.Join(tmp, "wt", string(rune('a'+i)))
+		addWorktree(t, repoDir, wtDir, "feat/branch-"+string(rune('a'+i)))
+	}
+
+	store := worktree.NewStore(filepath.Join(tmp, "worktrees.json"))
+	parents := func() []worktree.ParentRepo {
+		return []worktree.ParentRepo{{GroupName: "grp", Slug: "repo", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+
+	var expired []*worktree.WorktreeChild
+	w.OnExpire = func(c *worktree.WorktreeChild) { expired = append(expired, c) }
+
+	// First tick under the default cap (10): all 3 worktrees activate.
+	w.Poll()
+	if len(store.Active()) != 3 {
+		t.Fatalf("setup: want 3 active before disable, got %d", len(store.Active()))
+	}
+
+	// Operator flips the escape hatch to shed load.
+	t.Setenv("GRAFEL_MAX_WORKTREES_PER_REPO", "0")
+	w.Poll()
+
+	if len(store.Active()) != 0 {
+		t.Fatalf("want 0 active after cap=0 teardown, got %d", len(store.Active()))
+	}
+	if len(expired) != 3 {
+		t.Fatalf("want OnExpire to fire for all 3 torn-down children, got %d", len(expired))
 	}
 }
 
@@ -547,6 +660,57 @@ func TestWatcher_Sync_discovers_and_persists(t *testing.T) {
 	}
 	if len(store2.Active()) != 1 {
 		t.Fatalf("persisted store: want 1 active, got %d", len(store2.Active()))
+	}
+}
+
+// TestWatcher_poll_serialized verifies that two concurrent Poll() calls do NOT
+// run the reconciliation body at the same time (#5675). The ticker loop and the
+// debounced fsnotify goroutine both call poll(); overlapping passes would
+// multiply the OnActivate fsnotify-subscription fan-out and can exhaust fds.
+//
+// The parents() provider is called once at the very start of each poll body. We
+// instrument it to record the maximum observed concurrency: with the pollMu
+// guard it must never exceed 1.
+func TestWatcher_poll_serialized(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	addWorktree(t, repoDir, filepath.Join(tmp, "wt1"), "feat/serial")
+
+	store := worktree.NewStore(filepath.Join(tmp, "wt.json"))
+
+	var inFlight int32
+	var maxSeen int32
+	parents := func() []worktree.ParentRepo {
+		n := atomic.AddInt32(&inFlight, 1)
+		for {
+			cur := atomic.LoadInt32(&maxSeen)
+			if n <= cur || atomic.CompareAndSwapInt32(&maxSeen, cur, n) {
+				break
+			}
+		}
+		// Hold long enough that a non-serialized second poll would overlap.
+		time.Sleep(60 * time.Millisecond)
+		atomic.AddInt32(&inFlight, -1)
+		return []worktree.ParentRepo{{GroupName: "g", Slug: "r", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); w.Poll() }()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&maxSeen); got != 1 {
+		t.Fatalf("poll() ran with concurrency %d; want serialized (1)", got)
 	}
 }
 

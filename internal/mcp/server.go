@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -1826,6 +1827,15 @@ func (s *Server) handleStatus(ctx context.Context, req mcpapi.CallToolRequest) (
 		msg = fmt.Sprintf("Grafel: cwd %q is not under any registered group (registered: %v). cd into a registered repo or run `grafel install` here. Note: new groups registered mid-session are not reflected until restart (#1772).", cwd, known)
 	}
 
+	// #5690: append a compact warming hint when the daemon scheduler reports a
+	// post-index enrichment pass in flight. This lets an agent onboarding via
+	// grafel_status tell a warming graph (queries slow, results incomplete)
+	// apart from a slow query. Silent when not warming or no handle is wired.
+	if warm, ok := s.State.Warming(); ok && warm.Warming() {
+		msg += fmt.Sprintf(" [warming: post-index enrichment in flight (indexing=%t, pending_algo=%d, pending_links=%d) — results may be incomplete and queries slower until this completes]",
+			warm.IndexInFlight, warm.PendingAlgo, warm.PendingLinks)
+	}
+
 	// Append the MCP + grep pairing philosophy so agents onboarding via
 	// grafel_status understand how to use MCP alongside grep (#1836).
 	const pairingPhilosophy = "\n\n" +
@@ -1839,11 +1849,28 @@ func (s *Server) handleStatus(ctx context.Context, req mcpapi.CallToolRequest) (
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard
 // + MCP activity event emission (epic #1157, Phase 1).
+//
+// Panic guard (#5717): the deferred func's recover() converts a panicking
+// handler into a well-formed IsError tool result instead of letting the
+// panic propagate. This matters most for the daemon's in-process dispatch
+// path (internal/daemon/mcp_rpc.go calls straight into the *mcpsrv.ToolHandlerFunc
+// this method returns) — an unrecovered panic there would crash the whole
+// daemon process and sever every attached MCP bridge connection for one bad
+// call to one tool. It is a no-op (never triggers) on the normal happy path.
 func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error)) mcpsrv.ToolHandlerFunc {
 	return func(ctx context.Context, req mcpapi.CallToolRequest) (res *mcpapi.CallToolResult, err error) {
 		start := time.Now()
 		end := s.Tel.Begin(name)
+		var collector *idCollector
 		defer func() {
+			if r := recover(); r != nil {
+				// #5717: sanitized message on the wire, full detail (message +
+				// stack) only in the server's own stderr/log stream.
+				fmt.Fprintf(os.Stderr, "mcp: tool %q panicked: %v\n%s\n", name, r, debug.Stack())
+				err = nil
+				res = mcpapi.NewToolResultError(fmt.Sprintf(
+					"internal error: tool %q panicked and was recovered — see server log for details", name))
+			}
 			isErr := err != nil || (res != nil && res.IsError)
 			end(isErr)
 			// Record into session metrics (#2192). Done in defer so elapsed
@@ -1851,12 +1878,18 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 			if s.SessMet != nil {
 				s.SessMet.Record(name, time.Since(start), isErr)
 			}
+			// Best-effort activity emission even on a recovered panic — ctx and
+			// collector are assigned below before fn() runs, so by the time this
+			// defer executes (whether via normal return or a recovered panic)
+			// they hold their post-assignment values; emitActivity is nil-safe
+			// when collector is still nil (a panic before the assignment below).
+			s.emitActivity(ctx, name, req, res, collector)
 		}()
 		s.reloadBeforeCall()
 		// Install a per-call id collector so render helpers can record the
 		// entity ids they surface (markdown tools have no machine-readable ids
 		// in their wire output). emitActivity drains it afterwards.
-		ctx, collector := withIDCollector(ctx)
+		ctx, collector = withIDCollector(ctx)
 		res, err = fn(ctx, req)
 		// #1650/#1687: stamp every tool payload with elapsed_ms — including error
 		// responses — so callers can benchmark latency regardless of outcome.
@@ -1904,7 +1937,8 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 			// Opt-out: MCP_NO_ID_INTERNING=1.
 			res = applyIDInterning(res)
 		}
-		s.emitActivity(ctx, name, req, res, collector)
+		// emitActivity now runs in the deferred func above so it also fires
+		// (best-effort) on a recovered panic (#5717).
 		return res, err
 	}
 }

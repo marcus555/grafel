@@ -52,6 +52,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/repolock"
 )
 
 // IndexFn re-indexes a single repo at a specific git ref. The scheduler
@@ -64,12 +65,17 @@ import (
 // should fall back to gitmeta.Capture(repoPath) if they need it.
 type IndexFn func(ctx context.Context, repoPath string, ref string) error
 
-// RefCaptureFn returns the current HEAD ref for repoPath. Used to snapshot
-// the ref at Enqueue time so debounced batches index against the ref that
-// was active when the file-change event fired, not the ref at dispatch time.
-// May return "" for detached HEAD or non-git directories; IndexFn must
-// tolerate an empty ref.
-type RefCaptureFn func(repoPath string) string
+// RefCaptureFn returns the current HEAD ref AND commit SHA for repoPath. Used
+// to snapshot both at Enqueue time so debounced batches index against the ref
+// that was active when the file-change event fired, not the ref at dispatch
+// time. The commit SHA is the stable per-commit identity the #5726/#5729
+// reindex circuit breaker keys on (the branch NAME is not — a fix commit on
+// the same branch keeps the same name yet must reset the breaker, and a
+// detached HEAD has an empty name but a perfectly good SHA).
+//
+// ref may be "" for a detached HEAD or non-git directory; commit may be "" for
+// a non-git directory. IndexFn must tolerate an empty ref.
+type RefCaptureFn func(repoPath string) (ref, commit string)
 
 // LinksFn re-runs the cross-repo link passes for a group.
 type LinksFn func(ctx context.Context, group string) error
@@ -135,6 +141,15 @@ type IncrementalResult struct {
 // Returns done=true when the patch succeeded; done=false causes the scheduler
 // to fall through to IndexFn (full reindex fallback).
 type IncrementalFn func(ctx context.Context, repoPath string, ref string) IncrementalResult
+
+// EntityCountFn returns the number of entities in the materialized graph for
+// (repoPath, ref), or -1 when it cannot be determined cheaply. Injected so the
+// completion log can surface entities=N without the scheduler importing the
+// daemon store-layout / graph packages (avoids an import cycle). Used purely
+// for observability (#5710 follow-up): a 0-entity completion is a silent-empty
+// signal that must be visible at a glance. nil → entities is omitted from the
+// log.
+type EntityCountFn func(repoPath string, ref string) int
 
 // Config wires the scheduler. All function fields are required; nil
 // causes Enqueue to short-circuit with a logged warning.
@@ -231,6 +246,13 @@ type Config struct {
 	// to before this field was added.
 	Incremental IncrementalFn
 
+	// EntityCount, when non-nil, returns the entity count of the materialized
+	// graph for a (repoPath, ref) after an index completes. It is used only to
+	// annotate the "indexer: completed" log with entities=N so a silent 0-entity
+	// completion (e.g. an empty-graph store recreation, #5710) is visible.
+	// nil → the entities field is omitted.
+	EntityCount EntityCountFn
+
 	// ExtractorConfig, when non-nil, is consulted by the scheduler to
 	// determine whether the incremental reindex path is active (issue #2397).
 	// IsIncrementalEnabled() on this config replaces the private
@@ -269,6 +291,13 @@ type Config struct {
 // (e.g. inflated RSS history predictions that exceed the budget).
 const deadManTimeout = 2 * time.Minute
 
+// yieldRetryDelay is how long the scheduler waits before re-enqueuing a repo it
+// skipped because a foreground group-rebuild owned it (see runIndex). It bounds
+// the retry rate so the scheduler cannot busy-loop against a still-running
+// rebuild, while remaining short enough that the repo is promptly reindexed
+// once the rebuild releases its claim.
+const yieldRetryDelay = 3 * time.Second
+
 // memReleaseDebounceDefault is how long the scheduler must be fully idle
 // (no in-flight index, empty queue, no pending algo/link passes) before it
 // calls FreeOSMemory once to hand the retained Go heap arena back to the OS
@@ -282,12 +311,49 @@ const memReleaseDebounceDefault = 30 * time.Second
 // is fine; the actual FreeOSMemory call is gated by the debounce above.
 const memReleaseTick = 5 * time.Second
 
+// reindexFailBackoffBase and reindexFailBackoffMax bound the #5726/#5729
+// per-repo reindex circuit breaker. A repo genuinely over the FlatBuffers
+// 2-GiB builder cap fails the SAME way on every attempt at the SAME commit
+// (the fbwriter fail-soft path — internal/graph/fbwriter/streaming.go —
+// recovers the marshal panic and leaves last-good graph.fb intact, but the
+// trigger conditions (watcher fs events, git-HEAD poll) are input-driven and
+// unaware of the failure: any further churn at the same commit re-fires a
+// doomed reindex immediately, hot-looping the marshal attempt forever
+// (observed as the panic logged 74x in daemon.err in #5726). The breaker
+// skips same-ref re-attempts with exponential backoff instead, and resets the
+// moment the target ref changes (a new commit deserves a real try).
+const (
+	reindexFailBackoffBase = 30 * time.Second
+	reindexFailBackoffMax  = 5 * time.Minute
+)
+
+// reindexFailBackoff returns the backoff duration for the nth consecutive
+// same-ref index failure (n=1 is the first failure). Doubles each additional
+// failure, capped at reindexFailBackoffMax.
+func reindexFailBackoff(n int) time.Duration {
+	if n < 1 {
+		n = 1
+	}
+	d := reindexFailBackoffBase
+	for i := 1; i < n; i++ {
+		d *= 2
+		if d >= reindexFailBackoffMax {
+			return reindexFailBackoffMax
+		}
+	}
+	if d > reindexFailBackoffMax {
+		return reindexFailBackoffMax
+	}
+	return d
+}
+
 // enqueueRequest carries a repo path plus the ref snapshot taken at
 // Enqueue time. This is the unit flowing from public Enqueue → dedupLoop →
 // admitLoop → workerLoop.
 type enqueueRequest struct {
 	repoPath string
 	ref      string // captured at Enqueue time via RefCapture; "" = unknown
+	commit   string // commit SHA captured alongside ref; breaker identity (#5726)
 }
 
 // Scheduler is constructed once per daemon. It owns:
@@ -333,13 +399,14 @@ type Scheduler struct {
 	// no lost update (the marker is set AFTER the run snapshots its input, so
 	// a change landing mid-run still triggers the follow-up). N events during
 	// a reindex → 1 follow-up, not N. Guarded by mu.
-	dirty       map[string]bool
-	pendingRefs map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
-	pendingQ    []string          // ordered admission queue
-	queueLen    int               // pending + admitted-but-not-yet-running
-	usedMB      int64             // sum of inflight MB
-	linkTimers  map[string]*time.Timer
-	linkPending map[string]bool
+	dirty          map[string]bool
+	pendingRefs    map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
+	pendingCommits map[string]string // repo → commit SHA captured at last Enqueue (mirrors pendingRefs; breaker identity #5726)
+	pendingQ       []string          // ordered admission queue
+	queueLen       int               // pending + admitted-but-not-yet-running
+	usedMB         int64             // sum of inflight MB
+	linkTimers     map[string]*time.Timer
+	linkPending    map[string]bool
 	// Per-GROUP algorithm pass (#5349 A3). Mirrors the link timer machinery:
 	// debounce timer + pending flag + in-flight cancel func, all keyed by group.
 	// Replaces the old per-repo algo timers — algorithms now run once over the
@@ -384,6 +451,7 @@ type Scheduler struct {
 type jobToken struct {
 	repoPath    string
 	ref         string // git ref name captured at Enqueue time; "" = unknown
+	commit      string // commit SHA captured at Enqueue time; breaker identity (#5726); "" = non-git
 	predictedMB int64
 }
 
@@ -402,6 +470,22 @@ type repoStats struct {
 	// than the process-global is_indexing flag. Empty until a first index
 	// completes in this daemon's lifetime.
 	LastIndexedRef string
+
+	// FailCommit/FailCount/FailBackoffUntil/FailLoggedAt implement the
+	// #5726/#5729 reindex circuit breaker. FailCommit is the commit SHA a
+	// same-target reindex attempt most recently failed at (SHA, NOT branch
+	// name: a fix commit on the same branch keeps the branch name but changes
+	// the SHA, which must reset the breaker; a detached HEAD has no branch name
+	// but a valid SHA). FailCount counts consecutive failures at that commit
+	// (drives exponential backoff via reindexFailBackoff); FailBackoffUntil is
+	// when the breaker next allows a real attempt at FailCommit; FailLoggedAt
+	// debounces the skip-log line to at most once per backoff window. A
+	// successful index, or a trigger for a DIFFERENT commit, resets all four
+	// fields.
+	FailCommit       string
+	FailCount        int
+	FailBackoffUntil time.Time
+	FailLoggedAt     time.Time
 }
 
 // LogEntry is a single structured event captured for /status. Kept in
@@ -479,6 +563,7 @@ func New(cfg Config) *Scheduler {
 		pendingIndex:     map[string]bool{},
 		dirty:            map[string]bool{},
 		pendingRefs:      map[string]string{},
+		pendingCommits:   map[string]string{},
 		linkTimers:       map[string]*time.Timer{},
 		linkPending:      map[string]bool{},
 		groupAlgoTimers:  map[string]*time.Timer{},
@@ -552,18 +637,29 @@ func (s *Scheduler) Stop() {
 // the ref is snapshotted at event-fire time, not at eventual dispatch time.
 // Safe to call from arbitrary goroutines.
 func (s *Scheduler) Enqueue(repoPath string) {
-	ref := ""
+	ref, commit := "", ""
 	if s.cfg.RefCapture != nil {
-		ref = s.cfg.RefCapture(repoPath)
+		ref, commit = s.cfg.RefCapture(repoPath)
 	}
-	s.EnqueueRef(repoPath, ref)
+	s.EnqueueRefCommit(repoPath, ref, commit)
 }
 
 // EnqueueRef requests a (debounced+deduped) reindex of repoPath at a
-// specific git ref. Called directly by the GitHeadPoller (branch-switch
-// events) where the new ref has already been observed — no extra git call
-// needed. Safe to call from arbitrary goroutines.
+// specific git ref, with no commit SHA. Retained for callers (and tests) that
+// only have a ref; the #5726 circuit breaker keys on the commit SHA, so an
+// EnqueueRef job carries an empty commit identity. Prefer EnqueueRefCommit on
+// paths where the SHA is known (the GitHeadPoller has it as ev.NewSHA).
 func (s *Scheduler) EnqueueRef(repoPath, ref string) {
+	s.EnqueueRefCommit(repoPath, ref, "")
+}
+
+// EnqueueRefCommit requests a (debounced+deduped) reindex of repoPath at a
+// specific git ref and commit SHA. Called directly by the GitHeadPoller
+// (branch-switch events) where both the new ref and SHA have already been
+// observed — no extra git call needed. The commit SHA is the identity the
+// #5726/#5729 reindex circuit breaker gates on. Safe to call from arbitrary
+// goroutines.
+func (s *Scheduler) EnqueueRefCommit(repoPath, ref, commit string) {
 	// Issue #3680: drop enqueues for linked worktrees of already-indexed
 	// primaries so they never become independent root index jobs (each of
 	// which would spawn its own ~100MB store and pressure the RSS budget).
@@ -572,7 +668,7 @@ func (s *Scheduler) EnqueueRef(repoPath, ref string) {
 		return
 	}
 	select {
-	case s.enq <- enqueueRequest{repoPath: repoPath, ref: ref}:
+	case s.enq <- enqueueRequest{repoPath: repoPath, ref: ref, commit: commit}:
 	case <-s.stop:
 	}
 }
@@ -610,20 +706,27 @@ func (s *Scheduler) dedupLoop() {
 				if req.ref != "" {
 					s.pendingRefs[p] = req.ref
 				}
+				if req.commit != "" {
+					s.pendingCommits[p] = req.commit
+				}
 				s.publishRepoStatesLocked() // #5433: repo just went dirty.
 				s.mu.Unlock()
 				continue
 			}
 			if s.pendingIndex[p] {
-				// Already pending: update the ref to the latest observed value.
+				// Already pending: update the ref/commit to the latest observed.
 				if req.ref != "" {
 					s.pendingRefs[p] = req.ref
+				}
+				if req.commit != "" {
+					s.pendingCommits[p] = req.commit
 				}
 				s.mu.Unlock()
 				continue
 			}
 			s.pendingIndex[p] = true
 			s.pendingRefs[p] = req.ref
+			s.pendingCommits[p] = req.commit
 			s.pendingQ = append(s.pendingQ, p)
 			s.queueLen++
 			// Start the dead-man clock if nothing is currently
@@ -721,9 +824,11 @@ func (s *Scheduler) checkDeadMan() {
 	}
 	repo := s.pendingQ[smallestIdx]
 	ref := s.pendingRefs[repo]
+	commit := s.pendingCommits[repo]
 	// Remove from queue (preserve order for remaining entries).
 	s.pendingQ = append(s.pendingQ[:smallestIdx], s.pendingQ[smallestIdx+1:]...)
 	delete(s.pendingRefs, repo)
+	delete(s.pendingCommits, repo)
 	s.inflight[repo] = smallestMB
 	s.publishIndexStateLocked()
 	s.usedMB += smallestMB
@@ -734,7 +839,7 @@ func (s *Scheduler) checkDeadMan() {
 	s.logger.Info("sched: dead-man: force-admitting",
 		"repo", repo, "predicted_mb", smallestMB, "stuck_for", stuckFor)
 
-	tok := jobToken{repoPath: repo, ref: ref, predictedMB: smallestMB}
+	tok := jobToken{repoPath: repo, ref: ref, commit: commit, predictedMB: smallestMB}
 	// Dispatch asynchronously so we don't hold the lock while blocking on
 	// the jobs channel. The worker pool is guaranteed to drain the channel
 	// because the pool size >= 1.
@@ -991,6 +1096,7 @@ func (s *Scheduler) tryAdmit() {
 	for len(s.pendingQ) > 0 {
 		repo := s.pendingQ[0]
 		ref := s.pendingRefs[repo]
+		commit := s.pendingCommits[repo]
 		predicted := s.predictedFor(repo)
 		// Admission rule.
 		if s.cfg.BudgetMB > 0 {
@@ -1012,13 +1118,14 @@ func (s *Scheduler) tryAdmit() {
 		// Pop and dispatch.
 		s.pendingQ = s.pendingQ[1:]
 		delete(s.pendingRefs, repo)
+		delete(s.pendingCommits, repo)
 		s.inflight[repo] = predicted
 		s.publishIndexStateLocked()
 		s.usedMB += predicted
 		s.deadManAt = time.Time{} // job admitted — reset dead-man clock
 		s.logEventLocked("admit_ok", repo,
 			"predicted="+formatMB(predicted)+" used="+formatMB(s.usedMB)+" ref="+ref)
-		tok := jobToken{repoPath: repo, ref: ref, predictedMB: predicted}
+		tok := jobToken{repoPath: repo, ref: ref, commit: commit, predictedMB: predicted}
 		s.mu.Unlock()
 		// Block on jobs channel — workers are sized to drain this
 		// without deadlock because admission already ensures we are
@@ -1085,93 +1192,212 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// it AFTER the run instead would race: a change landing between the
 	// snapshot and the clear would be silently dropped.
 	delete(s.dirty, repoPath)
+
+	// #5726/#5729 circuit breaker: a repo genuinely over the FlatBuffers
+	// 2-GiB cap fails the SAME way on every attempt at the SAME COMMIT — the
+	// fbwriter fail-soft path recovers the marshal panic but leaves the input
+	// state (watcher fs events, git-HEAD poll) unaware of the failure, so any
+	// further working-tree churn at the same commit re-fires a doomed reindex
+	// immediately. The breaker gates on the commit SHA (tok.commit), which is
+	// stable across same-commit churn (hot-loop bounded) yet changes on every
+	// new commit (a fix commit resets it immediately) and is present for a
+	// detached HEAD (the branch name is not). If the breaker is open for this
+	// exact commit, skip the real attempt (serve last-good graph.fb) instead
+	// of re-marshaling.
+	breakerStats := s.indexedRepos[repoPath]
+	now := time.Now()
+	skip := breakerStats.FailCommit == tok.commit && now.Before(breakerStats.FailBackoffUntil)
+	shouldLogSkip := false
+	if skip {
+		// Log at most once per backoff window (tracking the actual window for
+		// the current fail count, not a fixed interval), so a repo hot-looping
+		// at the cap produces a handful of lines instead of the 74x storm the
+		// breaker exists to prevent.
+		window := reindexFailBackoff(breakerStats.FailCount)
+		shouldLogSkip = breakerStats.FailLoggedAt.IsZero() || now.Sub(breakerStats.FailLoggedAt) >= window
+		if shouldLogSkip {
+			breakerStats.FailLoggedAt = now
+			s.indexedRepos[repoPath] = breakerStats
+		}
+	}
 	s.mu.Unlock()
 
 	t0 := time.Now()
-	s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
-	// Observability: log goroutine identity + ref so concurrent-indexer
-	// regressions are diagnosable without a pprof trace (#2141).
-	s.logger.Info("indexer: starting", "repo", repoPath, "ref", tok.ref, "goroutine_id", goroutineID())
-
-	// Spawn RSS sampler so we capture the peak the daemon hit during
-	// this job. Records into history on completion.
-	sampleStop := make(chan struct{})
-	var sampleWG sync.WaitGroup
-	var observedPeakMB int64
-	sampleWG.Add(1)
-	go func() {
-		defer sampleWG.Done()
-		t := time.NewTicker(5 * time.Second)
-		defer t.Stop()
-		baseline := currentProcessRSSMB()
-		for {
-			select {
-			case <-sampleStop:
-				return
-			case <-t.C:
-				now := currentProcessRSSMB()
-				delta := now - baseline
-				if delta > observedPeakMB {
-					observedPeakMB = delta
-				}
-			}
-		}
-	}()
-
-	// S3: attempt incremental file-level reindex before the full index.
-	// Only tried when the Incremental callback is configured AND the
-	// incremental toggle is active.
-	//
-	// Issue #2397: consult s.cfg.ExtractorConfig.IsIncrementalEnabled()
-	// (single source of truth) instead of the private incrementalEnabled()
-	// helper that read GRAFEL_INCREMENTAL_REINDEX directly. The nil-
-	// receiver method falls through to the env-var for backward compat.
-	//
-	// On success (res.Done=true) we skip the full reindex.
-	// On fallback (res.Done=false) we log the reason and fall through normally.
-	// Use shutdownCtx for all child-process-spawning calls so that when
-	// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
-	// subprocess indexer receives SIGTERM via exec.CommandContext and the
-	// daemon can exit cleanly without leaving zombie processes (issue #2176).
-	jobCtx := s.shutdownCtx
 
 	var err error
-	incrementalDone := false
-	if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
-		res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
-		if res.Done {
-			incrementalDone = true
-			s.logEvent("incremental_ok", repoPath,
-				"changed_files="+itoa(int64(res.ChangedFiles)))
+	var observedPeakMB int64
+
+	// Cross-path mutual exclusion (foreground group-rebuild ⇄ scheduler): the
+	// foreground rebuild path in cmd/grafel indexes a repo directly, bypassing
+	// this scheduler's per-repo in-flight guard, and both write the same
+	// graph.fb. Yield to a foreground rebuild that owns (or intends to own) this
+	// repo: skip THIS attempt without racing its write, and schedule a single
+	// delayed retry so the repo is still reindexed once the rebuild releases.
+	// A background claim also serialises the scheduler against a concurrent
+	// rebuild that has not yet marked foreground intent.
+	yielded := false
+	backgroundRelease := func() {}
+	if !skip {
+		if rel, ok := repolock.DefaultRegistry.TryClaimBackground(repoPath); ok {
+			backgroundRelease = rel
 		} else {
-			s.logEvent("incremental_fallback", repoPath,
-				"reason="+res.FallbackReason)
-			s.logger.Info("sched: incremental fallback", "repo", repoPath, "reason", res.FallbackReason)
+			yielded = true
+			s.logEvent("index_yield_foreground", repoPath,
+				"foreground group-rebuild owns this repo — skipping concurrent reindex, retrying after backoff")
+			s.logger.Info("sched: yielding repo to foreground group-rebuild (avoids concurrent graph.fb rewrite)",
+				"repo", repoPath, "ref", tok.ref)
 		}
 	}
+	defer backgroundRelease()
 
-	if !incrementalDone && s.cfg.Index != nil {
-		err = s.cfg.Index(jobCtx, repoPath, tok.ref)
+	if skip {
+		err = fmt.Errorf("reindex circuit open: %d consecutive failure(s) at commit %q, retrying after backoff (#5726/#5729)", breakerStats.FailCount, tok.commit)
+		if shouldLogSkip {
+			s.logEvent("index_circuit_skip", repoPath,
+				fmt.Sprintf("skipping reindex — %d consecutive failures at commit=%s (ref=%s), serving last-good graph, backoff until %s (#5726/#5729)",
+					breakerStats.FailCount, tok.commit, tok.ref, breakerStats.FailBackoffUntil.Format(time.RFC3339)))
+			s.logger.Warn("sched: reindex circuit open — skipping repeated-failure reindex, serving last-good graph",
+				"repo", repoPath, "commit", tok.commit, "ref", tok.ref, "fail_count", breakerStats.FailCount,
+				"backoff_until", breakerStats.FailBackoffUntil)
+		}
+	} else if !yielded {
+		s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
+		// Observability: log goroutine identity + ref so concurrent-indexer
+		// regressions are diagnosable without a pprof trace (#2141).
+		s.logger.Info("indexer: starting", "repo", repoPath, "ref", tok.ref, "goroutine_id", goroutineID())
+
+		// Spawn RSS sampler so we capture the peak the daemon hit during
+		// this job. Records into history on completion.
+		sampleStop := make(chan struct{})
+		var sampleWG sync.WaitGroup
+		sampleWG.Add(1)
+		go func() {
+			defer sampleWG.Done()
+			t := time.NewTicker(5 * time.Second)
+			defer t.Stop()
+			baseline := currentProcessRSSMB()
+			for {
+				select {
+				case <-sampleStop:
+					return
+				case <-t.C:
+					now := currentProcessRSSMB()
+					delta := now - baseline
+					if delta > observedPeakMB {
+						observedPeakMB = delta
+					}
+				}
+			}
+		}()
+
+		// S3: attempt incremental file-level reindex before the full index.
+		// Only tried when the Incremental callback is configured AND the
+		// incremental toggle is active.
+		//
+		// Issue #2397: consult s.cfg.ExtractorConfig.IsIncrementalEnabled()
+		// (single source of truth) instead of the private incrementalEnabled()
+		// helper that read GRAFEL_INCREMENTAL_REINDEX directly. The nil-
+		// receiver method falls through to the env-var for backward compat.
+		//
+		// On success (res.Done=true) we skip the full reindex.
+		// On fallback (res.Done=false) we log the reason and fall through normally.
+		// Use shutdownCtx for all child-process-spawning calls so that when
+		// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
+		// subprocess indexer receives SIGTERM via exec.CommandContext and the
+		// daemon can exit cleanly without leaving zombie processes (issue #2176).
+		jobCtx := s.shutdownCtx
+
+		incrementalDone := false
+		// Issue #5726 / epic #5729 — defense in depth. An index can panic for
+		// reasons the fbwriter fail-soft doesn't catch (e.g. a flatbuffers 2-GiB
+		// abort raised inside the streaming WriteEntity path, or any other bug in
+		// an extractor). A panic here would unwind through the worker goroutine and
+		// abort the ENTIRE daemon (launchd relaunches it → 60–90s reindex outage,
+		// every MCP bridge severed). Recover so ANY index panic becomes a normal
+		// error: the worker keeps serving, the reserved budget is released via the
+		// existing err path below, and we log a clear degraded-state message.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("index panicked (recovered): %v", r)
+					s.logEvent("index_panic", repoPath, fmt.Sprintf("recovered panic during index: %v", r))
+					s.logger.Error("sched: index panicked — recovered; daemon continues in degraded state (repo left at last-good graph)",
+						"repo", repoPath, "ref", tok.ref, "panic", r, "stack", string(debug.Stack()))
+				}
+			}()
+
+			if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
+				res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
+				if res.Done {
+					incrementalDone = true
+					s.logEvent("incremental_ok", repoPath,
+						"changed_files="+itoa(int64(res.ChangedFiles)))
+				} else {
+					s.logEvent("incremental_fallback", repoPath,
+						"reason="+res.FallbackReason)
+					s.logger.Info("sched: incremental fallback", "repo", repoPath, "reason", res.FallbackReason)
+				}
+			}
+
+			if !incrementalDone && s.cfg.Index != nil {
+				err = s.cfg.Index(jobCtx, repoPath, tok.ref)
+			}
+		}()
+
+		close(sampleStop)
+		sampleWG.Wait()
+
+		// Release the cross-path claim the INSTANT the graph.fb write is done —
+		// BEFORE the stats/follow-up/poke section below. The background claim
+		// only needs to cover the write; the scheduler already serialises
+		// against itself via inflight[repoPath]. Releasing at end-of-function
+		// (defer) instead would leave the claim held while this run re-enqueues
+		// its own #5138 coalesced follow-up and pokes admission — a second
+		// worker could then admit that follow-up, have TryClaimBackground fail
+		// against our not-yet-released claim, and wrongly "yield to a foreground
+		// rebuild" against the scheduler's OWN just-completed run (delaying the
+		// no-lost-update follow-up up to yieldRetryDelay + phantom logs). The
+		// idempotent defer below still covers the skip/yield/early-return paths.
+		backgroundRelease()
 	}
-
-	close(sampleStop)
-	sampleWG.Wait()
 
 	s.mu.Lock()
 	stats := s.indexedRepos[repoPath]
-	stats.LastIndex = time.Now()
-	stats.IndexCount++
-	stats.PredictedMB = tok.predictedMB
-	// #5433: record the ref this completed index ran against so
-	// grafel_index_status can report indexed_ref per repo.
-	stats.LastIndexedRef = tok.ref
-	if observedPeakMB > 0 {
-		stats.LastPeakMB = observedPeakMB
+	if !skip && !yielded {
+		stats.LastIndex = time.Now()
+		stats.IndexCount++
+		stats.PredictedMB = tok.predictedMB
+		// #5433: record the ref this completed index ran against so
+		// grafel_index_status can report indexed_ref per repo.
+		stats.LastIndexedRef = tok.ref
+		if observedPeakMB > 0 {
+			stats.LastPeakMB = observedPeakMB
+		}
 	}
 	if err != nil {
 		stats.LastErr = err.Error()
-	} else {
+		if !skip {
+			// A real attempt failed: bump (or start) the breaker for this
+			// commit and arm exponential backoff. A skip does not re-bump —
+			// the failure it reflects was already recorded.
+			if stats.FailCommit == tok.commit {
+				stats.FailCount++
+			} else {
+				stats.FailCommit = tok.commit
+				stats.FailCount = 1
+				stats.FailLoggedAt = time.Time{}
+			}
+			stats.FailBackoffUntil = time.Now().Add(reindexFailBackoff(stats.FailCount))
+		}
+	} else if !yielded {
 		stats.LastErr = ""
+		// Success resets the breaker entirely — including for a DIFFERENT
+		// commit than FailCommit, which is already implied since a fresh
+		// commit never matched the open breaker in the first place.
+		stats.FailCommit = ""
+		stats.FailCount = 0
+		stats.FailBackoffUntil = time.Time{}
+		stats.FailLoggedAt = time.Time{}
 	}
 	s.indexedRepos[repoPath] = stats
 	delete(s.inflight, repoPath)
@@ -1192,19 +1418,37 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	if followUp {
 		delete(s.dirty, repoPath)
 	}
-	// Prefer the latest observed ref recorded while dirty; fall back to the
-	// ref this run used. dedupLoop overwrites pendingRefs[repoPath] on every
-	// mid-run enqueue, so it holds the most recent branch for the follow-up.
+	// Prefer the latest observed ref/commit recorded while dirty; fall back to
+	// the values this run used. dedupLoop overwrites pendingRefs/pendingCommits
+	// on every mid-run enqueue, so they hold the most recent branch + commit
+	// for the follow-up (the commit is the breaker identity, so it must ride
+	// along too — otherwise a same-commit follow-up would carry an empty commit
+	// and bypass the breaker).
 	followUpRef := tok.ref
 	if r, ok := s.pendingRefs[repoPath]; ok && r != "" {
 		followUpRef = r
 	}
+	followUpCommit := tok.commit
+	if c, ok := s.pendingCommits[repoPath]; ok && c != "" {
+		followUpCommit = c
+	}
 	s.mu.Unlock()
 
-	if followUp {
+	if yielded {
+		// Do NOT re-enqueue immediately: the foreground rebuild that owns this
+		// repo is still running, so an instant retry would busy-loop (yield →
+		// re-enqueue → admit → yield). Retry once after a bounded backoff; the
+		// rebuild will have released its claim by then in the common case, and
+		// EnqueueRefCommit dedups so overlapping retries coalesce into one.
+		s.logEvent("reindex_yield_retry", repoPath,
+			"scheduling delayed reindex retry after foreground rebuild backoff")
+		time.AfterFunc(yieldRetryDelay, func() {
+			s.EnqueueRefCommit(repoPath, followUpRef, followUpCommit)
+		})
+	} else if followUp {
 		s.logEvent("reindex_coalesced_followup", repoPath,
 			"changes landed during in-flight reindex — scheduling single follow-up (#5138)")
-		s.EnqueueRef(repoPath, followUpRef)
+		s.EnqueueRefCommit(repoPath, followUpRef, followUpCommit)
 	}
 
 	// History persistence happens outside the lock (its own mutex +
@@ -1217,16 +1461,33 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// Wake admission — capacity has freed.
 	s.poke()
 
+	if yielded {
+		// Nothing was indexed (we yielded to a foreground rebuild). Do not log a
+		// completion nor arm the cross-repo link pass — the rebuild owns those.
+		return
+	}
+
 	if err != nil {
-		s.logEvent("index_err", repoPath, err.Error())
-		s.logger.Error("sched: index failed", "repo", repoPath, "err", err, "took", time.Since(t0))
+		// A skip already logged its own (rate-limited) index_circuit_skip
+		// event above; logging index_err/"index failed" here too would
+		// reproduce the exact 74x-log storm the breaker exists to prevent.
+		if !skip {
+			s.logEvent("index_err", repoPath, err.Error())
+			s.logger.Error("sched: index failed", "repo", repoPath, "err", err, "took", time.Since(t0))
+		}
 		return
 	}
 	dur := time.Since(t0).Truncate(time.Millisecond)
 	allocDiff := observedPeakMB - tok.predictedMB
 	s.logEvent("index_ok", repoPath,
 		dur.String()+" peak="+formatMB(observedPeakMB))
-	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur, "peak_heap_mb", observedPeakMB, "alloc_diff_mb", allocDiff)
+	// #5710 follow-up: stamp entities=N so a silent 0-entity completion (e.g. an
+	// empty-graph store recreation) is visible at a glance. -1 means "unknown".
+	ents := -1
+	if s.cfg.EntityCount != nil {
+		ents = s.cfg.EntityCount(repoPath, tok.ref)
+	}
+	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur, "peak_heap_mb", observedPeakMB, "alloc_diff_mb", allocDiff, "entities", ents)
 
 	// Schedule the downstream cross-repo link pass for each group this repo
 	// belongs to. The group-scope algorithm pass is NOT scheduled here — it is
@@ -1614,6 +1875,14 @@ func (s *Scheduler) MarkIndexed(repoPath string, err error) {
 		stats.LastErr = err.Error()
 	} else {
 		stats.LastErr = ""
+		// #5726/#5729: an explicit `grafel index` RPC that succeeds means the
+		// repo now serializes under the cap (e.g. the developer removed a huge
+		// vendored tree). Clear any scheduler-armed breaker so a subsequent
+		// watcher reindex is not skipped by a stale backoff window.
+		stats.FailCommit = ""
+		stats.FailCount = 0
+		stats.FailBackoffUntil = time.Time{}
+		stats.FailLoggedAt = time.Time{}
 	}
 	s.indexedRepos[repoPath] = stats
 }

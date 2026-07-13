@@ -171,6 +171,12 @@ func (s *Store) Load() error {
 }
 
 // save writes the store atomically (caller must hold s.mu).
+//
+// It is resilient to a transient failure writing the `.tmp` staging file
+// (#5675): the daemon persists on every reconciliation tick, so a momentary
+// fd-exhaustion or I/O blip must not drop the whole reconcile. The `.tmp`
+// write is retried ONCE before giving up. The caller keeps this NON-FATAL —
+// nothing here ever calls os.Exit/log.Fatal.
 func (s *Store) save() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
@@ -181,7 +187,13 @@ func (s *Store) save() error {
 	}
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
+		// Retry once: a transient fd/I-O blip during a storm should not drop
+		// the reconcile silently. A best-effort remove of a possibly
+		// partially-written tmp precedes the retry.
+		_ = os.Remove(tmp)
+		if err2 := os.WriteFile(tmp, data, 0o644); err2 != nil {
+			return err2
+		}
 	}
 	return os.Rename(tmp, s.path)
 }
@@ -402,9 +414,22 @@ func runWorktreeList(repoPath string) ([]RawWorktree, error) {
 const defaultMaxWorktrees = 10
 
 // maxWorktrees reads GRAFEL_MAX_WORKTREES_PER_REPO or returns the default.
+//
+// Semantics:
+//   - unset / empty       → defaultMaxWorktrees (10)
+//   - invalid/non-numeric → defaultMaxWorktrees (10)
+//   - negative            → defaultMaxWorktrees (10); a negative cap is
+//     meaningless, so we fall back to the safe default rather than disabling.
+//   - explicit 0          → 0, an intentional escape hatch that disables
+//     worktree/branch-snapshot indexing entirely (large monorepos).
+//   - positive n          → n
+//
+// An explicit 0 MUST be honored (n >= 0), which is why it is distinguished
+// from "unset". Previously the guard was n > 0, which silently floored 0 back
+// to the default.
 func maxWorktrees() int {
 	if v := os.Getenv("GRAFEL_MAX_WORKTREES_PER_REPO"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			return n
 		}
 	}
@@ -473,6 +498,19 @@ type Watcher struct {
 	interval time.Duration
 	logger   *slog.Logger
 
+	// pollMu serializes poll() against itself. The ticker loop (Start) and the
+	// debounced fsnotify goroutine (startGitDirsWatch) both call poll(); without
+	// this guard a burst could run two reconciliations concurrently and multiply
+	// the OnActivate fsnotify-subscription fan-out (#5675). It is distinct from
+	// store.mu (which only guards the children map) and always wraps — never is
+	// wrapped by — store.mu, so no lock-ordering deadlock is possible.
+	pollMu sync.Mutex
+
+	// lastSaveErrLog rate-limits the "failed to persist store" log so a
+	// per-tick persist failure during a storm cannot spam the log (#5675).
+	// Accessed only under pollMu (poll wraps the save + this log).
+	lastSaveErrLog time.Time
+
 	// OnActivate fires once per child when it becomes (or re-becomes)
 	// active — i.e. on first discovery and on re-activation after expiry.
 	// Used by the daemon to watch the worktree working tree and trigger an
@@ -482,10 +520,18 @@ type Watcher struct {
 	// worktree was removed).  Used by the daemon to unsubscribe the
 	// worktree working tree from the file watcher.  May be nil.
 	OnExpire func(child *WorktreeChild)
+
+	// disabledLogOnce ensures the "indexing disabled" line (cap==0) is logged
+	// at most once per process, not on every ~60s tick / debounced Sync.
+	disabledLogOnce sync.Once
 }
 
 // defaultPollInterval is the default reconciliation interval.
 const defaultPollInterval = 60 * time.Second
+
+// saveErrLogInterval bounds how often a store-persist failure is logged, so a
+// per-tick failure during an fd storm cannot flood the log (#5675).
+const saveErrLogInterval = 5 * time.Minute
 
 // pollInterval returns the reconciliation interval.
 //
@@ -666,8 +712,30 @@ func (w *Watcher) Poll() { w.poll() }
 func (w *Watcher) Sync() { w.poll() }
 
 func (w *Watcher) poll() {
+	// Serialize reconciliation passes (#5675). For the common case (single
+	// repo, no concurrent trigger) this is an uncontended lock — zero added
+	// latency. Under a burst it makes ticker + debounced-fsnotify polls run
+	// one-at-a-time instead of overlapping and multiplying the activation
+	// fan-out.
+	w.pollMu.Lock()
+	defer w.pollMu.Unlock()
+
 	parents := w.parents()
 	cap := maxWorktrees()
+
+	// A resolved cap of 0 is the explicit disable escape hatch. We deliberately
+	// flow through the normal poll body rather than short-circuiting: enforceCap
+	// keeps zero, so nothing new is onboarded, and — critically — the expiry
+	// pass below still runs, marking any children activated under a previous
+	// cap>0 as expired so OnExpire fires and the daemon tears down their
+	// fsnotify watches / reindex jobs. Log the disabled state once per process
+	// (not every tick) so operators see it without per-tick spam.
+	if cap == 0 {
+		w.disabledLogOnce.Do(func() {
+			w.logger.Info("worktree: indexing disabled (GRAFEL_MAX_WORKTREES_PER_REPO=0)")
+		})
+	}
+
 	now := time.Now().UTC()
 
 	// Track every path seen in this tick across all parents.
@@ -686,7 +754,9 @@ func (w *Watcher) poll() {
 		}
 
 		kept, skipped := enforceCap(linked, cap)
-		if skipped > 0 {
+		// cap==0 is the disable escape hatch, already logged once above; don't
+		// emit the per-parent cap-enforced Warn every tick in that case.
+		if skipped > 0 && cap > 0 {
 			w.logger.Warn("worktree: per-parent cap enforced", "group", p.GroupName, "slug", p.Slug, "total", len(linked), "kept", cap, "skipped", skipped, "cap", cap, "override_env", "GRAFEL_MAX_WORKTREES_PER_REPO")
 		}
 
@@ -736,7 +806,13 @@ func (w *Watcher) poll() {
 		}
 	}
 	if err := w.store.save(); err != nil {
-		w.logger.Error("worktree: failed to persist store", "err", err)
+		// Non-fatal by design: the daemon keeps running on a persist failure
+		// (the reconcile is re-derived from git on the next tick). Rate-limit
+		// + demote to Warn so a per-tick storm can't flood the log (#5675).
+		if now.Sub(w.lastSaveErrLog) >= saveErrLogInterval {
+			w.logger.Warn("worktree: failed to persist store (non-fatal, will retry next reconcile)", "err", err)
+			w.lastSaveErrLog = now
+		}
 	}
 	w.store.mu.Unlock()
 

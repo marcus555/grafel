@@ -11,7 +11,7 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,11 +22,28 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/daemon/transport"
 	"github.com/cajasmota/grafel/internal/daemon/watch"
-	"github.com/cajasmota/grafel/internal/daemon/watchreg"
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
 	"github.com/cajasmota/grafel/internal/extractor"
-	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/progress"
 )
+
+// defaultActivateConcurrency bounds how many worktree working-tree fsnotify
+// subscriptions (watcher.AddRepo) may be opening at once (#5675). Kept small:
+// activations are normally dispatched one-at-a-time by the reconciliation poll,
+// so this only ever engages under an abnormal burst.
+const defaultActivateConcurrency = 8
+
+// worktreeActivateConcurrency resolves the OnActivate fan-out bound. It honours
+// GRAFEL_WORKTREE_ACTIVATE_CONCURRENCY (strictly-positive integer) and falls
+// back to defaultActivateConcurrency otherwise.
+func worktreeActivateConcurrency() int {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_WORKTREE_ACTIVATE_CONCURRENCY")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultActivateConcurrency
+}
 
 // Config configures Run. Fields are required unless documented otherwise.
 type Config struct {
@@ -37,6 +54,16 @@ type Config struct {
 	// Logger is the *slog.Logger used by daemon-internal code and all sub-packages.
 	// When nil, Run constructs a default stderr slog.Logger.
 	Logger *slog.Logger
+
+	// ProgressBroker is the serve-plane indexer progress bus the dashboard SSE
+	// subscribes to (the cmd/grafel daemonProgressBroker). In SPLIT mode the
+	// engine indexes in a separate process and publishes progress into ITS own
+	// broker, so serve's dashboard would otherwise see nothing; the serve-side
+	// sidecarTailer (started only in planeServeOnly) tails the engine's per-group
+	// NDJSON sidecars and republishes each event into THIS broker. nil disables
+	// the tailer (monolith carries everything in-process; tests without a
+	// dashboard leave it unset). ADR-0024 / epic #5729.
+	ProgressBroker progress.Publisher
 
 	// Phase B optional wiring. When all four are non-nil the daemon
 	// starts the fsnotify watcher + scheduler and registers every
@@ -81,6 +108,12 @@ type Config struct {
 	// SchedulerIndex when the incremental toggle is active. When nil
 	// the incremental path is never tried (default: full reindex always).
 	SchedulerIncremental func(ctx context.Context, repo string, ref string) sched.IncrementalResult
+
+	// SchedulerEntityCount, when non-nil, returns the entity count of the
+	// materialized graph for (repo, ref). Wired into the scheduler so the
+	// "indexer: completed" log carries entities=N, making a silent 0-entity
+	// completion visible (#5710 follow-up). nil → entities omitted.
+	SchedulerEntityCount func(repo string, ref string) int
 
 	// ExtractorConfig, when non-nil, is passed to the scheduler so it can
 	// consult IsIncrementalEnabled() instead of reading
@@ -225,6 +258,244 @@ type Config struct {
 	// invalidation. nil leaves the on-disk delete to run without an explicit
 	// reader drop (the cache ages out on its own).
 	DeadRefDropReader func(repoPath, ref string)
+
+	// OnSchedulerReady, when non-nil, is invoked once the scheduler is started
+	// with a read-only warming-state accessor closing over the live scheduler
+	// (#5690). cmd/grafel wires the accessor into the MCP server's State so
+	// grafel_whoami / grafel_status can report whether a post-index enrichment
+	// pass is still in flight (a "warming" group) rather than leaving agents to
+	// mistake enrichment-induced slowness for a slow query. The accessor is
+	// read-only and has NO effect on scheduling. Not called for a watcher-less
+	// daemon (no scheduler is created).
+	OnSchedulerReady func(warming func() WarmingSnapshot)
+}
+
+// SplitModeEnvVar names the capability flag that gates the serve/engine
+// process split (ADR-0024, epic #5729). As of PR6 (epic #5729) the split is
+// ON BY DEFAULT: RunServe spawns and supervises a separate `grafel engine`
+// child process for the scheduler/watcher/extraction/fbwriter, while serve
+// keeps the MCP dispatch socket, dashboard, and graph_cache mmap reads
+// in-process. This is the escape hatch: set GRAFEL_SPLIT_MODE=0 (or
+// "false"/"off"/"no", case-insensitive) to force single-process monolith
+// mode — the entire daemon (serve + engine plane) runs in one process, byte-
+// for-byte identical to the pre-split `grafel daemon`, with no engine child
+// spawned.
+const SplitModeEnvVar = "GRAFEL_SPLIT_MODE"
+
+// SplitModeEnabled reports whether the serve/engine process-split
+// capability flag is turned on. See SplitModeEnvVar.
+//
+// Defaults to true (split ON) as of PR6/epic #5729: unset, empty, or any
+// value NOT recognized as an explicit disable is treated as split-mode ON.
+// It returns false ONLY when GRAFEL_SPLIT_MODE is explicitly set to one of
+// "0", "false", "off", or "no" (case-insensitive, whitespace-trimmed) — the
+// documented escape hatch back to single-process monolith mode.
+func SplitModeEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(SplitModeEnvVar)))
+	switch v {
+	case "0", "false", "off", "no":
+		return false
+	default:
+		return true
+	}
+}
+
+// ServeConfig is the serve-plane configuration (ADR-0024 Phase 1): the MCP
+// dispatch socket, the dashboard, and graph_cache mmap reads. It currently
+// composes the entire Config rather than a disjoint field set because, when
+// split mode is explicitly disabled (GRAFEL_SPLIT_MODE=0, the escape hatch;
+// see SplitModeEnabled), RunServe must start the engine plane IN-PROCESS
+// exactly as Run does today — it needs every engine-plane field (scheduler,
+// watcher, extraction, fbwriter hooks) to do so.
+type ServeConfig struct {
+	Config
+}
+
+// EngineConfig is the engine-plane configuration (ADR-0024 Phase 1): the
+// scheduler, file watcher, extraction, and fbwriter. See ServeConfig's doc
+// for why it currently composes the full Config rather than a disjoint
+// subset.
+type EngineConfig struct {
+	Config
+}
+
+// daemonPlaneMode selects which planes the shared run() body starts. It is an
+// internal (unexported) implementation detail of the ADR-0024 carve; the
+// public entrypoints (Run, RunServe, RunEngine) each pick a mode.
+type daemonPlaneMode int
+
+const (
+	// planeMonolith is the single-process daemon: the serve plane (socket,
+	// dashboard, MCP dispatch) AND the engine plane (scheduler, watcher,
+	// fbwriter) both run in ONE process. This is the escape-hatch mode
+	// (GRAFEL_SPLIT_MODE=0/false/off/no) and is byte-for-byte behavior-
+	// identical to the pre-split daemon.
+	planeMonolith daemonPlaneMode = iota
+	// planeServeOnly starts ONLY the serve plane; the engine plane is skipped
+	// because a supervised `grafel engine` child runs it in a separate process
+	// (split-mode ON, the default as of PR6/epic #5729). Used by RunServe
+	// when SplitModeEnabled().
+	planeServeOnly
+)
+
+// RunServe starts the serve plane: the MCP dispatch socket, the dashboard, and
+// the zero-copy graph_cache mmap reads.
+//
+// As of PR6 (epic #5729), split mode is ON BY DEFAULT (SplitModeEnabled()==
+// true): RunServe starts ONLY the serve plane in-process and spawns +
+// supervises a separate `grafel engine` child for the
+// scheduler/watcher/extraction/fbwriter. The supervisor keeps the engine
+// child alive across crashes with exponential backoff, exposes a status-file
+// health gate, and gracefully drains (SIGTERM → bounded wait → SIGKILL,
+// reaped) the child when serve shuts down. serve never exits for a
+// degraded/dead engine — it keeps answering reads from the last-good
+// graph.fb — and returns non-zero only when the engine is unkeepable
+// (repeated crash-loop at the backoff ceiling), so the OS unit recycles the
+// whole thing.
+//
+// The escape hatch: set GRAFEL_SPLIT_MODE=0 (or "false"/"off"/"no") to force
+// SplitModeEnabled()==false, in which case RunServe runs the ENTIRE daemon in
+// one process — byte-for-byte identical to Run — so an existing OS unit that
+// execs `serve` (or the back-compat `daemon` shim) behaves exactly like the
+// pre-split daemon, with no engine child spawned.
+func RunServe(ctx context.Context, cfg ServeConfig) error {
+	if !SplitModeEnabled() {
+		// Escape hatch (GRAFEL_SPLIT_MODE=0/false/off/no): everything in one
+		// process, exactly as before.
+		return run(ctx, cfg.Config, planeMonolith)
+	}
+
+	// Flag ON: serve plane in-process + a supervised engine child process.
+	logger := cfg.Logger
+	if logger == nil {
+		logger = buildSlogLogger(os.Stderr)
+	}
+
+	serveCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sup := newEngineSupervisor(cfg.Layout, logger)
+	if err := sup.start(serveCtx); err != nil {
+		return fmt.Errorf("serve: start engine supervisor: %w", err)
+	}
+	// Graceful drain of the engine child on serve shutdown (reaped, no orphan).
+	defer sup.stop()
+
+	// Bridge a supervisor "engine unkeepable" fatal into serve shutdown: cancel
+	// serveCtx so run() unwinds, then RunServe returns the fatal below.
+	go func() {
+		select {
+		case <-serveCtx.Done():
+		case <-sup.fatal():
+			logger.Error("serve: engine child unkeepable — shutting down serve so the OS unit recycles it")
+			cancel()
+		}
+	}()
+
+	err := run(serveCtx, cfg.Config, planeServeOnly)
+	if ferr := sup.fatalError(); ferr != nil {
+		return ferr
+	}
+	return err
+}
+
+// RunEngine starts the engine plane standalone (the split-mode `grafel engine`
+// child): the scheduler, file watcher, git-HEAD poller, worktree discovery,
+// reapers/sweepers, the status writer, pattern-decay, and the docgen sweeper —
+// with NO MCP socket, NO dashboard, and NO MCP dispatch (those are the serve
+// plane, owned by the supervising serve process).
+//
+// It writes its own engine.pid, publishes an engine-global liveness heartbeat
+// (statusfile keyed on the daemon root) so the supervising serve's health gate
+// can tell HEALTHY from DEGRADED, brings up the engine plane, then blocks until
+// ctx is cancelled or a SIGTERM/SIGINT arrives — at which point its defers
+// unwind the scheduler/watcher gracefully (ADR-0024, epic #5729, PR2).
+func RunEngine(ctx context.Context, cfg EngineConfig) error {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = buildSlogLogger(os.Stderr)
+	}
+
+	// #3648: match Run's conservative Go soft memory limit — the engine is the
+	// heavy plane (extraction/reindex/fbwriter), exactly the workload the cap
+	// bounds.
+	applyMemoryLimit(logger)
+
+	if err := EnsureLayout(cfg.Layout); err != nil {
+		return fmt.Errorf("engine: ensure layout: %w", err)
+	}
+
+	// Engine is the write plane, so it owns the one-time state-migration that
+	// normalises the on-disk store layout (mirrors Run). Non-fatal.
+	if storeDir := StoreDir(); storeDir != "" {
+		if err := MigrateToRefStore(storeDir); err != nil {
+			logger.Warn("engine startup: MigrateToRefStore (non-fatal)", "err", err)
+		}
+	}
+
+	// Engine pidfile (engine.pid) — distinct from serve's daemon.pid so both
+	// planes coexist under one daemon root without contending for a pidfile.
+	pidPath := EnginePIDPath(cfg.Layout.Root)
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
+		return fmt.Errorf("engine: write pid file %s: %w", pidPath, err)
+	}
+	defer func() { _ = os.Remove(pidPath) }()
+
+	// Engine-global liveness heartbeat: a statusfile keyed on the daemon root
+	// (NOT any single repo) that stamps EnginePID + a fresh HeartbeatAt every
+	// tick, plus the engine-global busy/parsing/concurrency/warming fields
+	// (#5729 PR3). This is the signal serve's supervisor health gate reads to
+	// decide HEALTHY vs DEGRADED — independent of whether any fleet repo is
+	// registered yet. #5729 PR3 moved the startEngineLivenessHeartbeat call
+	// into startEnginePlane (engineplane.go) itself so it ALSO runs in the
+	// monolith (escape-hatch GRAFEL_SPLIT_MODE=0), giving serve one status-file code path
+	// that behaves identically in both modes — see startEnginePlane.
+
+	// Parent-death watchdog (ADR-0024 orphan-engine hardening, epic #5729,
+	// PRIMARY layer): record the parent pid we were started under, then poll
+	// for reparenting (the original serve parent died uncleanly — SIGKILL,
+	// crash, OOM — and this process was adopted by init) so the engine
+	// self-terminates GRACEFULLY instead of lingering as an orphan that keeps
+	// writing the store alongside a freshly spawned replacement engine. See
+	// startParentDeathWatchdog's doc for the full design and per-platform
+	// notes (engine_parentwatch.go / _unix.go / _windows.go).
+	//
+	// engineCtx derives from ctx so a normal shutdown (ctx cancelled, or the
+	// SIGTERM/SIGINT case below) ALSO stops the watchdog goroutine (no leak);
+	// the watchdog itself cancels engineCtx on reparenting, which the select
+	// below observes as a normal graceful-shutdown trigger.
+	originalParent := os.Getppid()
+	engineCtx, cancelEngine := context.WithCancel(ctx)
+	defer cancelEngine()
+	watchdogDone := startParentDeathWatchdog(engineCtx, originalParent, parentWatchGetppid(), defaultParentWatchInterval, cancelEngine, logger)
+	defer func() { <-watchdogDone }()
+
+	// Bring up the engine plane (no *Service — engine has no MCP surface).
+	// Uses engineCtx (not ctx) so the watchdog's self-cancel also propagates
+	// into the scheduler/watcher/etc., unwinding them the same way a real
+	// SIGTERM would.
+	ep := startEnginePlane(engineCtx, cfg.Config, nil, logger)
+	defer ep.shutdown()
+
+	logger.Info("engine: ready", "pid", os.Getpid(), "ppid", originalParent, "root", cfg.Layout.Root)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigCh)
+
+	select {
+	case <-engineCtx.Done():
+		logger.Info("engine: context cancelled — shutting down", "err", engineCtx.Err())
+	case sig := <-sigCh:
+		logger.Info("engine: signal received — shutting down", "signal", sig.String())
+	}
+	// Explicitly cancel (idempotent alongside the deferred cancelEngine())
+	// BEFORE the deferred ep.shutdown()/watchdogDone-wait unwind below: defers
+	// run LIFO, so without this explicit call ep.shutdown() would fire before
+	// cancelEngine() on the SIGTERM/SIGINT path, leaving engineCtx (and any
+	// child contexts derived from it) live during teardown.
+	cancelEngine()
+	return nil
 }
 
 // Run starts the daemon. It blocks until either:
@@ -235,7 +506,20 @@ type Config struct {
 // On exit it removes the socket file and pid file. The function is the
 // daemon's entire public surface — cmd/grafel just imports daemon
 // and calls Run.
+//
+// Run is the single-process monolith: it delegates to the shared run() body in
+// planeMonolith mode (serve plane + engine plane in one process). This is
+// byte-for-byte behavior-identical to the pre-ADR-0024 daemon.
 func Run(ctx context.Context, cfg Config) error {
+	return run(ctx, cfg, planeMonolith)
+}
+
+// run is the shared daemon body behind Run / RunServe / RunEngine. The plane
+// argument selects which planes start: planeMonolith runs everything (Run's
+// classic behavior), planeServeOnly skips the engine plane (split-mode serve,
+// whose engine runs in a supervised child). The engine-plane assembly itself
+// lives in startEnginePlane (engineplane.go).
+func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	// slogger is the structured logger used by the daemon itself (Run + Service)
 	// and all sub-packages. Handler selection is based on GRAFEL_DAEMON_LOG_JSON
 	// at startup — this encodes the choice in the handler so call sites never check
@@ -303,7 +587,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// wedged startup step (the isolated selftest daemon hangs here). Cheap +
 	// helps all platforms; does NOT change startup order/behavior.
 	logger.Info("startup: pidfile-acquire begin")
-	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath)
+	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath, cfg.Layout.SocketPath)
 	if err != nil {
 		return err
 	}
@@ -356,275 +640,31 @@ func Run(ctx context.Context, cfg Config) error {
 	StartCPUWatchdog(&svc.inFlight, logger)
 	logger.Info("startup: cpu-watchdog done")
 
-	// Phase B — bring up the scheduler + watcher when the caller
-	// supplied the four hooks. They are optional so tests can exercise
-	// the bare RPC surface without dragging the extractor into scope.
-	logger.Info("startup: scheduler-watcher begin", "enabled", cfg.SchedulerIndex != nil)
-	if cfg.SchedulerIndex != nil {
-		history := sched.LoadRSSHistory(cfg.RSSHistoryPath)
-		scheduler := sched.New(sched.Config{
-			Index:         cfg.SchedulerIndex,
-			Links:         cfg.SchedulerLinks,
-			GroupAlgo:     cfg.SchedulerGroupAlgo,
-			GroupsForRepo: cfg.GroupsForRepo,
-			// #5403: settled-group overlay-freshness sweep. Enabled when the
-			// caller wires SchedulerStaleGroups; the interval defaults from
-			// GRAFEL_OVERLAY_SWEEP_INTERVAL (10m; "0" disables).
-			StaleGroups: cfg.SchedulerStaleGroups,
-			Logger:      logger,
-			BudgetMB:    cfg.MaxRSSBudgetMB,
-			Predict:     sched.PredictRSS,
-			History:     history,
-			// PH1b: capture the HEAD ref at enqueue time so debounced
-			// batches index against the branch that was active when the
-			// file-change event fired, not the branch at dispatch time.
-			RefCapture: func(repoPath string) string {
-				return gitmeta.Capture(repoPath).Ref
-			},
-			// #3680: drop enqueues for linked git worktrees of an
-			// already-indexed primary repo so they never become independent
-			// root index jobs (each spawning its own ~100MB full graph store
-			// and pressuring the RSS admission budget). The worktree subsystem
-			// still tracks such paths as ephemeral children with aggressive
-			// TTLs. The indexed-primary set is the boot-time ReposToWatch list.
-			SkipEnqueue: makeWorktreeEnqueueGate(cfg.ReposToWatch),
-			// S3 incremental file-level reindex (issue #2153). When nil
-			// the scheduler falls through to full reindex on every tick.
-			Incremental: cfg.SchedulerIncremental,
-			// Issue #2397: single source of truth for the incremental toggle.
-			// The scheduler calls ExtractorConfig.IsIncrementalEnabled()
-			// rather than reading the env var directly.
-			ExtractorConfig: cfg.ExtractorConfig,
-		})
-		if cfg.MaxRSSBudgetMB > 0 {
-			logger.Info("scheduler: RSS-budget admission control enabled", "budget_mb", cfg.MaxRSSBudgetMB, "history", cfg.RSSHistoryPath)
-		}
-		scheduler.Start()
-		svc.scheduler = scheduler
-		defer scheduler.Stop()
-
-		wcfg := cfg.WatcherConfig
-		watcher, werr := watch.NewWatcherConfig(wcfg, func(repo string, bulk bool) {
-			if bulk {
-				logger.Info("watcher: bulk trigger — enqueuing full reindex", "repo", repo)
-			}
-			scheduler.Enqueue(repo)
-		}, logger)
-		if werr != nil {
-			logger.Warn("watcher: disabled", "err", werr)
-		} else {
-			svc.watcher = watcher
-			defer watcher.Stop()
-
-			// PH1b (Option B): start the .git/HEAD poller alongside the
-			// fsnotify watcher. .git/ remains in SkipDirs (no fsnotify
-			// noise from git internal object/pack writes), and the poller
-			// detects branch switches by reading gitmeta.Capture every 2s.
-			//
-			// When a branch switch is detected:
-			//   1. A synthetic EnqueueRef is sent to the scheduler with the
-			//      new ref captured at detection time.
-			//   2. The scheduler writes the new index into refs/<new-ref>/,
-			//      leaving the old ref's graph untouched on disk.
-			headPoller := watch.NewGitHeadPoller(0, func(ev watch.BranchSwitchEvent) {
-				logger.Info("branch-switch detected",
-					"repo", ev.RepoPath, "old_ref", ev.OldRef, "old_sha", ev.OldSHA, "new_ref", ev.NewRef, "new_sha", ev.NewSHA)
-				// Notify the MCP cross-link cache so stale (repo, oldRef)
-				// entries are evicted before the new-ref graph lands (#2224).
-				if cfg.BranchSwitchSink != nil {
-					cfg.BranchSwitchSink(ev.RepoPath, ev.OldRef)
-				}
-				scheduler.EnqueueRef(ev.RepoPath, ev.NewRef)
-			}, logger)
-			headPoller.Start()
-			defer headPoller.Stop()
-
-			// M2 (#2179): lazy fsnotify subscription — do NOT call watcher.AddRepo
-			// at boot. The daemon starts with zero fsnotify subscriptions. Repos
-			// are subscribed on the first MCP query for their group (via
-			// SubscribeGroupWatcher → watch.DefaultManager.SubscribeGroup →
-			// watcher.AddRepo). This eliminates per-repo directory-tree walks at
-			// startup, saving ~O(dirs×groups) inotify watch descriptors on idle daemons.
-			//
-			// We still call ReposToWatch (exactly once) to:
-			//   (a) register repos with the HEAD poller (branch-switch detection; no fd cost)
-			//   (b) run the case-collision store audit (#2086)
-			// Both happen off the critical boot path in a goroutine, same as before.
-			if cfg.ReposToWatch != nil {
-				capturedStore := StoreDir()
-				go func() {
-					t0 := time.Now()
-					repos := cfg.ReposToWatch()
-					for _, r := range repos {
-						// M2: skip watcher.AddRepo here — subscriptions are lazy.
-						// Register with the HEAD poller only (reads .git/HEAD; no
-						// fsnotify watch descriptors consumed).
-						headPoller.AddRepo(r)
-					}
-					logger.Info("watcher: boot-path registered with HEAD poller (fsnotify lazy — 0 AddRepo calls)",
-						"repos", len(repos), "took", time.Since(t0).Truncate(time.Millisecond).String())
-
-					// #2086: case-collision audit — unchanged.
-					if capturedStore != "" {
-						if dups := WarnCaseCollisions(capturedStore, repos); len(dups) > 0 {
-							for _, pair := range dups {
-								logger.Warn("store: detected case-collision dup — remove stale dir to avoid confusion (grafel cleanup --case-merge)",
-									"stale", pair[0], "canonical", pair[1])
-							}
-						}
-					}
-				}()
-			}
-			if cfg.OnWatcherReady != nil {
-				cfg.OnWatcherReady(watcher)
-			}
-
-			// #3353/#3354: linked-worktree discovery + working-tree watching.
-			// Gated on the fsnotify watcher being up (we reuse it to watch each
-			// worktree's working tree) and on a caller-supplied parents provider
-			// (non-nil only when some group opts into worktree tracking).
-			var wtStore *worktree.Store
-			if cfg.WorktreeParents != nil {
-				wtStorePath := filepath.Join(cfg.Layout.Root, "worktrees.json")
-				wtStore = worktree.NewStore(wtStorePath)
-				if err := wtStore.Load(); err != nil {
-					logger.Warn("worktree: failed to load store; starting empty", "path", wtStorePath, "err", err)
-				}
-				wtWatcher := worktree.NewWatcher(wtStore, cfg.WorktreeParents, logger)
-
-				// On activation, subscribe the worktree's WORKING TREE to the
-				// fsnotify watcher so uncommitted edits trigger a reactive
-				// reindex, and enqueue one immediate reindex of its ref tier.
-				// scheduler.Enqueue captures the worktree's checked-out ref via
-				// RefCapture(worktreePath), so the graph lands in the correct
-				// per-ref dir keyed by the worktree path (multi-ref model).
-				wtWatcher.OnActivate = func(child *worktree.WorktreeChild) {
-					if _, aerr := watcher.AddRepo(child.Path); aerr != nil {
-						logger.Warn("worktree: failed to watch working tree", "path", child.Path, "err", aerr)
-					}
-					scheduler.Enqueue(child.Path)
-					logger.Info("worktree: watching working tree + enqueued initial reindex",
-						"path", child.Path, "branch", child.Branch, "group", child.GroupName, "slug", child.ParentSlug, "locked", child.Locked)
-				}
-				// On expiry, unsubscribe the working tree from the watcher.
-				wtWatcher.OnExpire = func(child *worktree.WorktreeChild) {
-					watcher.RemoveRepo(child.Path)
-					logger.Info("worktree: unwatched expired working tree", "path", child.Path)
-				}
-
-				wtCtx, wtCancel := context.WithCancel(ctx)
-				go wtWatcher.Start(wtCtx)
-				defer wtCancel()
-				logger.Info("worktree: discovery started",
-					"store", wtStorePath, "reconcile_env", "GRAFEL_WORKTREE_POLL_SECONDS")
-			}
-
-			// #3680: vanished-repo store reaper. Tracked repos (registered +
-			// active worktree children) whose directory no longer exists on
-			// disk have their store dir deleted and their fsnotify
-			// subscription dropped, reclaiming the orphaned ~100MB worktree
-			// stores that accumulated under ~/.grafel/store/.
-			trackedRepos := makeReaperTrackedRepos(cfg.ReposToWatch, wtStore)
-			// #5236: dead-ref / dead-worktree sweep. Reclaims store dirs +
-			// resident graphs for refs git no longer knows about, within
-			// still-present repos. Driven by the reaper on the shared cadence.
-			// Retention cap is env-tunable (GRAFEL_REF_RETENTION_CAP) so an
-			// operator can shrink the dead-ref footprint on a machine with
-			// heavy transient-ref churn (e.g. set it to 4). Resolved here so the
-			// effective value is logged; NewDeadRefSweeper would resolve the same
-			// value from a zero RetentionCap on its own.
-			refRetentionCap := EnvRefRetentionCap()
-			logger.Info("deadref: retention cap configured",
-				"cap", refRetentionCap, "env", RefRetentionCapEnv)
-			deadRefSweeper := NewDeadRefSweeper(DeadRefConfig{
-				TrackedRepos:   trackedRepos,
-				LiveRefs:       LiveGitRefs,
-				PrimaryRef:     PrimaryGitRef,
-				RefsDirForRepo: RefsDirForRepo,
-				DropReader:     cfg.DeadRefDropReader,
-				Tier:           cfg.DeadRefTier,
-				RetentionCap:   refRetentionCap,
-				Logger:         logger,
-			})
-			// #5263: orphan top-level store-root sweep. Reaps whole
-			// `<store>/<slug>-<hash>/` roots that map to a vanished source path
-			// and to no live group/primary — the gap between the vanished-repo
-			// GC (currently-tracked repos only) and the dead-ref GC (refs within
-			// still-tracked repos only). KnownSourcePaths includes EXPIRED
-			// worktrees so a now-gone path's root can still be attributed; roots
-			// attributable to no known path are kept (fail-closed).
-			orphanRootSweeper := NewOrphanRootSweeper(OrphanRootConfig{
-				KnownSourcePaths: makeKnownSourcePaths(cfg.ReposToWatch, wtStore),
-				// Tier / DropReaderForRoot are per-repo-path hooks; the daemon
-				// does not currently expose a whole-repo Forget here, and a
-				// reaped orphan root's source path is already GONE (no live
-				// slot to wake), so on-disk reclamation is the load-bearing
-				// effect. Any residual in-mem slot is dropped by the
-				// vanished-repo reaper / memory-pressure eviction.
-				Logger: logger,
-			})
-			reaper := NewReaper(ReaperConfig{
-				TrackedRepos:    trackedRepos,
-				StoreDirForRepo: repoBaseDir,
-				Untrack: func(repoPath string) {
-					watcher.RemoveRepo(repoPath)
-				},
-				// #5142: also reap stale/orphaned `grafel watch` PIDs that
-				// registered in the daemon-owned registry under the daemon root.
-				WatchRegistry: watchreg.New(watchreg.DefaultPath(cfg.Layout.Root)),
-				// #5632: also reap live `grafel watch` processes for managed
-				// repos that run from a STALE/foreign binary (version skew) or
-				// duplicate an existing watcher. ManagedRepo gates the sweep to
-				// the daemon's tracked repos only; the watcher's repo arg is
-				// matched (cleaned-absolute) against this set so unrelated
-				// processes are never touched.
-				ManagedRepo: makeManagedRepoPredicate(trackedRepos),
-				DeadRefs:    deadRefSweeper,
-				OrphanRoots: orphanRootSweeper,
-				Logger:      logger,
-			})
-			reaperStop := make(chan struct{})
-			reaper.Start(reaperStop)
-			defer close(reaperStop)
-			logger.Info("reaper: vanished-repo store GC started", "interval", "5m")
-		}
+	// ADR-0024 Phase 1 / PR2 (epic #5729): the engine plane — scheduler,
+	// watcher, git-HEAD poller, worktree discovery, reapers/sweepers, the
+	// status writer, pattern-decay, and the docgen sweeper. In split-mode
+	// serve (planeServeOnly) a separate supervised `grafel engine` child runs
+	// this, so we skip it here; in the monolith (escape-hatch GRAFEL_SPLIT_MODE=0) and the
+	// standalone engine it runs in-process. The assembly lives in
+	// startEnginePlane (engineplane.go); the extraction is behavior-preserving
+	// for the monolith (same constructors, same order, LIFO teardown).
+	if plane != planeServeOnly {
+		ep := startEnginePlane(ctx, cfg, svc, logger)
+		defer ep.shutdown()
 	}
-	logger.Info("startup: scheduler-watcher done")
 
-	// Pattern confidence time-decay scheduler — runs every 6 hours (or a
-	// caller-supplied interval for tests). Requires PatternGroupDirs to be
-	// non-nil; skipped gracefully when the caller has not provided it.
-	logger.Info("startup: pattern-decay begin", "enabled", cfg.PatternGroupDirs != nil)
-	if cfg.PatternGroupDirs != nil {
-		decayInterval := cfg.PatternDecayInterval
-		if decayInterval <= 0 {
-			decayInterval = 6 * time.Hour
-		}
-		decayJob := buildPatternDecayJob(cfg.PatternGroupDirs, logger)
-		decaySched := agentpatterns.NewDecayScheduler(decayInterval, decayJob)
-		decayCtx, decayCancel := context.WithCancel(ctx)
-		go decaySched.Run(decayCtx)
-		defer decayCancel()
-		logger.Info("pattern decay scheduler started", "interval", decayInterval.String())
+	// Split-mode progress bridge — READ side (ADR-0024 / epic #5729). ONLY the
+	// serve plane tails the engine's per-group progress sidecars and republishes
+	// them into serve's broker so the dashboard/wizard SSE renders live per-repo
+	// / per-module rows even though the engine indexed in a separate process. It
+	// must NOT run in the engine plane (the engine is the WRITER) nor in the
+	// monolith (planeServeOnly is only ever selected under SplitModeEnabled, and
+	// the in-process broker already carries everything). Gated on a wired broker
+	// so a serve process with no dashboard (tests) is a no-op.
+	if plane == planeServeOnly && SplitModeEnabled() && cfg.ProgressBroker != nil {
+		stopTailer := startSidecarTailer(cfg.ProgressBroker, defaultSidecarTailPoll, logger)
+		defer stopTailer()
 	}
-	logger.Info("startup: pattern-decay done")
-
-	// Docgen background sweeper (issue #2216): removes stale staging runs and
-	// .previous-* backups every 24 h. Opt-in: nil = disabled (--no-auto-cleanup).
-	logger.Info("startup: docgen-sweeper begin", "enabled", cfg.DocgenSweep != nil)
-	if cfg.DocgenSweep != nil {
-		sweepCfg := *cfg.DocgenSweep
-		sweepCfg.Logger = logger
-		sweepStop := make(chan struct{})
-		StartDocgenSweeper(sweepCfg, sweepStop)
-		defer close(sweepStop)
-		interval := sweepCfg.Interval
-		if interval <= 0 {
-			interval = 24 * time.Hour
-		}
-		logger.Info("docgen sweeper started", "interval", interval.String())
-	}
-	logger.Info("startup: docgen-sweeper done")
 
 	// Dashboard HTTP server — started in a goroutine so it does not
 	// block the RPC socket. Shuts down when the daemon context is done.
@@ -697,6 +737,21 @@ func Run(ctx context.Context, cfg Config) error {
 		return errors.New("listener closed")
 	}
 
+	// #5710: hard-exit watchdog. mcpDrainTimeout below bounds ONLY the MCP
+	// drain — it has no effect on connWG.Wait() near the end of this
+	// function, which joins every accepted connection including ones blocked
+	// inside a non-MCP RPC handler (e.g. Service.Rebuild, whose own timeout
+	// is rebuildRPCTimeout = 2h and which never observes shutdown). Without a
+	// backstop, a single stalled Rebuild call wedges Run() forever: it never
+	// returns, the deferred releasePID() never runs, and the pidfile is left
+	// pointing at a process that is alive but can never again serve a
+	// request. watchdogCtx bounds the ENTIRE graceful tail from here to the
+	// `return nil` below (not just connWG.Wait()) so it also covers a slow
+	// MCP drain; if it fires before the tail completes, force-exit rather
+	// than hang past launchd/systemd's SIGTERM→SIGKILL grace window.
+	watchdogCtx, watchdogCancel := context.WithTimeout(context.Background(), shutdownWatchdogTimeout())
+	defer watchdogCancel()
+
 	// #5633: graceful MCP drain. Mark the service as draining so any MCP RPC
 	// that arrives from here on gets a clean retryable error (the bridge
 	// reconnects to the replacement daemon) instead of being half-served and
@@ -719,12 +774,62 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.ShutdownCleanup()
 	}
 
-	// Stop accepting new connections, then wait for in-flight ones.
+	// Stop accepting new connections, then wait for in-flight ones — bounded
+	// by watchdogCtx (#5710). This is exactly the step that used to hang
+	// forever behind a stalled Rebuild RPC: connWG.Wait() blocks until every
+	// accepted connection's handler returns, and Rebuild has no shutdown/
+	// ctx.Done case in its own select.
 	_ = listener.Close()
 	<-acceptDone
-	connWG.Wait()
-	logger.Info("graceful shutdown complete")
-	return nil
+	connDone := make(chan struct{})
+	go func() {
+		connWG.Wait()
+		close(connDone)
+	}()
+	select {
+	case <-connDone:
+		logger.Info("graceful shutdown complete")
+		return nil
+	case <-watchdogCtx.Done():
+		// os.Exit skips every deferred cleanup in this function (releasePID,
+		// socket unlink), so we repeat the pidfile/socket removal explicitly
+		// before exiting — otherwise the force-killed process would leave
+		// the exact stale-pidfile wedge this change exists to prevent.
+		logger.Error("force-exit: graceful shutdown exceeded watchdog timeout",
+			"timeout", shutdownWatchdogTimeout())
+		releasePID()
+		_ = os.Remove(cfg.Layout.SocketPath)
+		osExit(1)
+		// Reached only when osExit has been overridden (tests): production
+		// os.Exit never returns, so this line only runs when a test stub
+		// swapped osExit for a no-op — proving Run() unblocks from the
+		// stalled connWG.Wait() instead of hanging forever (#5710).
+		return errors.New("graceful shutdown watchdog exceeded; force-exited")
+	}
+}
+
+// osExit is os.Exit, indirected through a package variable so the #5710
+// hard-exit watchdog is testable in-process: production always force-exits
+// the whole process, but tests substitute a no-op and assert Run() still
+// returns (via the fallback return just below the osExit call) instead of
+// hanging on connWG.Wait() forever — without killing the test binary itself.
+var osExit = os.Exit
+
+// SetShutdownExitFuncForTest overrides the #5710 hard-exit watchdog's exit
+// function for the duration of a test and returns a restore closure. Tests
+// live in package daemon_test (external), so this exported hook is the only
+// way to reach the unexported osExit var without creating an import cycle
+// (internal/daemon/client, needed to drive the daemon from a test, itself
+// imports package daemon).
+//
+// Production code must never call this. The suffix is dead-stripped by
+// nothing at build time — it is an ordinary exported function — but the name
+// mirrors this repo's established ForTest convention (see internal/docgen)
+// for hooks that exist solely to let tests reach otherwise-unexported state.
+func SetShutdownExitFuncForTest(f func(int)) (restore func()) {
+	prev := osExit
+	osExit = f
+	return func() { osExit = prev }
 }
 
 // mcpDrainTimeout bounds how long graceful shutdown waits for in-flight MCP
@@ -734,6 +839,32 @@ func Run(ctx context.Context, cfg Config) error {
 // (launchd's default SIGTERM→SIGKILL window and systemd's TimeoutStopSec are
 // both ~5 s+; we deliberately stay under that).
 const mcpDrainTimeout = 3 * time.Second
+
+// defaultShutdownWatchdog bounds the ENTIRE graceful-shutdown tail — from the
+// moment a shutdown trigger fires to Run() returning — not just the MCP
+// drain. #5710: a stalled Service.Rebuild RPC holds its connection open
+// indefinitely (rebuildRPCTimeout is 2h and has no shutdown/ctx.Done case),
+// so connWG.Wait() can block forever with no MCP-drain-timeout in the world
+// that would ever unblock it. 5s keeps the watchdog under launchd's default
+// SIGTERM→SIGKILL grace window (and systemd's TimeoutStopSec), matching the
+// same target mcpDrainTimeout above already stays under.
+const defaultShutdownWatchdog = 5 * time.Second
+
+// shutdownWatchdogEnv overrides defaultShutdownWatchdog with a Go duration
+// string (e.g. "200ms"), primarily so tests can exercise the force-exit path
+// without a real 5s wait.
+const shutdownWatchdogEnv = "GRAFEL_SHUTDOWN_WATCHDOG"
+
+// shutdownWatchdogTimeout resolves the watchdog bound: shutdownWatchdogEnv if
+// set to a valid positive duration, else defaultShutdownWatchdog.
+func shutdownWatchdogTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv(shutdownWatchdogEnv)); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultShutdownWatchdog
+}
 
 // acceptLoop pulls connections off the listener and hands each to
 // jsonrpc.ServeConn under the registered server. The waitgroup tracks

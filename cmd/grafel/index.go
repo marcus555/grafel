@@ -398,6 +398,21 @@ type indexerStats struct {
 // (possibly empty) set of pass names to skip — see allPassNames. When
 // pretty is true, graph.json (and the graph-stats.json sidecar) are
 // indented for human readability; the default is minified JSON.
+// enrichmentOrderHook is a test-only observability hook invoked at
+// enrichment lifecycle boundaries ("graph_written", "enrichment_started",
+// "enrichment_done") so tests can assert graph.fb is written strictly
+// BEFORE Pass 6 enrichment-candidate emission runs or completes (#5720).
+// Production code always uses the no-op default; tests swap it out and
+// restore it afterward.
+var enrichmentOrderHook = func(stage string) {}
+
+// enrichmentEmittersForBG returns the CandidateEmitter set used by
+// runPass6EmitEnrichmentCandidatesBG. Test-only override seam (defaults to
+// enrichment.DefaultEmitters): tests can swap this to inject a panicking
+// emitter and assert the background trickle path cleans up its temp file
+// even when it never reaches Close() (#5739 item d).
+var enrichmentEmittersForBG = enrichment.DefaultEmitters
+
 func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, jsonStats bool, opts ...IndexOption) error {
 	absRepo, err := filepath.Abs(repoPath)
 	if err != nil {
@@ -469,10 +484,15 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		idx.ingestDocs = true
 	}
 
+	// #5692: measure the extraction pipeline wall-clock so it can be persisted
+	// into the graph-stats.json sidecar (extract_ms) for index-timing
+	// observability. Pure measurement — no behaviour change to indexing.
+	extractStart := time.Now()
 	doc, err := idx.Run(context.Background(), absRepo)
 	if err != nil {
 		return err
 	}
+	extractMS := time.Since(extractStart).Milliseconds()
 
 	// Phase 0 git metadata (#2088). Capture HEAD ref + SHA + worktree flag
 	// and stamp them onto the document BEFORE the rename-detect pass so
@@ -562,6 +582,37 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			fmt.Fprintf(os.Stderr, "grafel: wrote %s\n", fbPath)
 		}
 
+		// #5720 — the graph is now loadable/queryable (graph.fb is on disk),
+		// so enrichment-candidate emission (Pass 6's expensive part) can run.
+		// enrichmentOrderHook fires unconditionally, even when the pass is
+		// skipped, so an ordering test can assert "graph.fb written" happens
+		// exactly once per index run without depending on enrichment being
+		// enabled.
+		//
+		// Small graphs (<= enrichment.InlineEntityThreshold entities) run
+		// inline, synchronously, right here — cheap enough not to bother with
+		// a background handoff. Large graphs are hand off to
+		// enrichment.DefaultScheduler, which runs them on a silent,
+		// single-worker, paced background goroutine that never blocks this
+		// function's return; a subsequent index of the SAME repo supersedes
+		// (cancels) any still-running job before starting its own, so no
+		// orphaned goroutine and no stale-over-fresh write can occur.
+		enrichmentOrderHook("graph_written")
+		if !skipSet[PassEnrichment] {
+			if doc.Stats.Entities <= enrichment.InlineEntityThreshold {
+				enrichmentOrderHook("enrichment_started")
+				idx.runPass6EmitEnrichmentCandidates(doc, absRepo)
+				enrichmentOrderHook("enrichment_done")
+			} else {
+				schedKey := daemon.StateDirForRepo(absRepo)
+				enrichment.DefaultScheduler.Schedule(schedKey, func(ctx context.Context) {
+					enrichmentOrderHook("enrichment_started")
+					idx.runPass6EmitEnrichmentCandidatesBG(ctx, doc, absRepo)
+					enrichmentOrderHook("enrichment_done")
+				})
+			}
+		}
+
 		// #5267: record the canonical absolute source path in the top-level
 		// `<root>/root.json` manifest so the orphan-root GC can attribute this
 		// root WITHOUT the one-way forward hash map (a removed-from-registry /
@@ -619,6 +670,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 				GodNodes:           doc.AlgorithmStats.NumGodNodes,
 				ArticulationPoints: doc.AlgorithmStats.NumArticulationPts,
 				RuntimeMS:          doc.AlgorithmStats.RuntimeMS,
+				ExtractMS:          extractMS,
 				ParseErrorCanary:   canaryRaw,
 				ParseErrorSpike:    canarySpiked,
 			}
@@ -766,6 +818,15 @@ func moduleForFile(currentFile string, pkgRoots []string, markers module.MarkerS
 		return best
 	}
 	return module.Derive(f, markers)
+}
+
+// moduleRowWorthy reports whether a resolved module label deserves its own
+// per-module progress bar. Empty (no resolver) and the repo-root sentinel
+// (module.RootLabel — stray files at the repo root that belong to no package)
+// get no independent row: the wizard has no meaningful bar to show them in, and
+// a "_root" row is noise next to the real packages.
+func moduleRowWorthy(mod string) bool {
+	return mod != "" && mod != module.RootLabel
 }
 
 // Run executes the orchestrated pipeline. Each pass is a named method so
@@ -1480,6 +1541,21 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	i.stats.extSynth = extStats
 
+	// #5687 — data-layer lineage edges. Connect each SCOPE.DataAccess node to
+	// the EXISTING physical table entity it touches (SCOPE.Datastore/Schema),
+	// emitting READS_FROM (SELECT) / WRITES_TO (INSERT/UPDATE/DELETE/…) on an
+	// EXACT canonical table-name match. De-orphans the data-access/table layer so
+	// lineage queries can traverse function → DataAccess → table. Runs at Pass 4.5
+	// (before the Pass 4 graph algorithms) so the new edges participate in
+	// centrality/community. Append-only, deterministic, idempotent.
+	dlStats := external.SynthesizeDataLineageEdges(doc)
+	if verbose() || dlStats.EdgesAdded > 0 {
+		fmt.Fprintf(os.Stderr,
+			"data-lineage: data_access_seen=%d edges=%d reads_from=%d writes_to=%d ambiguous=%d unresolved=%d\n",
+			dlStats.DataAccessSeen, dlStats.EdgesAdded, dlStats.ReadsFrom,
+			dlStats.WritesTo, dlStats.Ambiguous, dlStats.Unresolved)
+	}
+
 	// #4480 — retarget THROWS / CATCHES edges from the synthetic
 	// SCOPE.ExceptionType convergence node to the REAL exception class entity
 	// (declared in-repo class, or the imported `ext:<Type>` placeholder just
@@ -1737,6 +1813,20 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 		doc.Stats.Entities = len(doc.Entities)
 		doc.Stats.Relationships = len(doc.Relationships)
+
+		// Pass 7.6 — async-trigger edge synthesis (#5686). Runs after the
+		// event-flow walk so DELIVERS_TO trigger edges (topic → handler) live
+		// alongside the pub/sub edges. Gives async/event-driven handlers an
+		// inbound trigger so find_callers / impact_radius / trace no longer
+		// dead-end at the async boundary. Append-only, idempotent, CALLS-clean.
+		atStats := engine.ApplyAsyncTriggerEdges(doc)
+		if verbose() || atStats.DeliversEdges > 0 {
+			fmt.Fprintf(os.Stderr,
+				"grafel: async-trigger topics=%d delivers_edges=%d\n",
+				atStats.Topics, atStats.DeliversEdges)
+		}
+		doc.Stats.Entities = len(doc.Entities)
+		doc.Stats.Relationships = len(doc.Relationships)
 	}
 
 	// Pass 8 — module-level aggregation (issue #1383 / EPIC #1380).
@@ -1937,12 +2027,25 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 	}
 
-	// Pass 6 — enrichment candidate emission (PORT-LLM / issue #15). Runs
-	// AFTER Pass 4 so emitters can consult community/centrality/god-node
-	// signals. Resolutions from prior runs are merged back onto entity
-	// Properties BEFORE candidate emission, so previously agent-resolved
-	// values are preserved AND emitters skip already-described entities.
-	i.runPass6EmitEnrichmentCandidates(doc, absRepo)
+	// Pass 6a — merge agent-resolved enrichment values back onto entity
+	// Properties (PORT-LLM / issue #15). This step MUST stay on the index
+	// critical path (unlike candidate emission below): the merged values are
+	// part of the authoritative graph.fb content, so they need to land before
+	// sortDocumentForEmission / the graph.fb write in Index(), or a
+	// previously agent-resolved description would silently vanish from the
+	// persisted graph until the next index run. It is cheap (a map merge over
+	// already-loaded resolutions), unlike the candidate-collection step,
+	// which is the part issue #5720 defers off the critical path.
+	i.runPass6ApplyResolutions(doc, absRepo)
+
+	// #5720 — enrichment CANDIDATE EMISSION (the expensive part of Pass 6)
+	// no longer runs here. It is scheduled by the Index() caller AFTER
+	// graph.fb has been persisted (see enrichment.DefaultScheduler.Schedule
+	// in cmd/grafel/index.go), either inline for small graphs or on a
+	// silent, single-worker, paced background goroutine for large ones. No
+	// consumer hard-depends on enrichment-candidates.json (every reader
+	// treats it as optional), so deferring it does not change the
+	// authoritative graph in any way.
 
 	// #5334 — surface the imminent graph write as a granular "Writing graph…"
 	// phase. The actual graph.fb / sidecar write happens in the Index() caller
@@ -2610,11 +2713,52 @@ func (i *Indexer) runPass4AlgorithmsWithProgress(doc *graph.Document, trk *progr
 	doc.AlgorithmStats = &stats
 }
 
-// runPass6EmitEnrichmentCandidates merges any prior agent-resolved
-// enrichment values back onto entity Properties, then runs the registered
-// CandidateEmitters and writes the resulting candidate list to
-// <repo>/.grafel/enrichment-candidates.json. The pass is no-op when
-// PassEnrichment is in the skip set.
+// runPass6ApplyResolutions merges any prior agent-resolved enrichment values
+// back onto entity Properties (and community AgentName). This MUST stay on
+// the index critical path — see the call site in Run() for why (#5720): the
+// merged values are part of the authoritative graph.fb content. It is cheap
+// (a map merge over already-loaded resolutions), unlike candidate collection
+// (runPass6EmitEnrichmentCandidates / runPass6EmitEnrichmentCandidatesBG
+// below), which is the part #5720 defers off the critical path.
+func (i *Indexer) runPass6ApplyResolutions(doc *graph.Document, absRepo string) {
+	if i.skipPasses[PassEnrichment] {
+		return
+	}
+	if doc == nil {
+		return
+	}
+	grafelDir := daemon.StateDirForRepo(absRepo)
+
+	resolutions := enrichment.ReadResolutions(grafelDir)
+	if len(resolutions) == 0 {
+		return
+	}
+	applied := enrichment.ApplyResolutions(doc, resolutions)
+	if verbose() {
+		fmt.Fprintf(os.Stderr,
+			"enrichment: applied %d resolutions to entities\n", applied)
+	}
+	// Also apply name_community resolutions so the AgentName field is
+	// populated on CommunityResult before candidate emission and before
+	// graph.json is written (issue #426).
+	appliedComm := enrichment.ApplyCommunityNameResolutions(doc, resolutions)
+	if verbose() && appliedComm > 0 {
+		fmt.Fprintf(os.Stderr,
+			"enrichment: applied %d community name resolutions\n", appliedComm)
+	}
+}
+
+// runPass6EmitEnrichmentCandidates runs the registered CandidateEmitters and
+// writes the resulting candidate list to
+// <repo>/.grafel/enrichment-candidates.json in one shot. This is the INLINE
+// path (#5720 requirement 6): used only for graphs at or below
+// enrichment.InlineEntityThreshold entities, where the one-shot cost is small
+// enough to pay synchronously right after graph.fb is written. Larger graphs
+// use runPass6EmitEnrichmentCandidatesBG via the Scheduler instead. The pass
+// is a no-op when PassEnrichment is in the skip set.
+//
+// Resolutions must already have been applied (runPass6ApplyResolutions) —
+// this function only collects + writes candidates.
 func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo string) {
 	if i.skipPasses[PassEnrichment] {
 		return
@@ -2624,34 +2768,45 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 	}
 	grafelDir := daemon.StateDirForRepo(absRepo)
 
-	// 1) Merge resolutions back onto entities BEFORE emitting. This both
-	//    persists agent values across rebuilds and short-circuits emitters
-	//    whose "already filled?" check looks at Properties (e.g.
-	//    describe_entity skips entities that already have a description).
-	resolutions := enrichment.ReadResolutions(grafelDir)
-	if len(resolutions) > 0 {
-		applied := enrichment.ApplyResolutions(doc, resolutions)
-		if verbose() {
-			fmt.Fprintf(os.Stderr,
-				"enrichment: applied %d resolutions to entities\n", applied)
-		}
-		// Also apply name_community resolutions so the AgentName field is
-		// populated on CommunityResult before candidate emission and before
-		// graph.json is written (issue #426).
-		appliedComm := enrichment.ApplyCommunityNameResolutions(doc, resolutions)
-		if verbose() && appliedComm > 0 {
-			fmt.Fprintf(os.Stderr,
-				"enrichment: applied %d community name resolutions\n", appliedComm)
-		}
-	}
+	cands := i.collectAllEnrichmentCandidates(doc, absRepo, grafelDir)
 
-	// 2) Emit entity candidates. Rejected (subject_id, kind) pairs are dropped.
+	if err := enrichment.WriteCandidates(grafelDir, cands); err != nil {
+		fmt.Fprintf(os.Stderr, "grafel: enrichment candidate write failed: %v\n", err)
+		return
+	}
+	// Issue #53: keep this log behind the verbose flag. The emit count is
+	// useful for debugging but noisy on every CI run.
+	if verbose() {
+		fmt.Fprintf(os.Stderr,
+			"grafel: emitted %d enrichment candidates to %s\n",
+			len(cands), filepath.Join(grafelDir, "enrichment-candidates.json"))
+	}
+}
+
+// collectAllEnrichmentCandidates runs every candidate source (entity
+// emitters, name_community, repair_edge, dynamic_baseurl) in one shot and
+// returns the merged slice. Used only by the INLINE (small-graph) path —
+// the background trickle path (runPass6EmitEnrichmentCandidatesBG) collects
+// entity candidates in chunks instead, but still runs the other (already
+// small — one per community/entity-subset, not per-entity) sources in one
+// shot at the end.
+func (i *Indexer) collectAllEnrichmentCandidates(doc *graph.Document, absRepo, grafelDir string) []enrichment.Candidate {
 	cands := enrichment.CollectCandidatesSkippingRejected(
 		doc, enrichment.DefaultEmitters(), grafelDir,
 	)
+	cands = append(cands, i.collectSmallEnrichmentCandidateSources(doc, absRepo, grafelDir)...)
+	return cands
+}
 
-	// 2b) Emit name_community candidates (issue #426 Layer 2). One candidate
-	//     per community that lacks an agent-resolved name.
+// collectSmallEnrichmentCandidateSources collects the candidate sources that
+// are inherently small (one per community, or gated behind an opt-in flag) —
+// safe to always run as a single, un-chunked step even from the background
+// trickle path.
+func (i *Indexer) collectSmallEnrichmentCandidateSources(doc *graph.Document, absRepo, grafelDir string) []enrichment.Candidate {
+	var cands []enrichment.Candidate
+
+	// Emit name_community candidates (issue #426 Layer 2). One candidate per
+	// community that lacks an agent-resolved name.
 	rej := enrichment.ReadRejections(grafelDir)
 	commCands := enrichment.CollectCommunityCandidates(doc, rej)
 	if len(commCands) > 0 {
@@ -2662,9 +2817,9 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 		}
 	}
 
-	// 3) ADR-0015 phase-1 (#544) — repair_edge emission. Purely additive;
-	//    gated behind --enable-repair-candidates so we can land the
-	//    foundation without bumping bug-rate measurement noise.
+	// ADR-0015 phase-1 (#544) — repair_edge emission. Purely additive; gated
+	// behind --enable-repair-candidates so we can land the foundation
+	// without bumping bug-rate measurement noise.
 	if i.enableRepairCandidates && i.resolveIdx != nil {
 		allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 		repair := enrichment.CollectRepairEdgeCandidates(doc, enrichment.RepairEdgeCandidateOptions{
@@ -2682,12 +2837,12 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 		}
 	}
 
-	// 4) Issue #708 — dynamic-baseurl endpoint candidates. Emitted
-	//    unconditionally (no resolver required) whenever there are
-	//    consumer-side http_endpoint entities whose baseURL is
-	//    runtime-determined (runtime_dynamic=true or dynamic_baseurl=true).
-	//    These surface in grafel_repairs action=list so an agent can
-	//    annotate them with a curated baseURL hint.
+	// Issue #708 — dynamic-baseurl endpoint candidates. Emitted
+	// unconditionally (no resolver required) whenever there are
+	// consumer-side http_endpoint entities whose baseURL is
+	// runtime-determined (runtime_dynamic=true or dynamic_baseurl=true).
+	// These surface in grafel_repairs action=list so an agent can annotate
+	// them with a curated baseURL hint.
 	dynBaseURL := enrichment.CollectDynamicBaseURLCandidates(doc)
 	if len(dynBaseURL) > 0 {
 		cands = append(cands, dynBaseURL...)
@@ -2698,16 +2853,79 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 		}
 	}
 
-	if err := enrichment.WriteCandidates(grafelDir, cands); err != nil {
-		fmt.Fprintf(os.Stderr, "grafel: enrichment candidate write failed: %v\n", err)
+	return cands
+}
+
+// runPass6EmitEnrichmentCandidatesBG is the background-worker counterpart of
+// runPass6EmitEnrichmentCandidates (#5720). It streams entity candidates to
+// disk in small, paced chunks via enrichment.CollectAndAppendTrickle /
+// enrichment.CandidateAppender instead of building one full-graph
+// []Candidate slice and calling enrichment.WriteCandidates — that one-shot
+// path is exactly what double-materialized the prior sidecar and drove the
+// ~11GB peak this issue fixes. Honors ctx: a cancellation (a new index of the
+// same repo superseding this run, via enrichment.DefaultScheduler) aborts the
+// in-progress appender so the prior on-disk candidates file is left
+// untouched rather than partially overwritten.
+func (i *Indexer) runPass6EmitEnrichmentCandidatesBG(ctx context.Context, doc *graph.Document, absRepo string) {
+	if i.skipPasses[PassEnrichment] {
 		return
 	}
-	// Issue #53: keep this log behind the verbose flag. The emit count is
-	// useful for debugging but noisy on every CI run.
+	if doc == nil {
+		return
+	}
+	grafelDir := daemon.StateDirForRepo(absRepo)
+
+	appender, err := enrichment.NewCandidateAppender(grafelDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "grafel: enrichment (bg) appender init failed: %v\n", err)
+		return
+	}
+	// Safety net for a panic mid-trickle (#5739 item d, refs #5736 review):
+	// the explicit Abort() calls below cover every known error/cancellation
+	// path, but a panic unwinds past all of them and would otherwise leave an
+	// orphaned enrichment-candidates.json.trickle.tmp-* in the state dir with
+	// no sweep to reclaim it. Abort() is idempotent with Close() (both set
+	// a.closed and no-op if already set), so on the normal success path below
+	// — where Close() already committed the rename — this deferred Abort() is
+	// a harmless no-op, not a second write.
+	defer appender.Abort()
+
+	rej := enrichment.ReadRejections(grafelDir)
+	err = enrichment.CollectAndAppendTrickle(ctx, doc, enrichmentEmittersForBG(), rej, appender, enrichment.TrickleOptions{})
+	if err != nil {
+		// Cancelled (superseded) or failed mid-stream — never publish a
+		// partial file over whatever was there before.
+		appender.Abort()
+		if verbose() && ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "grafel: enrichment (bg) trickle failed: %v\n", err)
+		}
+		return
+	}
+
+	// The small, non-per-entity candidate sources run as one extra chunk —
+	// still cheap even on a huge graph, since these are bounded by
+	// community/endpoint count, not entity count.
+	if err := ctx.Err(); err != nil {
+		appender.Abort()
+		return
+	}
+	extra := i.collectSmallEnrichmentCandidateSources(doc, absRepo, grafelDir)
+	if len(extra) > 0 {
+		if err := appender.AppendChunk(extra); err != nil {
+			appender.Abort()
+			fmt.Fprintf(os.Stderr, "grafel: enrichment (bg) trickle failed: %v\n", err)
+			return
+		}
+	}
+
+	if err := appender.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "grafel: enrichment (bg) candidate write failed: %v\n", err)
+		return
+	}
 	if verbose() {
 		fmt.Fprintf(os.Stderr,
-			"grafel: emitted %d enrichment candidates to %s\n",
-			len(cands), filepath.Join(grafelDir, "enrichment-candidates.json"))
+			"grafel: emitted %d enrichment candidates (background) to %s\n",
+			appender.Count(), filepath.Join(grafelDir, "enrichment-candidates.json"))
 	}
 }
 
@@ -2788,11 +3006,58 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 		classified []classifiedFile
 	)
 
-	publishTick := func(filesDone int, bytesSeen int64, currentFile string) {
+	// Per-module tick cadence (per-module progress bars). The bare global
+	// fileCounter gate — tick only when the GLOBAL count hits a multiple of
+	// TickEveryNFiles — emitted ZERO per-module ticks for a monorepo with fewer
+	// than TickEveryNFiles files, and only incidental coverage otherwise (a
+	// module got a row only if one of its files happened to land on a global
+	// multiple of 20). We instead track each module and emit on its FIRST file
+	// (prompt per-module row), on its own N-file cadence (liveness within a big
+	// module), or on its LAST file (a module smaller than N still reaches its
+	// own 100% mid-run); a final per-module flush after the workers join
+	// guarantees every package reaches
+	// 100%. Each tick carries the MODULE's own done/total (via TickModule), so
+	// the bars advance INDEPENDENTLY like the per-repo fleet bars rather than in
+	// lockstep on the aggregate. Guarded by pmMu; only active with a tracker.
+	//
+	// Precompute per-module TOTALS once from the (post-incremental-filter) file
+	// list so each bar knows its own denominator. Files with no meaningful
+	// module (repo-root strays → module.RootLabel, or no resolver) are excluded:
+	// they get no independent bar (the wizard has no row to show them in).
+	var (
+		pmMu           sync.Mutex
+		moduleCount    = map[string]int{}
+		moduleLastFile = map[string]string{}
+		moduleTotal    = map[string]int{}
+	)
+	if trk != nil {
+		for _, rel := range files {
+			if m := trk.ResolveModule(rel); moduleRowWorthy(m) {
+				moduleTotal[m]++
+			}
+		}
+	}
+	recordAndMaybeTick := func(bytesSeen int64, currentFile string) {
 		if trk == nil {
 			return
 		}
-		trk.Tick(progress.PhaseExtractAST, filesDone, bytesSeen, currentFile, 0)
+		mod := trk.ResolveModule(currentFile)
+		if !moduleRowWorthy(mod) {
+			return
+		}
+		pmMu.Lock()
+		moduleCount[mod]++
+		c := moduleCount[mod]
+		total := moduleTotal[mod]
+		moduleLastFile[mod] = currentFile
+		pmMu.Unlock()
+		// Coalescing downstream collapses volume, so over-emitting is cheap and
+		// safe: prefer guaranteed per-module coverage over minimal event count.
+		// Emit on this module's FIRST file, its own N-file cadence, or its last
+		// file (so a module smaller than N still reaches its own 100% mid-run).
+		if c == 1 || c%progress.TickEveryNFiles == 0 || c == total {
+			trk.TickModule(progress.PhaseExtractAST, mod, c, total, bytesSeen, currentFile, 0)
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -2810,10 +3075,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					mu.Lock()
 					i.stats.skipped++
 					mu.Unlock()
-					n := int(atomic.AddInt64(&fileCounter, 1))
-					if n%progress.TickEveryNFiles == 0 {
-						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-					}
+					atomic.AddInt64(&fileCounter, 1)
+					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -2822,10 +3085,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					mu.Lock()
 					i.stats.failed++
 					mu.Unlock()
-					n := int(atomic.AddInt64(&fileCounter, 1))
-					if n%progress.TickEveryNFiles == 0 {
-						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-					}
+					atomic.AddInt64(&fileCounter, 1)
+					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -2883,10 +3144,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					mu.Lock()
 					classified = append(classified, cf)
 					mu.Unlock()
-					n := int(atomic.AddInt64(&fileCounter, 1))
-					if n%progress.TickEveryNFiles == 0 {
-						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-					}
+					atomic.AddInt64(&fileCounter, 1)
+					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -2913,14 +3172,35 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				classified = append(classified, cf)
 				mu.Unlock()
 
-				n := int(atomic.AddInt64(&fileCounter, 1))
-				if n%progress.TickEveryNFiles == 0 {
-					publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-				}
+				atomic.AddInt64(&fileCounter, 1)
+				recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 			}
 		}()
 	}
 	wg.Wait()
+
+	// Final per-module flush: emit each module at its OWN 100% (moduleTotal /
+	// moduleTotal) at end-of-extraction so every package's row reaches complete
+	// and survives downstream coalescing even for fast/small repos where no
+	// periodic tick fired. NOTE: a monorepo with >256 distinct modules can burst
+	// past the sidecar's 256-event buffer here — acceptable: the sidecar
+	// coalesces to latest-per-(repo,module) on disk so every module's row still
+	// survives, though a dropped final tick may leave a row a hair under 100%.
+	if trk != nil {
+		bytesSeen := atomic.LoadInt64(&byteCounter)
+		pmMu.Lock()
+		mods := make([]string, 0, len(moduleLastFile))
+		for m := range moduleLastFile {
+			mods = append(mods, m)
+		}
+		sort.Strings(mods)
+		for _, m := range mods {
+			total := moduleTotal[m]
+			trk.TickModule(progress.PhaseExtractAST, m, total, total, bytesSeen, moduleLastFile[m], 0)
+		}
+		pmMu.Unlock()
+	}
+
 	// Issue #481 — worker-pool outputs accumulate in goroutine-scheduling
 	// order. Sort by canonical fields so downstream passes (BuildIndex
 	// first-writer-wins, dedup) see a stable slice and graph.json is

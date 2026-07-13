@@ -293,6 +293,7 @@ type LoadedRepo struct {
 	pagerankOnce sync.Once
 	bm25Once     sync.Once                // #3377: BM25 built lazily on first search
 	mroInOnce    sync.Once                // #3834: reverse-INHERITS map built lazily
+	suffixOnce   sync.Once                // #5682: source-file suffix index built lazily
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
 	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
@@ -304,6 +305,15 @@ type LoadedRepo struct {
 	// subclasses that inherit it. In-repo defining members only (external
 	// contract endpoints have no in-repo node to query callers of).
 	mroInbound map[string][]string
+	// suffixIndex maps a file basename -> the repo-relative (slash) paths of
+	// every source file with that basename under lr.Path (#5682). Built once by
+	// a single filesystem walk (getSuffixIndex) and used to resolve a
+	// nested-module-relative source_file to its real absolute path via a unique
+	// suffix match — O(1) per lookup, no per-call tree walk. suffixIndexPartial
+	// is true when the walk hit suffixWalkFileBudget and stopped early, in which
+	// case uniqueness cannot be proven and lookups conservatively return "".
+	suffixIndex        map[string][]string
+	suffixIndexPartial bool
 
 	semMtime time.Time
 	mtime    time.Time
@@ -349,6 +359,7 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.pagerankOnce = sync.Once{}
 	lr.bm25Once = sync.Once{}
 	lr.mroInOnce = sync.Once{}
+	lr.suffixOnce = sync.Once{}
 	lr.BM25 = nil
 	lr.adjacency = nil
 	lr.callsAdj = nil
@@ -356,6 +367,22 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.byID = nil
 	lr.topKPageRank = nil
 	lr.mroInbound = nil
+	lr.suffixIndex = nil
+	lr.suffixIndexPartial = false
+}
+
+// getSuffixIndex returns the source-file suffix index (basename -> repo-relative
+// paths) and whether the build was truncated by the file budget, building it on
+// first use via a single filesystem walk of lr.Path (#5682). Deliberately NOT
+// guarded by idxMu (matching getMROInbound): the build only touches the
+// filesystem, never other idxMu-guarded getters, so holding idxMu during a
+// potentially slow walk would needlessly serialise unrelated index builds.
+// sync.Once alone gives build-at-most-once per reload; resetIndexes() re-arms it.
+func (lr *LoadedRepo) getSuffixIndex() (map[string][]string, bool) {
+	lr.suffixOnce.Do(func() {
+		lr.suffixIndex, lr.suffixIndexPartial = buildSuffixIndex(lr.Path)
+	})
+	return lr.suffixIndex, lr.suffixIndexPartial
 }
 
 // getMROInbound returns the reverse-INHERITS map (defining-member id ->
@@ -528,6 +555,38 @@ type State struct {
 	// Exported so that the daemon server can call NotifyRefSwitch on receipt
 	// of a BranchSwitchEvent and integration tests can inspect cache state.
 	CrossLinkCache *CrossLinkCache
+
+	// warmingFn is the optional read-only scheduler warming accessor (#5690).
+	// Injected by cmd/grafel via SetWarmingSnapshot when the daemon has a live
+	// scheduler; nil on the stdio-native path (no daemon) or in tests, in which
+	// case Warming() reports "not warming / unknown" gracefully. Read-only — it
+	// never affects scheduling.
+	warmingFn func() daemon.WarmingSnapshot
+}
+
+// SetWarmingSnapshot wires a read-only scheduler warming accessor into the
+// State (#5690). Called from cmd/grafel once the daemon's scheduler is up so
+// grafel_whoami / grafel_status can distinguish a warming group (post-index
+// enrichment in flight) from a genuinely slow query. Passing nil clears it.
+func (s *State) SetWarmingSnapshot(fn func() daemon.WarmingSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.warmingFn = fn
+}
+
+// Warming returns the current warming snapshot and whether a scheduler handle
+// is wired. When no handle is injected it returns the zero snapshot (not
+// warming) and false, so callers degrade gracefully to warming=false. The
+// accessor is invoked WITHOUT holding s.mu so the scheduler's own snapshot
+// lock never nests under the MCP state lock.
+func (s *State) Warming() (daemon.WarmingSnapshot, bool) {
+	s.mu.Lock()
+	fn := s.warmingFn
+	s.mu.Unlock()
+	if fn == nil {
+		return daemon.WarmingSnapshot{}, false
+	}
+	return fn(), true
 }
 
 // SetWorktreeLookup wires the PH3 ephemeral worktree registry.  Call from
@@ -903,7 +962,26 @@ func (s *State) refreshGroupAlgoOverlayLocked(grp *LoadedGroup) {
 	// Only re-apply when the file genuinely advanced. grp.algoApplied false with a
 	// present file (overlay appeared after a load that saw none) also re-applies.
 	if grp.algoApplied && !fi.ModTime().After(grp.algoMt) {
-		return
+		// #5401 residual (#5729): the overlay FILE is unchanged, but a repo may
+		// have been reparsed since its last stamp (lr.mtime advanced past
+		// lr.algoStampedMt) WITHOUT going through a full Reload — e.g. some other
+		// code path swapped a sub-repo's Doc/mtime in memory. Reload always calls
+		// applyGroupAlgoOverlay unconditionally and its PER-REPO memo (#5400/#5401)
+		// catches this; this read-path early-return did not, so a reparsed repo's
+		// entities stayed pinned at the per-repo sentinel (e.g. community_id:-1)
+		// until the next full Reload. Fall through to the per-repo-memoized
+		// applyGroupAlgoOverlay ONLY when some repo is actually stale, so the
+		// steady-state (nothing changed) stays a cheap no-op.
+		stale := false
+		for _, lr := range grp.Repos {
+			if lr != nil && lr.Doc != nil && !lr.mtime.Equal(lr.algoStampedMt) {
+				stale = true
+				break
+			}
+		}
+		if !stale {
+			return
+		}
 	}
 	applyGroupAlgoOverlay(grp)
 }

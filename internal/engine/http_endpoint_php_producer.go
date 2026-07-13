@@ -592,3 +592,114 @@ func synthesizeLaravel(content string, emit emitFn, emitResource emitResourceFn)
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Slim Framework → http_endpoint_definition synthesis (#5733, refs #5688).
+// ---------------------------------------------------------------------------
+//
+// Non-Laravel PHP frameworks (Slim, CakePHP, CodeIgniter, Yii, WordPress, …)
+// are recognized by the regex-based custom extractors in
+// internal/custom/php/frameworks.go, but those extractors only ever emit a
+// statement-level SCOPE.Operation(subtype=endpoint) — never the flagship
+// http_endpoint_definition shape synthesizeLaravel produces. That leaves
+// their Routing cells at definitions:0 in the graph. This section adds the
+// first of those (Slim); the shape below is intentionally the smallest unit
+// of a small per-framework table so CakePHP/CodeIgniter/Yii/WordPress/etc.
+// can each be added later as one more entry, not a bespoke synthesizer.
+//
+// slimRouteVerbRe matches:
+//
+//	$app->get('/users/:id', function ($request, $response, $args) { ... });
+//	$app->post("/users", 'UserAction');
+//
+// Capture groups: 1=verb, 2=path (double-quoted), 3=path (single-quoted).
+// Slim v3/v4 route methods are get/post/put/patch/delete/options/any — the
+// same verb set Laravel's Route:: facade exposes, minus `map`/`group` (which
+// are route-REGISTRATION helpers, not verbs, and are intentionally excluded
+// here — group-prefix composition is a follow-up, see phpHasAnySlimRoute).
+var slimRouteVerbRe = regexp.MustCompile(
+	`(?m)\$app->(get|post|put|patch|delete|options|any)\s*\(\s*` +
+		`(?:"([^"]{1,500})"|'([^']{1,500})')`,
+)
+
+// phpHasAnySlimRoute is the fast-path gate mirroring phpHasAnyLaravelRoute.
+// NOTE: despite the name, this is NOT a no-op on non-Slim PHP files — the
+// $app->verb('/path', ...) idiom it matches is IDENTICAL to the one Lumen
+// uses (see reLumenRoute in internal/custom/php/frameworks.go), so a Lumen
+// app trips this gate too. synthesizeSlim below still emits endpoints for
+// both (that's a net gain either way); phpIsLumenSource is what tells the
+// two apart for the "framework" attribute.
+func phpHasAnySlimRoute(content string) bool {
+	return strings.Contains(content, "$app->get(") ||
+		strings.Contains(content, "$app->post(") ||
+		strings.Contains(content, "$app->put(") ||
+		strings.Contains(content, "$app->patch(") ||
+		strings.Contains(content, "$app->delete(") ||
+		strings.Contains(content, "$app->options(") ||
+		strings.Contains(content, "$app->any(")
+}
+
+// phpLumenMarkerRe matches source-level markers that identify a file as part
+// of a Lumen application rather than a Slim one — the composer package name
+// or the framework's root namespace. Lumen's own extractor (frameworks.go)
+// recognizes the identical $app->verb(...) idiom as Slim's, so without a
+// marker check the two frameworks are textually indistinguishable at the
+// route-call level.
+var phpLumenMarkerRe = regexp.MustCompile(`Laravel\\Lumen|laravel/lumen`)
+
+// phpIsLumenSource reports whether content carries an explicit Lumen
+// framework marker (refs #5739 item b, follow-up to #5738 review: a Lumen
+// app's $app->get(...) routes were being mislabeled framework="slim").
+func phpIsLumenSource(content string) bool {
+	return phpLumenMarkerRe.MatchString(content)
+}
+
+// synthesizeSlim scans a PHP source file for Slim route registrations
+// ($app->get/post/put/patch/delete/options/any('/path', handler)) and emits
+// one http_endpoint_definition per route via emit, using the SAME canonical
+// shape synthesizeLaravel produces so the Routing cells, request/response
+// shape substrate, and auth/rate-limit stamping passes all reach parity.
+//
+// Slim's path-parameter syntax is `:name` — identical to Express — so the
+// path is canonicalized via httproutes.FrameworkExpress (colon-param walker)
+// rather than needing a bespoke Slim canonicalizer.
+//
+// The handler (closure, invokable class, or 'Controller::method' array/string
+// form) is intentionally NOT attributed here: Slim's action classes are
+// resolved via a DI container, so — unlike Laravel's static Controller@method
+// convention — there is no reliable static handler reference to forward.
+// This mirrors the closure-handler case in synthesizeLaravel (empty
+// handlerKind/handlerName).
+//
+// framework attribution: the $app->verb(...) idiom matched here is shared
+// verbatim with Lumen (refs #5739 item b). A file carrying a Lumen marker
+// (phpIsLumenSource) is stamped framework="lumen" instead of "slim" — the
+// endpoints are still emitted either way, only the attribute changes.
+func synthesizeSlim(content string, emit emitFn) {
+	if !phpHasAnySlimRoute(content) {
+		return
+	}
+	framework := "slim"
+	if phpIsLumenSource(content) {
+		framework = "lumen"
+	}
+	for _, m := range slimRouteVerbRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[2]:m[3]])
+
+		raw := ""
+		if m[4] >= 0 {
+			raw = content[m[4]:m[5]]
+		} else if m[6] >= 0 {
+			raw = content[m[6]:m[7]]
+		}
+		if raw == "" {
+			continue
+		}
+
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
+		emit(verb, canonical, framework, "", "")
+	}
+}

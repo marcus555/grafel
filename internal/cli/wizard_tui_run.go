@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/mcptools"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -145,22 +145,13 @@ func (d wizardDriver) DefaultGroupName(repos []string) string {
 }
 
 // reposForResult maps the TUI result's chosen paths to registry.Repo records,
-// matching the per-action mapping the huh flow uses (monorepo packages get a
-// module label and a composite slug).
+// matching the per-action mapping the huh flow uses. A monorepo action maps
+// to EXACTLY ONE registry.Repo rooted at the monorepo path, with the chosen
+// packages recorded as Modules (see monorepoRepoForChosen) — never one
+// flattened repo per package (D2/D3).
 func reposForResult(class detect.Classification, r wiztui.Result) []registry.Repo {
 	if r.Action == wiztui.ActionMonorepo {
-		base := filepath.Base(class.AbsPath)
-		out := make([]registry.Repo, 0, len(r.Repos))
-		for _, pkg := range r.Repos {
-			abs := filepath.Join(class.AbsPath, filepath.FromSlash(pkg))
-			out = append(out, registry.Repo{
-				Slug:    base + "-" + filepath.Base(pkg),
-				Path:    abs,
-				Stack:   registry.StackList{detect.Stack(abs)},
-				Modules: []string{pkg},
-			})
-		}
-		return out
+		return []registry.Repo{monorepoRepoForChosen(class, r.Repos)}
 	}
 	return reposFromPaths(r.Repos)
 }
@@ -178,7 +169,18 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 	class, _ := detect.ClassifyPath(cwd)
 	drv := wizardDriver{class: class}
 
-	idxFn := makeIndexFunc(out, errOut, class, opts)
+	// Per-tool ENABLEMENT capture (#5701). The alt-screen TUI has an MCP-tools
+	// picker but no native enablement screen, so we capture the enablement set
+	// with the shared huh picker (promptTools) BEFORE entering the full-screen
+	// program — unless --tools already preset it. This makes the ordinary
+	// interactive `grafel wizard` scaffold only the tools the human checks
+	// (deselecting kiro/codium excludes them), no flag required.
+	toolIDs, err := resolveInteractiveTools(out, opts)
+	if err != nil {
+		return wiztui.Result{}, err
+	}
+
+	idxFn := makeIndexFunc(out, errOut, class, opts, toolIDs)
 	// Build the MCP-tools picker options (#5344) unless a flag already preset
 	// the selection (--mcp-tools / --no-mcp) — in which case the screen is
 	// skipped (empty options) and the flag selection is honoured by the
@@ -203,12 +205,49 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 	return res, res.IndexErr()
 }
 
+// resolveInteractiveTools resolves the per-tool ENABLEMENT set for the
+// interactive (alt-screen) wizard (#5701). An explicit --tools flag wins and
+// skips the prompt (validated; a bad ID errors before anything is registered).
+// Otherwise it runs the shared promptTools picker so the human's checkbox
+// selection — all eight adapters offered, detected ones pre-checked,
+// deselection honoured — becomes cfg.Tools. An empty result (deselect-all, no
+// flag) is left as-is: applyGroupConfig then falls back to the empty-means-all
+// default, and we print a one-line hint that --tools can pin a subset.
+func resolveInteractiveTools(out io.Writer, opts wizardOptions) ([]string, error) {
+	if opts.Tools != "" {
+		return tooladapter.ParseToolsFlag(opts.Tools)
+	}
+	ids, err := promptTools()
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		fmt.Fprintln(out, "no tools selected — targeting all supported tools; pass --tools to pin a subset")
+	}
+	return ids, nil
+}
+
+// newGroupConfigFromResult assembles the GroupConfig for a new group from the
+// TUI result, the resolved repos, the agent-hooks opt-in, and the captured
+// per-tool enablement set (#5701). Pure/side-effect-free so the enablement
+// wiring is unit-testable without a terminal.
+func newGroupConfigFromResult(r wiztui.Result, repos []registry.Repo, agentHooks bool, toolIDs []string) *registry.GroupConfig {
+	cfg := &registry.GroupConfig{Name: r.GroupName}
+	cfg.Features.Watchers = r.Watchers
+	cfg.Features.GitHooks = r.GitHooks
+	cfg.Features.AgentHooks = agentHooks
+	cfg.GroupDocs = r.GroupDocs
+	cfg.Repos = repos
+	cfg.Tools = toolIDs
+	return cfg
+}
+
 // makeIndexFunc returns a wiztui.IndexFunc closure that, when the user confirms,
 // (1) assembles + applies the group config (register/install) and (2) starts the
 // daemon index, streaming broker progress.Events back to the model and the
 // terminal outcome. All registration happens HERE — only on confirm — so a
 // cancel registers nothing.
-func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wizardOptions) wiztui.IndexFunc {
+func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wizardOptions, toolIDs []string) wiztui.IndexFunc {
 	return func(r wiztui.Result) (<-chan progress.Event, <-chan wiztui.IndexOutcome) {
 		evCh := make(chan progress.Event, 64)
 		outCh := make(chan wiztui.IndexOutcome, 1)
@@ -242,14 +281,10 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 				return
 			}
 
-			// New-group path: assemble config, apply (register + install).
-			cfg := &registry.GroupConfig{Name: r.GroupName}
-			cfg.Features.Watchers = r.Watchers
-			cfg.Features.GitHooks = r.GitHooks
-			cfg.Features.AgentHooks = opts.AgentHooks
-			cfg.GroupDocs = r.GroupDocs
-			cfg.Repos = repos
-			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel})
+			// New-group path: assemble config (with the enablement set captured
+			// by resolveInteractiveTools), apply (register + install).
+			cfg := newGroupConfigFromResult(r, repos, opts.AgentHooks, toolIDs)
+			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel, ProjectGuidance: opts.ProjectGuidance})
 			if err != nil {
 				outCh <- wiztui.IndexOutcome{Err: err}
 				return
@@ -470,7 +505,7 @@ func addReposToExistingGroupNoIndex(out io.Writer, group string, repos []registr
 	if added == 0 {
 		return errors.New("all selected repos are already in the group")
 	}
-	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel}); err != nil {
+	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel, ProjectGuidance: opts.ProjectGuidance}); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "added %d repo(s) to group %q\n", added, group)

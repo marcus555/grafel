@@ -36,7 +36,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ProgramArguments</key>
     <array>
         <string>{{.BinPath}}</string>
-        <string>daemon</string>
+        <string>serve</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -44,6 +44,15 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 
     <key>KeepAlive</key>
     <true/>
+
+    <!-- #5675: fd headroom so a worktree indexing storm (each subscribed
+         working tree costs ~1 fd per directory) cannot exhaust fds and
+         crash-loop under KeepAlive. -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
 
     <key>StandardOutPath</key>
     <string>{{.LogDir}}/daemon.log</string>

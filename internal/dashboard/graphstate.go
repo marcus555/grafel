@@ -257,6 +257,7 @@ type GraphCache struct {
 	mu       sync.Mutex
 	entries  map[string]*cacheEntry
 	loading  map[string]*loadGate // in-flight loads, keyed by group (singleflight)
+	warmErrs map[string]error     // last load error per cache key (#5722), cleared on success
 	ttl      time.Duration
 	Payloads *graphPayloadCache // pre-serialised dense graph JSON, keyed by group+params
 }
@@ -279,6 +280,7 @@ func NewGraphCache(ttl time.Duration) *GraphCache {
 	return &GraphCache{
 		entries:  map[string]*cacheEntry{},
 		loading:  map[string]*loadGate{},
+		warmErrs: map[string]error{},
 		ttl:      ttl,
 		Payloads: newGraphPayloadCache(),
 	}
@@ -313,6 +315,24 @@ func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bo
 	return nil, false
 }
 
+// LastWarmError returns the error from the most recent load attempt for
+// groupName/ref, if any load has been attempted and the most recent one
+// failed. It returns (nil, false) when no attempt has failed yet — either
+// because the group is warm, or because it simply hasn't finished its first
+// warm attempt (the ordinary "still warming" case). Callers use this to
+// distinguish a genuine load failure (#5722) from a group that just hasn't
+// warmed up yet, so a failure can be surfaced instead of retried forever.
+func (c *GraphCache) LastWarmError(groupName, ref string) (error, bool) {
+	cacheKey := groupName
+	if ref != "" {
+		cacheKey = groupName + "@" + ref
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	err, ok := c.warmErrs[cacheKey]
+	return err, ok
+}
+
 // Invalidate drops the cached entry for group and all per-ref variants
 // (called on re-index events). It also busts the pre-serialised payload
 // cache for that group so the next GET /api/graph/{group} request rebuilds
@@ -320,6 +340,16 @@ func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bo
 //
 // S8 (#2159): mmap readers held by DashRepo entries are closed so the OS
 // can reclaim file descriptors and page-cache pages for the old graph.fb.
+//
+// #5722 follow-up: a re-index/invalidate means the underlying condition that
+// may have caused a PRIOR warm failure has presumably changed, so any
+// recorded warmErrs entry for group (and its per-ref variants) is dropped
+// here too. Without this, LastWarmError would keep surfacing the stale
+// failure to a connected dashboard client until some unrelated caller
+// happened to trigger another load attempt for that exact group/ref. A
+// genuinely still-broken source will simply re-record the error on the next
+// load attempt (kicked off in the background by GetGroupCachedForRef) — this
+// only clears the stale signal, it never suppresses a real recurring one.
 func (c *GraphCache) Invalidate(group string) {
 	prefix := group + "@"
 	c.mu.Lock()
@@ -334,18 +364,32 @@ func (c *GraphCache) Invalidate(group string) {
 			delete(c.entries, k)
 		}
 	}
+	// Clear any recorded warm-load failure for group and its per-ref variants
+	// (#5722 follow-up) so a stale error does not keep being surfaced after a
+	// re-index resolves the underlying problem.
+	delete(c.warmErrs, group)
+	for k := range c.warmErrs {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.warmErrs, k)
+		}
+	}
 	c.mu.Unlock()
 	c.Payloads.InvalidateGroup(group)
 }
 
 // InvalidateAll drops every cached entry and every pre-serialised payload.
 // S8 (#2159): mmap readers are closed before clearing the map.
+//
+// #5722 follow-up: every recorded warmErrs entry is cleared too, for the
+// same reason as Invalidate — a global re-index/invalidation should not
+// leave stale warm-failure signals behind for callers to keep surfacing.
 func (c *GraphCache) InvalidateAll() {
 	c.mu.Lock()
 	for _, ent := range c.entries {
 		closeDashGroupReaders(ent.group)
 	}
 	c.entries = map[string]*cacheEntry{}
+	c.warmErrs = map[string]error{}
 	c.mu.Unlock()
 	c.Payloads.InvalidateAll()
 }
@@ -413,6 +457,12 @@ func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
 	c.mu.Lock()
 	if err == nil {
 		c.entries[cacheKey] = &cacheEntry{group: grp, loadedAt: time.Now()}
+		delete(c.warmErrs, cacheKey)
+	} else {
+		// Record the failure (#5722) so a subsequent best-effort caller (e.g.
+		// the graph-stream endpoint) can distinguish "genuinely failed" from
+		// "just hasn't warmed yet" instead of surfacing an eternal retry.
+		c.warmErrs[cacheKey] = err
 	}
 	delete(c.loading, cacheKey)
 	c.mu.Unlock()

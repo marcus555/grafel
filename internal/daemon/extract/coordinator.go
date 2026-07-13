@@ -139,7 +139,33 @@ func (c CoordinatorConfig) concurrency() int {
 		}
 		return n
 	}
-	n := runtime.NumCPU() / 2
+	return backgroundConcurrency(runtime.NumCPU())
+}
+
+// backgroundConcurrency computes the default number of concurrent extract
+// subprocesses for a BACKGROUND (watch/churn) reindex: min(NumCPU/2, 4).
+//
+// This cap is INTENTIONALLY low. The daemon reindexes in the background on a
+// developer's own machine while they are actively working; the goal is to leave
+// CPU headroom so continuous background indexing never hangs the box. It is
+// deliberately NOT sized to "use all the cores" — index speed is not the
+// priority here, developer-box responsiveness is.
+//
+// The cap compounds with the per-subprocess GOMAXPROCS cap (extractGOMAXPROCS,
+// default 2): each of these children also runs its own Go runtime pinned to 2
+// cores, so the effective background CPU draw is ~concurrency × 2 threads.
+// Lifting this cap toward the host core count therefore saturates every core
+// (concurrency × 2 threads) and is exactly the #3648 runaway we guard against.
+//
+// Power users who genuinely want more cores opt in explicitly via
+// GRAFEL_EXTRACT_CONCURRENCY (or cpu.json / an explicit Concurrency field),
+// which is checked before this default. Foreground (Interactive) rebuilds are
+// untouched — the user is waiting on those, so they resolve to NumCPU above and
+// never call this function.
+//
+// Kept as a small pure function so the cap stays unit-testable (#3648).
+func backgroundConcurrency(numCPU int) int {
+	n := numCPU / 2
 	if n < 1 {
 		n = 1
 	}

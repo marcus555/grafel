@@ -22,15 +22,46 @@ func TestConcurrencyEnvOverride(t *testing.T) {
 	// Garbage / non-positive values are ignored → fall back to auto-tune.
 	t.Setenv("GRAFEL_EXTRACT_CONCURRENCY", "not-a-number")
 	auto := (CoordinatorConfig{}).concurrency()
-	want := runtime.NumCPU() / 2
-	if want < 1 {
-		want = 1
-	}
-	if want > 4 {
-		want = 4
-	}
+	want := backgroundConcurrency(runtime.NumCPU())
 	if auto != want {
 		t.Fatalf("invalid env ignored: concurrency() = %d, want auto %d", auto, want)
+	}
+}
+
+// TestBackgroundConcurrencyCap pins the conservative background-fan-out default:
+// min(NumCPU/2, 4). This cap is INTENTIONALLY low — the daemon reindexes in the
+// background on the developer's own box while they work, and each child also
+// runs GOMAXPROCS=2, so the effective draw is ~concurrency × 2 threads. A low
+// cap leaves CPU headroom so background indexing never hangs the machine
+// (#3648). Index speed is not the priority; box responsiveness is. Power users
+// who want more cores opt in via GRAFEL_EXTRACT_CONCURRENCY (tested separately).
+//
+// #5692 briefly lifted this to a NumCPU/2 formula with a ceiling of 12 (only
+// memory-clamped); that saturated high-core dev boxes and was reverted. The cap
+// stays flat at 4 by default regardless of host core count.
+func TestBackgroundConcurrencyCap(t *testing.T) {
+	cases := []struct {
+		name   string
+		numCPU int
+		want   int
+	}{
+		{"1-core", 1, 1},
+		{"2-core", 2, 1},
+		{"4-core", 4, 2},
+		{"8-core", 8, 4},   // min(4, 4) = 4
+		{"9-core", 9, 4},   // 9/2 = 4
+		{"10-core", 10, 4}, // restored default: capped at 4, NOT 5 (#5692 lift reverted)
+		{"16-core", 16, 4}, // high-core host still capped at 4 by default
+		{"64-core", 64, 4}, // no ceiling-12 lift; stays conservative
+		{"zero-core", 0, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := backgroundConcurrency(tc.numCPU); got != tc.want {
+				t.Fatalf("backgroundConcurrency(%d) = %d, want %d",
+					tc.numCPU, got, tc.want)
+			}
+		})
 	}
 }
 

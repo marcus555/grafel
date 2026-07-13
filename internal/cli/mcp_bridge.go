@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -219,16 +220,109 @@ func (b *bridge) resetRPCClient() {
 }
 
 // bridgeMaxRetries is the number of additional attempts the bridge makes for a
-// single daemon RPC after a transient connection-shutdown (#5633). A daemon
-// restart drops the socket mid-call; the bridge reconnects to the replacement
-// daemon and retries rather than surfacing the failure to the MCP client. All
-// grafel MCP tools are read-mostly graph queries, so retrying is safe — there
-// is no non-idempotent call to special-case.
-const bridgeMaxRetries = 3
+// single daemon RPC after a transient connection-shutdown (#5633, widened
+// #5717). A daemon restart drops the socket mid-call; the bridge reconnects
+// to the replacement daemon and retries rather than surfacing the failure to
+// the MCP client. All grafel MCP tools are read-mostly graph queries, so
+// retrying is safe — there is no non-idempotent call to special-case.
+//
+// #5717: the original budget was 3 retries * a flat 150ms = ~450ms total —
+// nowhere near enough to ride out a real daemon restart, which drops every
+// attached MCP bridge (mcp_rpc.go has no panic recovery pre-#5717, so any
+// panicking tool handler took the whole daemon down) and can take
+// seconds-to-minutes to come back up (rebind socket, reload the registry,
+// possibly a reindex). Combined with the exponential backoff below (capped at
+// bridgeRetryMaxBackoff), this budget rides out roughly 30-60s of daemon
+// unavailability — see TestBridgeRetryBudget_SurvivalWindow — before giving
+// up and surfacing a structured tool error to the MCP client.
+const bridgeMaxRetries = 20
 
-// bridgeRetryBackoff is the pause between reconnect attempts, giving the
-// replacement daemon a brief window to (re)bind its socket after a restart.
+// bridgeMaxConnectRetries is the SMALLER budget used to fail fast on a
+// truly-dead `grafel serve` process, as distinct from bridgeMaxRetries which
+// rides out an ENGINE restart (#5729 split: serve supervises engine; the
+// engine churns on reindex/upgrade, serve itself rarely restarts once up).
+//
+// The two failure shapes look different on the wire:
+//   - Dead/absent serve: the UDS connect itself fails (socket file missing,
+//     ECONNREFUSED, named-pipe-not-found on Windows) — getRPCClient never
+//     succeeds. No RPC is ever in flight to retry.
+//   - Engine mid-restart: the UDS connect SUCCEEDS (serve is up and
+//     listening), but the RPC call fails with a retryable transient error
+//     (rpc.ErrShutdown / io.EOF / the daemon's drain sentinel — see
+//     isRetryableRPCErr) because the in-process engine handling the call
+//     dropped the connection or is mid-reload.
+//
+// callDaemon tracks these separately: bridgeMaxConnectRetries only counts
+// consecutive dial failures that have occurred with NO successful connect
+// yet in this call. The moment a dial succeeds once, dial failures are no
+// longer capped by this smaller budget — the outer bridgeMaxRetries governs,
+// since a serve we've already spoken to this call is presumed genuinely up.
+//
+// Sizing (must NOT regress #5717): a NORMAL serve restart during a deploy is
+// itself a dial failure (the socket is gone until the replacement rebinds),
+// so it is charged against THIS budget, not the ride-out one. The socket-down
+// window on a real deploy can be substantial:
+//   - .claude/dev/dev-deploy.sh tolerates up to 25s of graceful daemon
+//     shutdown before it even swaps the binary; and
+//   - daemon startup does synchronous work BEFORE transport.Listen binds
+//     (MigrateToRefStore, PruneStaleGenerations, pidfile acquisition,
+//     canonicalizePath — a documented past startup-stall source; see
+//     internal/daemon/server.go), so the listener may not appear for several
+//     more seconds on a slow/loaded start.
+//
+// At the production backoff (bridgeRetryBackoff=150ms base, doubling, capped
+// at bridgeRetryMaxBackoff=3s), bridgeMaxConnectRetries=16 spans ~34.65s of
+// wall-clock before giving up (sum of bridgeBackoffForAttempt(1..15) — see
+// TestBridgeConnectBudget_SurvivalWindow). That COMFORTABLY exceeds the 25s
+// deploy graceful-exit window plus a startup margin, so a normal deploy still
+// auto-recovers (#5717 preserved), while a permanently-dead serve fails in
+// ~35s — meaningfully faster than, and with a clearer errDaemonUnreachable
+// signal than, silently hanging out the full ~49s bridgeMaxRetries ride-out
+// window.
+const bridgeMaxConnectRetries = 16
+
+// errDaemonUnreachable is a sentinel wrapped into the error callDaemon
+// returns when the bridgeMaxConnectRetries connect-only budget is exhausted
+// with no successful dial — i.e. `grafel serve` looks dead, not merely
+// mid-restart. Callers use errors.Is to give this case a clearer, faster
+// signal than a generic exhausted-retries error (#5729).
+var errDaemonUnreachable = errors.New("grafel daemon is not reachable")
+
+// bridgeRetryBackoff is the pause before the FIRST reconnect attempt after a
+// transient failure. Each subsequent attempt doubles the previous pause
+// (exponential backoff — see bridgeBackoffForAttempt), capped at
+// bridgeRetryMaxBackoff, giving the replacement daemon progressively more
+// room to (re)bind its socket and finish reloading after a restart without
+// hammering it with sub-second retries for the entire retry window (#5717).
 var bridgeRetryBackoff = 150 * time.Millisecond
+
+// bridgeRetryMaxBackoff is the ceiling on the exponential backoff between
+// reconnect attempts (#5717). Without a cap, bridgeMaxRetries=20 doublings
+// starting from 150ms would reach minutes-long individual pauses long before
+// the retry budget was exhausted, which would make a genuinely-dead daemon
+// hang the MCP client far longer than useful.
+var bridgeRetryMaxBackoff = 3 * time.Second
+
+// bridgeBackoffForAttempt returns the pause before retry attempt n (1-indexed:
+// n=1 is the first retry, after the initial failed attempt). The sequence is
+// bridgeRetryBackoff * 2^(n-1), capped at bridgeRetryMaxBackoff (#5717). n<1
+// returns 0 (no pause before the first, non-retry attempt).
+func bridgeBackoffForAttempt(n int) time.Duration {
+	if n < 1 {
+		return 0
+	}
+	d := bridgeRetryBackoff
+	for i := 1; i < n; i++ {
+		if d >= bridgeRetryMaxBackoff {
+			return bridgeRetryMaxBackoff
+		}
+		d *= 2
+	}
+	if d > bridgeRetryMaxBackoff {
+		d = bridgeRetryMaxBackoff
+	}
+	return d
+}
 
 // isRetryableRPCErr reports whether a daemon RPC error is a transient
 // connection-shutdown / restart condition the bridge should reconnect+retry on,
@@ -252,32 +346,69 @@ func isRetryableRPCErr(err error) bool {
 
 // callDaemon invokes a daemon RPC method with reconnect+retry on transient
 // connection-shutdown (#5633). On a retryable error it drops the dead client,
-// backs off briefly, reconnects, and retries up to bridgeMaxRetries times. A
-// non-retryable error (a real tool/protocol failure) is returned immediately.
+// backs off (exponentially, capped — #5717), reconnects, and retries up to
+// bridgeMaxRetries times. A non-retryable error (a real tool/protocol
+// failure) is returned immediately — the retry loop never fires for those.
 // The final error after exhausting retries is returned to the caller, which
 // renders it as a structured MCP error.
 //
+// Dead-serve vs engine-restart (#5729): consecutive dial (connect) failures
+// that occur before ANY successful connect in this call are capped by the
+// smaller bridgeMaxConnectRetries budget, not the full bridgeMaxRetries —
+// see the doc comment on bridgeMaxConnectRetries for the rationale. Once a
+// dial has succeeded at least once, subsequent failures (dial or RPC) are
+// governed only by the outer bridgeMaxRetries loop, since we know serve was
+// genuinely up at some point during this call.
+//
+// ctx cancellation is honored between attempts: an abandoned/cancelled
+// request stops retrying immediately instead of sleeping out the remaining
+// backoff. A nil ctx is treated as context.Background().
+//
 // reply must be a pointer; it is reused across attempts (net/rpc overwrites it
 // on each Call, and a failed Call leaves it at its zero value).
-func (b *bridge) callDaemon(method string, args, reply any) error {
+func (b *bridge) callDaemon(ctx context.Context, method string, args, reply any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var lastErr error
+	dialSucceeded := false
+	connectFailures := 0
 	for attempt := 0; attempt <= bridgeMaxRetries; attempt++ {
 		if attempt > 0 {
 			// Transient failure on the previous attempt: drop the dead client
-			// so getRPCClient redials, and pause so a restarting daemon has a
-			// moment to rebind its socket.
+			// so getRPCClient redials, and pause (exponential backoff, capped —
+			// #5717) so a restarting daemon has a growing window to rebind its
+			// socket and finish reloading.
 			b.resetRPCClient()
-			time.Sleep(bridgeRetryBackoff)
-			b.log("retrying %s after transient error (attempt %d/%d): %v",
-				method, attempt, bridgeMaxRetries, lastErr)
+			backoff := bridgeBackoffForAttempt(attempt)
+			timer := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+			b.log("retrying %s after transient error (attempt %d/%d, backoff %s): %v",
+				method, attempt, bridgeMaxRetries, backoff, lastErr)
 		}
 		rpcClient, err := b.getRPCClient()
 		if err != nil {
-			// Could not even dial — treat as retryable (the replacement daemon
-			// may not have rebound yet) but remember the error.
+			// Could not even dial. If we have never successfully connected in
+			// this call, this counts against the smaller dead-serve budget
+			// (#5729) so a permanently-absent serve fails fast rather than
+			// burning the full ride-out window. Once we've connected at least
+			// once, dial failures fall back to the generous outer budget.
 			lastErr = err
+			if !dialSucceeded {
+				connectFailures++
+				if connectFailures >= bridgeMaxConnectRetries {
+					return fmt.Errorf("%w after %d connect attempts: %v",
+						errDaemonUnreachable, connectFailures, err)
+				}
+			}
 			continue
 		}
+		dialSucceeded = true
 		callErr := rpcClient.Call(method, args, reply)
 		if callErr == nil {
 			return nil
@@ -455,12 +586,14 @@ func (b *bridge) handleInitialize(req rpc2Request) *rpc2Response {
 // so Claude Code always sees _some_ tools and can display a useful error.
 func (b *bridge) handleToolsList(req rpc2Request) *rpc2Response {
 	var reply MCPToolListReply
-	if err := b.callDaemon("Daemon.MCPToolList", MCPToolListArgs{CWD: b.startupCWD}, &reply); err != nil {
+	if err := b.callDaemon(context.Background(), "Daemon.MCPToolList", MCPToolListArgs{CWD: b.startupCWD}, &reply); err != nil {
 		b.log("Daemon.MCPToolList: %v", err)
 		// callDaemon already reconnected+retried on transient
-		// connection-shutdown (#5633). A persistent failure here means the
-		// daemon is unreachable or pre-Phase D — return the static list so
-		// Claude Code keeps working in the interim.
+		// connection-shutdown (#5633), and fails fast on a dead serve rather
+		// than burning the full ride-out budget (#5729, errDaemonUnreachable).
+		// Either way, a persistent failure here means the daemon is
+		// unreachable or pre-Phase D — return the static list so Claude Code
+		// keeps working in the interim.
 		return b.offlineToolList(req.ID)
 	}
 
@@ -508,13 +641,6 @@ func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 		cwd = b.startupCWD
 	}
 
-	// Fast path: if we cannot even dial the daemon, surface the clean
-	// "daemon not running" guidance rather than a retry storm.
-	if _, err := b.getRPCClient(); err != nil {
-		b.log("daemon not reachable (%v)", err)
-		return b.daemonError(req.ID, "grafel daemon is not running — run 'grafel start' or 'grafel install'")
-	}
-
 	args := MCPToolCallArgs{
 		Name:      params.Name,
 		Arguments: params.Arguments,
@@ -522,10 +648,22 @@ func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 	}
 	var reply MCPToolCallReply
 	// callDaemon reconnects+retries on a transient connection-shutdown so a
-	// daemon restart mid-call does not hard-fail the MCP client (#5633). Only a
-	// persistent failure (or a genuine tool/protocol error) reaches here.
-	if err := b.callDaemon("Daemon.MCPToolCall", args, &reply); err != nil {
+	// daemon restart mid-call does not hard-fail the MCP client (#5633). It
+	// distinguishes a dead serve (errDaemonUnreachable, fails fast on the
+	// smaller bridgeMaxConnectRetries budget) from an engine mid-restart
+	// (rides out the full bridgeMaxRetries budget) — see callDaemon (#5729).
+	// Only a persistent failure (or a genuine tool/protocol error) reaches
+	// here.
+	if err := b.callDaemon(context.Background(), "Daemon.MCPToolCall", args, &reply); err != nil {
 		b.log("Daemon.MCPToolCall %s: %v", params.Name, err)
+		if errors.Is(err, errDaemonUnreachable) {
+			// The serve process itself looks dead (repeated connect
+			// failures, never a successful dial) — surface the clean
+			// "daemon not running" guidance as a JSON-RPC protocol error
+			// rather than a structured tool error, so it reads distinctly
+			// from a genuine tool/RPC failure.
+			return b.daemonError(req.ID, "grafel daemon is not reachable — run 'grafel start' or 'grafel install'")
+		}
 		// Return a structured MCP tool error so Claude sees the message.
 		toolErr := mcpToolCallResult{
 			IsError: true,

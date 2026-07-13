@@ -13,6 +13,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -42,6 +43,8 @@ func newGroupAddCmd() *cobra.Command {
 		runInst   bool
 		doIndex   bool
 		jsonOut   bool
+		toolsCSV  string
+		projGuide bool
 	)
 
 	cmd := &cobra.Command{
@@ -84,6 +87,8 @@ Examples:
 				runInst:   runInst,
 				doIndex:   doIndex,
 				jsonOut:   jsonOut,
+				tools:     toolsCSV,
+				projGuide: projGuide,
 			}
 			return runGroupAddImpl(cmd, args[0], gaFlags, "")
 		},
@@ -100,7 +105,9 @@ Examples:
 	cmd.Flags().BoolVar(&gitHooks, "git-hooks", true,
 		"install git hooks (post-merge/checkout reindex)")
 	cmd.Flags().BoolVar(&rules, "rules", true,
-		"write per-repo IDE rules files (CLAUDE.md/.cursorrules/.windsurfrules/AGENTS.md)")
+		"write per-repo IDE rules files (.cursorrules/.windsurfrules/AGENTS.md); Claude guidance goes to your personal ~/.claude/CLAUDE.md")
+	cmd.Flags().BoolVar(&projGuide, "project-guidance", false,
+		"also commit the grafel Claude guidance block to <repo>/.claude/CLAUDE.md for every repo (for teams that all use grafel); default off — personal ~/.claude/CLAUDE.md only")
 	cmd.Flags().BoolVar(&mcp, "mcp", true,
 		"register/refresh MCP settings (machine-level; safe to leave on)")
 	cmd.Flags().BoolVar(&runInst, "install", true,
@@ -109,6 +116,8 @@ Examples:
 		"index the group via the daemon after registering (requires a running daemon)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit machine-readable JSON result")
+	cmd.Flags().StringVar(&toolsCSV, "tools", "",
+		"comma-separated AI coding tools whose rules files + MCP get scaffolded (e.g. claude,codex). When omitted, a pending selection from a prior `grafel install --tools` is adopted, else every supported tool is targeted. Run 'grafel tools list' for valid IDs")
 	return cmd
 }
 
@@ -123,6 +132,8 @@ type groupAddFlags struct {
 	runInst   bool
 	doIndex   bool
 	jsonOut   bool
+	tools     string // --tools CSV → GroupConfig.Tools (#5701)
+	projGuide bool
 }
 
 type groupAddRepo struct {
@@ -161,6 +172,17 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 	cfg := &registry.GroupConfig{Name: group, GroupDocs: f.groupDocs}
 	cfg.Features.Watchers = f.watchers
 	cfg.Features.GitHooks = f.gitHooks
+	// Per-tool selection (#5701): an explicit --tools value wins and is validated
+	// before any registration. When omitted, cfg.Tools is left empty so
+	// applyGroupConfig can adopt a pending selection stashed by an earlier
+	// `grafel install --tools`; absent that, the empty-means-all default applies.
+	if f.tools != "" {
+		ids, err := tooladapter.ParseToolsFlag(f.tools)
+		if err != nil {
+			return err
+		}
+		cfg.Tools = ids
+	}
 	for _, r := range repos {
 		cfg.Repos = append(cfg.Repos, registry.Repo{
 			Slug:  r.Slug,
@@ -175,11 +197,12 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 		applyOut = io.Discard
 	}
 	res, err := applyGroupConfig(applyOut, cfg, groupApplyOptions{
-		RunInstall:   f.runInst,
-		SkipHooks:    !f.gitHooks,
-		SkipWatchers: !f.watchers,
-		SkipMCP:      !f.mcp,
-		SkipRules:    !f.rules,
+		RunInstall:      f.runInst,
+		SkipHooks:       !f.gitHooks,
+		SkipWatchers:    !f.watchers,
+		SkipMCP:         !f.mcp,
+		SkipRules:       !f.rules,
+		ProjectGuidance: f.projGuide,
 	})
 	if err != nil {
 		return err

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 
@@ -30,7 +31,23 @@ var (
 	mcpServerOnce    sync.Once
 	mcpServerShared  *mcp.Server
 	mcpServerInitErr error
+
+	// daemonWarmingFn is the read-only scheduler warming accessor (#5690),
+	// published by daemon.Config.OnSchedulerReady once the scheduler is up and
+	// consumed lazily by the MCP server's State. A holder (rather than direct
+	// wiring) decouples the two lifecycles: the scheduler starts inside
+	// daemon.Serve while the *mcp.Server is initialised lazily on first RPC —
+	// neither ordering matters because mcpServerInstance reads the holder on
+	// every call. Nil until the scheduler publishes; then the MCP surface
+	// reports warming state. Pointer-to-func so the atomic can carry a func.
+	daemonWarmingFn atomic.Pointer[func() daemon.WarmingSnapshot]
 )
+
+// setDaemonWarmingFn publishes the scheduler's warming accessor for the MCP
+// server to consume (#5690). Wired as daemon.Config.OnSchedulerReady.
+func setDaemonWarmingFn(fn func() daemon.WarmingSnapshot) {
+	daemonWarmingFn.Store(&fn)
+}
 
 // mcpServerInstance returns the lazily-initialised *mcp.Server. The first
 // call constructs it from the default registry; subsequent calls return the
@@ -42,6 +59,18 @@ func mcpServerInstance() (*mcp.Server, error) {
 			mcpServerInitErr = fmt.Errorf("mcp server init: %w", err)
 			return
 		}
+		// #5729 PR3: wire the warming accessor to the status-plane sidecar
+		// (daemon.WarmingFromStatusFile) rather than the live in-process
+		// scheduler handle. This is the ONE code path that answers identically
+		// in monolith mode (flag off) and split mode (serve has no in-process
+		// scheduler at all) — both write the SAME engine-liveness file (see
+		// startEnginePlane), so there is nothing mode-specific left here.
+		// daemonWarmingFn/setDaemonWarmingFn (still wired as
+		// daemon.Config.OnSchedulerReady) is retained for any other in-process
+		// consumer but is no longer this closure's source.
+		srv.State.SetWarmingSnapshot(func() daemon.WarmingSnapshot {
+			return daemon.WarmingFromStatusFile()
+		})
 		mcpServerShared = srv
 	})
 	return mcpServerShared, mcpServerInitErr
