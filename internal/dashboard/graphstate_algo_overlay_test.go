@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
@@ -152,5 +153,27 @@ func BenchmarkGraphCacheColdLoad(b *testing.B) {
 			b.Fatal(err)
 		}
 		closeDashGroupReaders(grp)
+	}
+}
+
+func BenchmarkGraphCacheExpiredUnchanged(b *testing.B) {
+	groupName := os.Getenv("GRAFEL_LIVE_GROUP")
+	if groupName == "" {
+		b.Skip("set GRAFEL_LIVE_GROUP to benchmark a registered group")
+	}
+	cache := NewGraphCache(time.Second)
+	grp, err := cache.GetGroup(groupName)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer closeDashGroupReaders(grp)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.mu.Lock()
+		cache.entries[groupName].loadedAt = time.Time{}
+		cache.mu.Unlock()
+		if _, err := cache.GetGroup(groupName); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

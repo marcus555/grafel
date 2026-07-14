@@ -243,6 +243,11 @@ generated. Retention is bounded to eight source versions per group and 64
 parameter variants per source version. Entity detail for the inspector still uses the v1
 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
 
+The materialised `GraphCache` uses the same fingerprint when its 60-second TTL
+expires. An unchanged group renews in place without re-reading `graph.fb`; a
+changed fingerprint still forces a strict reload, so this optimization does
+not introduce a stale-data window.
+
 ---
 
 ## 6c. Action endpoints + async-job convention (#1512)
