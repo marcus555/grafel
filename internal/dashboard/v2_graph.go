@@ -111,6 +111,24 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	// PH1c: optional ref parameter.
 	refParam := r.URL.Query().Get("ref")
 
+	// A valid disk payload can be served before graph.fb is materialised. The
+	// cheap source fingerprint is based only on artifact paths, sizes and mtimes.
+	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules, refParam) + ":lod=" + lodParam
+	if sourceVersion, versionErr := dashboardSourceVersion(group, refParam); versionErr == nil {
+		if entry, hit := s.graphs.Payloads.Get(cacheKey, sourceVersion); hit {
+			w.Header().Set("ETag", entry.etag)
+			w.Header().Set("Vary", "Accept-Encoding")
+			if r.Header.Get("If-None-Match") == entry.etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(entry.body)
+			return
+		}
+	}
+
 	grp, err := s.graphs.GetGroupForRef(group, refParam)
 	if err != nil {
 		writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
@@ -121,8 +139,7 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	// cache entries distinct from v1's for the same (group, params) tuple.
 	// The lod suffix is appended so each LoD level has its own cache entry.
 	// PH1c: refParam is included via the variadic payloadCacheKey overload.
-	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules, refParam) + ":lod=" + lodParam
-	if entry, hit := s.graphs.Payloads.Get(cacheKey); hit {
+	if entry, hit := s.graphs.Payloads.Get(cacheKey, grp.sourceVersion); hit {
 		w.Header().Set("ETag", entry.etag)
 		w.Header().Set("Vary", "Accept-Encoding")
 		if r.Header.Get("If-None-Match") == entry.etag {
@@ -188,7 +205,7 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	body := buf.Bytes()
 	sum := sha256.Sum256(body)
 	etag := fmt.Sprintf(`"%x"`, sum[:8])
-	s.graphs.Payloads.Set(cacheKey, body, etag)
+	s.graphs.Payloads.Set(cacheKey, body, etag, grp.sourceVersion)
 
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Vary", "Accept-Encoding")
