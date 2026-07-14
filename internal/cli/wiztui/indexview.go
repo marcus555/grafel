@@ -44,6 +44,14 @@ type indexView struct {
 	// Model's outcomeMsg handling and the scrIndex enter key case.
 	queryable bool
 
+	// interimRepoStats holds the per-repo classify stats carried by the interim
+	// (queryable) outcome, stashed so that if the user presses enter to FINISH
+	// EARLY (before the terminal outcome lands) the enter-early finalize can
+	// still overlay real per-repo counts onto the rows — otherwise a repo that
+	// emitted zero progress events would show "Done · 0 entities" on early
+	// finish. Empty in monolith mode / when no interim carried stats.
+	interimRepoStats []RepoStat
+
 	// startedAt / finishedAt bound the live elapsed timer shown in the index
 	// header. startedAt is stamped when the index screen begins (startIndex);
 	// finishedAt is stamped once terminal/failed so the header FREEZES at the
@@ -91,7 +99,12 @@ func newIndexView(group string, expectedRepos int) indexView {
 // repo shares its slug with the group name (a common case) from having its
 // module ticks misrouted into the group-phase guard.
 func (v *indexView) foldEvent(e prog.Event) {
-	if v.group != "" && e.RepoSlug == v.group && e.Module == "" {
+	// A PhaseQueued seed event is UNAMBIGUOUSLY a per-repo placeholder (never
+	// emitted for the group-scoped cross-repo pass), so it always folds into a
+	// row — bypassing the group-slug-collision guard below. This matters for a
+	// solo repo whose slug happens to equal the group name (the common
+	// single-repo default), which would otherwise never get a seeded row.
+	if e.Phase != PhaseQueued && v.group != "" && e.RepoSlug == v.group && e.Module == "" {
 		// Monotonic: never regress the group phase to a coarser one.
 		if phaseRank(e.Phase) >= phaseRank(v.groupPhase) {
 			v.groupPhase = e.Phase
@@ -99,6 +112,50 @@ func (v *indexView) foldEvent(e prog.Event) {
 		return
 	}
 	v.rows = Fold(v.rows, e)
+}
+
+// applyRepoStats overlays the split-mode classify's authoritative per-repo
+// final stats onto rows keyed by slug (rowKey(s.Slug, "")). This is the fix
+// for the dropped-row bug: a repo that emitted ZERO progress events (a fast
+// repo racing the SSE forwarder, a dropped batch, a subprocess-IPC gap) still
+// gets its real entity count and terminal Done/Error state here, sourced from
+// the status-plane classify rather than folded SSE ticks. Creates the row
+// defensively if it is somehow still missing (should not happen once seeding
+// runs, but never silently drops a repo). Call this BEFORE finalizeRows,
+// which remains the fallback for any row this doesn't cover (e.g. monolith
+// mode, which has no per-repo classify).
+func (v *indexView) applyRepoStats(stats []RepoStat) {
+	if v.rows == nil {
+		v.rows = map[string]Row{}
+	}
+	for _, s := range stats {
+		key := rowKey(s.Slug, "")
+		row, had := v.rows[key]
+		if !had {
+			row = Row{Key: key, RepoSlug: s.Slug}
+		}
+		if s.Failed {
+			// Never DOWNGRADE a row that already reported Done over SSE to
+			// Error via the classify overlay: the live SSE stream saw the repo
+			// finish, which is more authoritative than a status-plane classify
+			// that (e.g. on a mtime/ack race) transiently reads it as
+			// not-advanced. Trust the row that actually reported success and
+			// leave it as-is.
+			if had && row.Phase == prog.PhaseDone {
+				continue
+			}
+			row.Phase = prog.PhaseError
+			if s.Error != "" {
+				row.Error = s.Error
+			}
+			v.rows[key] = row
+			continue
+		}
+		// Success: overlay the authoritative final entity count and mark Done.
+		row.EntitiesSoFar = int(s.Entities)
+		row.Phase = prog.PhaseDone
+		v.rows[key] = row
+	}
 }
 
 // done reports whether the indexing screen has fully completed.
@@ -218,6 +275,12 @@ func (v indexView) renderRow(r Row, spinnerFrame string) string {
 	case r.Phase == prog.PhaseDone:
 		glyph = rowDoneStyle.Render(g.Check)
 		phase = rowDoneStyle.Render("Done")
+	case r.Phase == PhaseQueued:
+		// Queued-but-not-started: a muted static marker, NOT the spinner — the
+		// spinner reads as "actively working," which a seeded-but-unreported
+		// repo is not (yet).
+		glyph = rowCountStyle.Render(g.MidDot)
+		phase = rowCountStyle.Render(PhaseLabel(PhaseQueued))
 	default:
 		glyph = spinnerFrame
 		phase = rowPhaseStyle.Render(PhaseLabel(r.Phase))
