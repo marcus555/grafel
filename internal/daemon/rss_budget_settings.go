@@ -13,9 +13,16 @@ import (
 )
 
 const (
-	MinConfiguredRSSBudgetMB = 100
-	MaxConfiguredRSSBudgetMB = 32768
+	MinConfiguredRSSBudgetMB     = 100
+	MaxConfiguredRSSBudgetMB     = 32768
+	MinConfiguredGoMemoryLimitMB = 100
+	MaxConfiguredGoMemoryLimitMB = 32768
 )
+
+type daemonMemorySettings struct {
+	DaemonRSSBudgetMB     int64 `json:"daemon_rss_budget_mb"`
+	DaemonGoMemoryLimitMB int64 `json:"daemon_go_memory_limit_mb"`
+}
 
 func settingsJSONPath() (string, error) {
 	home, err := registry.HomeDir()
@@ -28,24 +35,44 @@ func settingsJSONPath() (string, error) {
 // ConfiguredRSSBudgetMB reads daemon_rss_budget_mb from settings.json.
 // It returns 0 when no valid configured value exists.
 func ConfiguredRSSBudgetMB() int64 {
-	p, err := settingsJSONPath()
-	if err != nil {
-		return 0
-	}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return 0
-	}
-	var raw struct {
-		DaemonRSSBudgetMB int64 `json:"daemon_rss_budget_mb"`
-	}
-	if err := json.Unmarshal(b, &raw); err != nil {
+	raw, ok := configuredMemorySettings()
+	if !ok {
 		return 0
 	}
 	if raw.DaemonRSSBudgetMB < MinConfiguredRSSBudgetMB || raw.DaemonRSSBudgetMB > MaxConfiguredRSSBudgetMB {
 		return 0
 	}
 	return raw.DaemonRSSBudgetMB
+}
+
+// ConfiguredGoMemoryLimitMB reads daemon_go_memory_limit_mb from settings.json.
+// It returns 0 when the key is absent or invalid, allowing the upstream
+// fraction-of-RAM default to remain authoritative.
+func ConfiguredGoMemoryLimitMB() int64 {
+	raw, ok := configuredMemorySettings()
+	if !ok {
+		return 0
+	}
+	if raw.DaemonGoMemoryLimitMB < MinConfiguredGoMemoryLimitMB || raw.DaemonGoMemoryLimitMB > MaxConfiguredGoMemoryLimitMB {
+		return 0
+	}
+	return raw.DaemonGoMemoryLimitMB
+}
+
+func configuredMemorySettings() (daemonMemorySettings, bool) {
+	var raw daemonMemorySettings
+	p, err := settingsJSONPath()
+	if err != nil {
+		return raw, false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return raw, false
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return raw, false
+	}
+	return raw, true
 }
 
 // PersistConfiguredRSSBudgetMB writes daemon_rss_budget_mb into settings.json
