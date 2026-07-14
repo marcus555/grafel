@@ -1,6 +1,7 @@
 package groupalgo
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -59,6 +60,58 @@ func TestOverlayNeedsRecompute_Absent(t *testing.T) {
 	// No overlay written → not "needs recompute" (first-compute path owns it).
 	if OverlayNeedsRecompute("acme") {
 		t.Fatal("absent overlay should NOT report needs-recompute")
+	}
+}
+
+func TestOverlayNeedsRefresh_AbsentIndexedGroup(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
+	registerTwoRepoGroup(t, root, "acme")
+
+	if !OverlayNeedsRefresh("acme") {
+		t.Fatal("an indexed legacy group without an overlay should be scheduled")
+	}
+}
+
+func TestOverlayNeedsRefresh_Corrupt(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
+	registerTwoRepoGroup(t, root, "acme")
+	path, err := OverlayPath("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !OverlayNeedsRefresh("acme") {
+		t.Fatal("a corrupt overlay should be rebuilt in the background")
+	}
+}
+
+func TestOverlayNeedsRefresh_NewRepo(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
+	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
+	registerTwoRepoGroup(t, root, "acme")
+	cur, err := CurrentSourceMtimes("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for slug := range cur {
+		delete(cur, slug)
+		break
+	}
+	setupGroupWithOverlay(t, "acme", cur)
+
+	if !OverlayNeedsRefresh("acme") {
+		t.Fatal("an overlay missing a newly-added repo should be refreshed")
 	}
 }
 

@@ -190,3 +190,31 @@ func TestOverlaySweep_DisabledIntervalDoesNotStartLoop(t *testing.T) {
 		t.Fatal("overlay sweep loop ran despite a disabled (<=0) interval")
 	}
 }
+
+func TestOverlaySweep_RunsImmediatelyOnStart(t *testing.T) {
+	called := make(chan struct{}, 1)
+	s := New(Config{
+		Workers:              1,
+		GroupAlgoDebounce:    time.Hour,
+		OverlaySweepInterval: time.Hour,
+		Index:                func(_ context.Context, _ string, _ string) error { return nil },
+		Links:                func(_ context.Context, _ string) error { return nil },
+		GroupAlgo:            func(_ context.Context, _ string) error { return nil },
+		StaleGroups: func() []string {
+			select {
+			case called <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+		MemReleaseDisabled: true,
+	})
+	s.Start()
+	defer s.Stop()
+
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("overlay sweep did not inspect groups at scheduler startup")
+	}
+}
