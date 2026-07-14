@@ -289,10 +289,10 @@ type cacheEntry struct {
 	loadedAt time.Time
 }
 
-// GraphCache is the dashboard's in-memory graph store.  It is safe for
-// concurrent use.  Reload is lazy: the first call for a group loads it;
-// subsequent calls check mtime and skip the reload when graphs haven't
-// changed.
+// GraphCache is the dashboard's in-memory graph store. It is safe for
+// concurrent use. Reload is lazy: the first call for a group loads it; after
+// TTL expiry a cheap artifact fingerprint renews unchanged entries and only
+// changed sources trigger graph materialisation.
 //
 // GraphCache also owns a graphPayloadCache so that Invalidate/InvalidateAll
 // atomically bust both the loaded-group cache and the pre-serialised payload
@@ -473,10 +473,31 @@ func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
 	}
 	c.mu.Lock()
 	now := time.Now()
-	if ent, ok := c.entries[cacheKey]; ok && now.Sub(ent.loadedAt) < c.ttl {
-		grp := ent.group
-		c.mu.Unlock()
-		return grp, nil
+	ent, cached := c.entries[cacheKey]
+	if cached {
+		if now.Sub(ent.loadedAt) < c.ttl {
+			grp := ent.group
+			c.mu.Unlock()
+			return grp, nil
+		}
+		// TTL expiry is only a prompt to validate freshness, not evidence that
+		// graph.fb changed. Check the cheap disk-artifact fingerprint before
+		// paying for a full graph reload. Watcher invalidation remains the fast
+		// path for actual changes; this also covers missed watcher events.
+		if c.ttl > 0 && ent.group != nil && ent.group.sourceVersion != "" {
+			staleVersion := ent.group.sourceVersion
+			c.mu.Unlock()
+			currentVersion, versionErr := dashboardSourceVersion(groupName, ref)
+			c.mu.Lock()
+			// Another goroutine may have invalidated or replaced the entry while
+			// the fingerprint was computed. Renew only the exact entry observed.
+			if current, ok := c.entries[cacheKey]; ok && current == ent && versionErr == nil && currentVersion == staleVersion {
+				current.loadedAt = time.Now()
+				grp := current.group
+				c.mu.Unlock()
+				return grp, nil
+			}
+		}
 	}
 
 	// Cold / stale. Coordinate a single in-flight load via a loadGate so
