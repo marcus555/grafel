@@ -24,8 +24,10 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -263,8 +265,8 @@ type GraphCache struct {
 }
 
 // loadGate coordinates a single in-flight loadGroup call so that N concurrent
-// GetGroup callers for the same group do not each kick off a (potentially
-// multi-second) disk-load + Pass-4 algorithm run.  The first caller loads; the
+// GetGroup callers for the same group do not each kick off a disk load and
+// overlay restore. The first caller loads; the
 // rest wait on done and read the shared result.  Critically, loadGroup runs
 // WITHOUT GraphCache.mu held, so a slow group never wedges unrelated groups or
 // the cheap cached-read fast path used by first-paint endpoints (#1478).
@@ -436,8 +438,8 @@ func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
 	}
 
 	// Cold / stale. Coordinate a single in-flight load via a loadGate so
-	// concurrent callers for the same group share one disk-load + Pass-4
-	// algorithm run instead of each launching their own. We deliberately
+	// concurrent callers for the same group share one disk load and overlay
+	// restore instead of each launching their own. We deliberately
 	// release c.mu before running loadGroup: the load can take seconds on a
 	// large group, and holding the cache mutex across it would serialise
 	// EVERY other group + the cheap cached-read fast path behind it — the
@@ -480,8 +482,9 @@ func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
 }
 
 // loadGroupForRef loads the group graph for a specific ref. When ref is ""
-// it delegates to daemon.StateDirForRepo (which reads the current HEAD via
-// gitmeta). When ref is non-empty it reads from daemon.StateDirForRepoRef.
+// it reads the current HEAD directly and uses daemon.StateDirForRepoRef,
+// avoiding a full git metadata capture per module. When ref is non-empty it
+// reads from daemon.StateDirForRepoRef unchanged.
 // It runs WITHOUT c.mu held (see GetGroupForRef).
 func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) {
 	groups, err := registry.Groups()
@@ -506,25 +509,19 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 		Name:  groupName,
 		Repos: map[string]*DashRepo{},
 	}
+	sourceMtimes := make(map[string]int64, len(cfg.Repos))
 	for _, r := range cfg.Repos {
 		dr := &DashRepo{Slug: r.Slug, Path: r.Path}
 		var stateDir string
 		if ref != "" {
 			stateDir = daemon.StateDirForRepoRef(r.Path, ref)
 		} else {
-			stateDir = daemon.StateDirForRepo(r.Path)
+			stateDir = daemon.StateDirForRepoRef(r.Path, gitmeta.CurrentRef(r.Path))
 		}
 		doc, err := graph.LoadGraphFromDir(stateDir)
 		if err != nil {
 			dr.err = err.Error()
 		} else {
-			// graph.fb (the canonical store) omits community/pagerank/god-node
-			// data — those fields live only in graph.json and are not encoded in
-			// the FlatBuffers schema. Re-derive them from the loaded entities so
-			// the dashboard graph endpoints (centroids, mid, full) see the data.
-			if len(doc.Communities) == 0 && len(doc.Entities) > 0 {
-				attachAlgorithmResults(doc)
-			}
 			dr.Doc = doc
 			// S8 (#2159): open a zero-copy mmap reader alongside the Document
 			// so handlers that only need to iterate entities/relationships can
@@ -537,11 +534,28 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 			// Record the newer of fb/json mtime for cache invalidation.
 			if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
 				dr.mtime = info.ModTime()
+				sourceMtimes[r.Slug] = info.ModTime().UnixNano()
 			} else if info, e = os.Stat(filepath.Join(stateDir, "graph.json")); e == nil {
 				dr.mtime = info.ModTime()
 			}
 		}
 		grp.Repos[r.Slug] = dr
+	}
+
+	// Group-scope algorithms are computed by the daemon after indexing and
+	// persisted as an overlay. A dashboard cold wake must only restore that
+	// result; running Louvain/PageRank/Betweenness synchronously here turns a
+	// cheap graph.fb reload into a minute-long request on large groups.
+	//
+	// The overlay currently represents HEAD. Ref-scoped overlays need their own
+	// artifact namespace, so explicit refs retain the algorithm attributes that
+	// graph.fb already carries and never consume the HEAD overlay accidentally.
+	if ref == "" {
+		if path, pathErr := groupalgo.OverlayPath(groupName); pathErr == nil {
+			if ov, ok := groupalgo.ReadOverlay(path, sourceMtimes); ok {
+				applyGroupAlgorithmOverlay(grp, ov)
+			}
+		}
 	}
 
 	// Load cross-repo links file.  The file can be either a bare array of
@@ -668,33 +682,77 @@ func enrichLinkEndpoints(grp *DashGroup, links []CrossRepoLink, moduleRoots map[
 	return out
 }
 
-// attachAlgorithmResults re-derives community, pagerank, and god-node data
-// for a Document loaded from graph.fb.  graph.fb does not encode these
-// fields (they are only present in graph.json), so the dashboard server runs
-// the same Pass-4 algorithms that the indexer ran at index time.  Results are
-// attached in place so subsequent handler calls see the community-derived
-// topology needed by serveGraphCentroids and serveGraphMid.
-func attachAlgorithmResults(doc *graph.Document) {
-	res := graph.RunAlgorithms(doc.Entities, doc.Relationships)
-	for k := range doc.Entities {
-		e := &doc.Entities[k]
-		if cid, ok := res.CommunityID[e.ID]; ok {
-			cidCopy := cid
-			e.CommunityID = &cidCopy
-		}
-		if pr, ok := res.PageRank[e.ID]; ok {
-			prCopy := pr
-			e.PageRank = &prCopy
-		}
-		if res.GodNodes[e.ID] {
-			e.IsGodNode = true
-		}
+// applyGroupAlgorithmOverlay restores the daemon's persisted group-scope
+// algorithm output without rerunning Pass 4 during a dashboard request. The
+// dashboard wire format still groups community summaries by repository, so a
+// cross-repo community is projected into deterministic per-repo summaries
+// while every entity retains the authoritative group community ID.
+func applyGroupAlgorithmOverlay(grp *DashGroup, ov *groupalgo.Overlay) {
+	if grp == nil || ov == nil {
+		return
 	}
-	doc.Communities = res.Communities
-	if doc.AlgorithmStats == nil {
-		stats := res.Stats
-		doc.AlgorithmStats = &stats
+
+	communityByID := make(map[int]graph.CommunityResult, len(ov.Communities))
+	for _, community := range ov.Communities {
+		communityByID[community.ID] = community
 	}
+
+	for _, repo := range grp.Repos {
+		if repo == nil || repo.Doc == nil {
+			continue
+		}
+		repo.Doc.Communities = nil
+		members := map[int][]*graph.Entity{}
+		for i := range repo.Doc.Entities {
+			entity := &repo.Doc.Entities[i]
+			result, ok := ov.Results[entity.ID]
+			if !ok {
+				continue
+			}
+			cid, pageRank, centrality := result.CommunityID, result.PageRank, result.Centrality
+			entity.CommunityID = &cid
+			entity.PageRank = &pageRank
+			entity.Centrality = &centrality
+			entity.IsGodNode = result.IsGodNode
+			entity.IsArticulationPt = result.IsArticulationPoint
+			if cid >= 0 {
+				members[cid] = append(members[cid], entity)
+			}
+		}
+
+		communityIDs := make([]int, 0, len(members))
+		for cid := range members {
+			communityIDs = append(communityIDs, cid)
+		}
+		sort.Ints(communityIDs)
+		for _, cid := range communityIDs {
+			entities := members[cid]
+			sort.SliceStable(entities, func(i, j int) bool {
+				return entityPageRank(entities[i]) > entityPageRank(entities[j])
+			})
+			summary := communityByID[cid]
+			summary.ID = cid
+			summary.Size = len(entities)
+			topCount := 3
+			if len(entities) < topCount {
+				topCount = len(entities)
+			}
+			summary.TopEntities = make([]string, topCount)
+			for i := 0; i < topCount; i++ {
+				summary.TopEntities[i] = entities[i].ID
+			}
+			repo.Doc.Communities = append(repo.Doc.Communities, summary)
+		}
+		stats := ov.Stats
+		repo.Doc.AlgorithmStats = &stats
+	}
+}
+
+func entityPageRank(entity *graph.Entity) float64 {
+	if entity == nil || entity.PageRank == nil {
+		return 0
+	}
+	return *entity.PageRank
 }
 
 // defaultLinksFile mirrors mcp.defaultLinksFile.

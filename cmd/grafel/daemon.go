@@ -921,22 +921,11 @@ func daemonGroupsForRepo(repoPath string) []string {
 	return out
 }
 
-// daemonSchedulerStaleGroups returns the names of registered groups whose
-// group-algo overlay EXISTS on disk, has gone stale relative to the per-repo
-// graph.fb mtimes, AND whose community-input graph actually CHANGED (#5403 +
-// #5655). It powers the scheduler's periodic overlay-freshness sweep so a
-// SETTLED group (no recent reindex → no link pass → no scheduleGroupAlgo) still
-// gets its overlay recomputed — but ONLY when a recompute would change anything.
-// OverlayNeedsRecompute applies the content gate (graph.CommunityInputHash): a
-// mere mtime drift whose community input is identical (a docs/comment/config
-// push, or an idle re-stat) settles the overlay in place and is NOT returned
-// here, so the sweep no longer fires a ~½-core Louvain burst on an idle daemon.
-//
-// Groups with NO overlay yet are deliberately excluded (OverlayNeedsRecompute
-// returns false for an absent overlay): those take the normal first-compute
-// link-pass chain after their first reindex, and the sweep must not force-fire
-// them. Best-effort: any registry error yields an empty list (sweep skips this
-// tick) rather than wedging.
+// daemonSchedulerStaleGroups returns groups whose persisted algorithm overlay
+// needs to be built or refreshed. This includes settled legacy groups with no
+// overlay, corrupt overlays, newly-added repos, and overlays whose graph input
+// genuinely changed. The content gate still suppresses expensive recomputes
+// for mtime-only drift.
 func daemonSchedulerStaleGroups() []string {
 	groups, err := registry.Groups()
 	if err != nil {
@@ -944,7 +933,7 @@ func daemonSchedulerStaleGroups() []string {
 	}
 	var out []string
 	for _, g := range groups {
-		if groupalgo.OverlayNeedsRecompute(g.Name) {
+		if groupalgo.OverlayNeedsRefresh(g.Name) {
 			out = append(out, g.Name)
 		}
 	}

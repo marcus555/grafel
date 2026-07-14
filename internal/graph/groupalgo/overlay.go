@@ -402,3 +402,37 @@ func OverlayNeedsRecompute(group string) bool {
 	slog.Default().Info("group-algo: skipped (unchanged)", "group", group)
 	return false
 }
+
+// OverlayNeedsRefresh is the scheduler-facing predicate for both legacy and
+// active groups. Unlike OverlayNeedsRecompute, it also returns true when an
+// indexed group has no usable overlay yet, when the overlay is corrupt, or
+// when a repo was added after the overlay was written. This lets settled groups
+// created by older Grafel versions converge in the background instead of
+// forcing dashboard requests to derive algorithms synchronously forever.
+func OverlayNeedsRefresh(group string) bool {
+	path, err := OverlayPath(group)
+	if err != nil || path == "" {
+		return false
+	}
+	current, err := CurrentSourceMtimes(group)
+	if err != nil || len(current) == 0 {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	var ov Overlay
+	if err := json.Unmarshal(data, &ov); err != nil {
+		return true
+	}
+	if len(current) != len(ov.SourceMtimes) {
+		return true
+	}
+	for slug := range current {
+		if _, ok := ov.SourceMtimes[slug]; !ok {
+			return true
+		}
+	}
+	return OverlayNeedsRecompute(group)
+}
