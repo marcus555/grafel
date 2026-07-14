@@ -45,6 +45,13 @@ import (
 // streamIndexWithSummary. It builds the status-plane probe for the group (which
 // captures the per-repo graph_fb_mtime baseline BEFORE the enqueue) and a
 // synchronous enqueue closure, then delegates to runSplitIndexCore.
+// onQueryable is invoked AT MOST ONCE, mid-poll, the first time the group
+// becomes graph-queryable (AllAdvanced) while the background enhancement pass
+// is still running (RequestPending still true). It carries the classified
+// queryable-time stats. nil is fine — it simply means "no interim checkpoint
+// wanted" (the caller only cares about the terminal outcome).
+type onQueryableFunc func(splitResult)
+
 func runSplitIndex(
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -52,6 +59,8 @@ func runSplitIndex(
 	group, token string,
 	sseCh <-chan sseEvent,
 	evCh chan<- progress.Event,
+	perRepoRows bool,
+	onQueryable onQueryableFunc,
 ) rebuildOutcome {
 	probe, err := newStatusPlaneProbe(group, token)
 	if err != nil {
@@ -66,7 +75,7 @@ func runSplitIndex(
 		_, rErr := c.Rebuild(proto.RebuildArgs{Group: group, ProgressToken: token, Interactive: true})
 		return rErr
 	}
-	return runSplitIndexCore(ctx, cancel, trigger, sseCh, evCh, probe, realSplitClock{}, defaultSplitPoll())
+	return runSplitIndexCore(ctx, cancel, trigger, sseCh, evCh, probe, realSplitClock{}, defaultSplitPoll(), perRepoRows, onQueryable)
 }
 
 // splitClock is the injectable time seam so completion-poll tests advance
@@ -91,6 +100,46 @@ type splitPoll struct {
 	RequestPending bool
 	// EngineAlive mirrors the engine-liveness heartbeat freshness (backstop).
 	EngineAlive bool
+	// AllAdvanced is true IFF every group repo is already graph-queryable — its
+	// status shows !Indexing and a graph_fb_mtime advanced past the pre-enqueue
+	// baseline. This is the ~6-min "graph queryable" completion signal: the engine
+	// has written every repo's graph.fb (and, via the engine-side pre-linksFn
+	// flush, stamped fresh status) but is still running the in-process linksFn tail
+	// in the BACKGROUND. It lets the wizard complete SUCCESS early without waiting
+	// for the full rebuild ack. It only ever goes true on a genuine mtime advance
+	// (the flush writes fresh status under the repolock before the ack), so a stale
+	// read keeps it false — no false-success. When any repo fails/empties it never
+	// becomes true, so completion falls through to the ack backstop (RequestPending).
+	AllAdvanced bool
+	// RepoStatuses is a per-repo snapshot of THIS poll's status-plane read,
+	// one entry per group repo (same order as statusPlaneProbe.repoPaths).
+	// It is the seam awaitSplitCompletion uses to drive per-repo TUI rows
+	// live from the status plane (emitStatusPlaneRowEvents), independent of
+	// whether any SSE progress event has ever arrived for that repo. A
+	// fakeProbe-backed test that doesn't set this simply yields no events —
+	// harmless, since those tests only assert SSE forwarding / completion.
+	RepoStatuses []repoStatusSnapshot
+}
+
+// repoStatusSnapshot is one repo's status-plane reading for a single poll —
+// the minimal shape emitStatusPlaneRowEvents needs to synthesize a
+// progress.Event for that repo's TUI row.
+type repoStatusSnapshot struct {
+	// Slug matches registry.Repo.Slug / the RepoSlug real progress.Events
+	// carry (filepath.Base of the repo path), so a synthesized event FOLDS
+	// INTO the seeded/real row instead of creating a duplicate.
+	Slug string
+	// Indexing mirrors statusfile.File.Indexing — true while THIS poll
+	// observed the repo mid-(re)index.
+	Indexing bool
+	// Entities is the status plane's running entity count (statusfile.File.
+	// Entities), forwarded as the synthesized event's EntitiesSoFar.
+	Entities int64
+	// Advanced mirrors repoAdvanced(f, baseline) — true once the repo is
+	// genuinely graph-queryable (not indexing AND graph_fb_mtime advanced
+	// past the pre-enqueue baseline). Only an Advanced snapshot is allowed
+	// to synthesize a PhaseDone row event — never a stale/mid-index read.
+	Advanced bool
 }
 
 // splitResult is the classified outcome, produced once the rebuild is done.
@@ -102,6 +151,28 @@ type splitResult struct {
 	// may be 0 on the wizard path where the graph-stats sidecar isn't written).
 	Entities int64
 	Rels     int64
+	// Repos carries the PER-REPO classified result (slug, entities, rels,
+	// advanced-vs-failed) for every repo in the group config, one entry each —
+	// the same repos summed into Entities/Rels above, individually broken out.
+	// Threaded to the wiztui model (via rebuildOutcome.repoStats →
+	// IndexOutcome.RepoStats) so a repo whose progress SSE events never
+	// arrived still gets its real final count and Done/Error state on the
+	// completion screen instead of staying blank/queued (#seed-rows dropped-
+	// row fix — the live bug where a 3-repo group's per-repo rows summed to
+	// less than the reported aggregate total).
+	Repos []splitRepoResult
+}
+
+// splitRepoResult is one repo's classified final result (see
+// splitResult.Repos). Slug matches registry.Repo.Slug / the progress.Event
+// RepoSlug the same repo's SSE ticks carry, so it overlays the correct wiztui
+// row rather than creating a duplicate.
+type splitRepoResult struct {
+	Slug     string
+	Entities int64
+	Rels     int64
+	Failed   bool
+	Reason   string // non-empty only when Failed
 }
 
 // splitProbe is the seam the completion loop polls. Poll is called repeatedly;
@@ -137,15 +208,89 @@ func defaultSplitPoll() splitPollConfig {
 // and then went stale (backstop), or the overall timeout elapses (last resort).
 // It NEVER returns success on the enqueue instant — completion is the request
 // ack, not the RPC return.
-func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig) (splitResult, error) {
+//
+// QUERYABLE CHECKPOINT: when every repo becomes graph-queryable (AllAdvanced)
+// while the request is STILL pending (the background linksFn tail hasn't
+// acked yet), the loop does NOT return early anymore — it invokes onQueryable
+// (at most once, with the classified queryable-time stats) and keeps polling
+// for the real ack, so the TUI can offer "queryable, enhancing in the
+// background" instead of collapsing straight to Done. If AllAdvanced and
+// !RequestPending land in the SAME poll (the rebuild was already fully done),
+// the ack check runs first, so no interim fires — straight to the terminal
+// return, matching the pre-existing fast/failure-path behavior.
+// emitStatusPlaneRowEvents translates one poll's per-repo status snapshots
+// into synthetic progress.Events on evCh, keyed by the SAME slug (see
+// repoStatusSnapshot.Slug) that seeded rows and real SSE events use — so they
+// FOLD INTO the existing row (wiztui.Fold is monotonic: a coarse status event
+// never regresses a finer SSE phase already shown) instead of creating a
+// duplicate row.
+//
+// This is the reliable floor when SSE never arrives (no dashboard up, or a
+// fast/warm re-index that finishes before any SSE tick is delivered) — the
+// bug this whole file's status-plane-driven-rows change fixes: rows used to
+// sit at "Queued…" the entire index and only resolve at the terminal
+// classify, looking like a hang.
+//
+//   - Indexing==true (and not yet Advanced) → PhaseIndexing ("Indexing…"),
+//     carrying the status plane's running entity count.
+//   - Advanced==true → PhaseDone, carrying the final entity count. Gated on
+//     repoAdvanced (never-indexing AND graph_fb_mtime advanced) so a coarse
+//     status read can never mark a row Done before the repo genuinely is.
+//   - Neither → no event (leaves the seeded PhaseQueued row untouched; the
+//     repo hasn't started yet as far as the status plane can tell).
+//
+// Sends are best-effort/non-blocking (mirrors forwardSSEUntilCancel) so a
+// full evCh never stalls the completion poll loop.
+func emitStatusPlaneRowEvents(evCh chan<- progress.Event, statuses []repoStatusSnapshot) {
+	if evCh == nil {
+		return
+	}
+	now := time.Now().UnixMilli()
+	for _, s := range statuses {
+		var e progress.Event
+		switch {
+		case s.Advanced:
+			e = progress.Event{RepoSlug: s.Slug, Phase: progress.PhaseDone, EntitiesSoFar: int(s.Entities), TS: now}
+		case s.Indexing:
+			e = progress.Event{RepoSlug: s.Slug, Phase: progress.PhaseIndexing, EntitiesSoFar: int(s.Entities), TS: now}
+		default:
+			continue
+		}
+		select {
+		case evCh <- e:
+		default:
+		}
+	}
+}
+
+func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig, evCh chan<- progress.Event, perRepoRows bool, onQueryable onQueryableFunc) (splitResult, error) {
 	start := clk.Now()
 	sawAlive := false
+	queryableFired := false
 	for {
 		p, err := probe.Poll()
 		if err == nil {
+			// Drive per-repo TUI rows live from the status plane, gated to
+			// flat (non-monorepo) repos — see makeIndexFunc's perRepoRows
+			// doc: a monorepo's status plane has ONE repo-root entry while
+			// the display is per-MODULE, so emitting it here would
+			// resurrect the spurious repo-level row #5773 removed.
+			if perRepoRows {
+				emitStatusPlaneRowEvents(evCh, p.RepoStatuses)
+			}
 			if !p.RequestPending {
-				// The engine finished our rebuild — classify the per-repo result.
+				// The engine drained+acked our rebuild request — real completion,
+				// checked FIRST so an AllAdvanced-and-acked poll never fires an
+				// interim (nothing left to wait for).
 				return probe.Classify()
+			}
+			if p.AllAdvanced && !queryableFired {
+				queryableFired = true
+				if onQueryable != nil {
+					if res, cErr := probe.Classify(); cErr == nil {
+						onQueryable(res)
+					}
+				}
 			}
 			if p.EngineAlive {
 				sawAlive = true
@@ -208,6 +353,8 @@ func runSplitIndexCore(
 	probe splitProbe,
 	clk splitClock,
 	cfg splitPollConfig,
+	perRepoRows bool,
+	onQueryable onQueryableFunc,
 ) rebuildOutcome {
 	// 1. Start forwarding SSE per-module events CONCURRENTLY so the bars render
 	//    live from the first moment (even during the enqueue).
@@ -220,8 +367,11 @@ func runSplitIndexCore(
 		return rebuildOutcome{err: fmt.Errorf("enqueue rebuild: %w", err)}
 	}
 
-	// 3. Poll for real completion (the request ack), then classify.
-	res, err := awaitSplitCompletion(probe, clk, cfg)
+	// 3. Poll for real completion (the request ack), then classify. Each poll
+	//    also drives per-repo TUI rows live from the status plane (perRepoRows-
+	//    gated — see emitStatusPlaneRowEvents), and onQueryable may fire once,
+	//    mid-poll, on the AllAdvanced-while-pending checkpoint.
+	res, err := awaitSplitCompletion(probe, clk, cfg, evCh, perRepoRows, onQueryable)
 	cancel() // stop the SSE forward goroutine
 	if err != nil {
 		return rebuildOutcome{err: err}
@@ -233,8 +383,9 @@ func runSplitIndexCore(
 		return rebuildOutcome{err: fmt.Errorf("index did not complete for %d repo(s): %s", len(res.Failed), strings.Join(res.Failed, "; "))}
 	}
 	return rebuildOutcome{
-		entities: res.Entities,
-		rels:     res.Rels,
+		entities:  res.Entities,
+		rels:      res.Rels,
+		repoStats: res.Repos,
 	}
 }
 
@@ -310,15 +461,42 @@ func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr li
 	return p
 }
 
-// Poll reads the completion signal (our request still queued?) and engine
-// liveness in one shot.
+// repoAdvanced reports whether a repo's status file shows it is graph-queryable:
+// the file exists, it is not mid-index, and its graph_fb_mtime advanced past the
+// pre-enqueue baseline (i.e. graph.fb was (re)written by THIS rebuild). Shared by
+// Poll (the AllAdvanced early-completion predicate) and Classify (per-repo result)
+// so both use one definition of "this repo produced a fresh graph".
+func repoAdvanced(f *statusfile.File, baseline int64) bool {
+	return f != nil && !f.Indexing && f.GraphFBMtime > baseline
+}
+
+// Poll reads the completion signal (our request still queued?), engine liveness,
+// and the early "graph queryable" signal (AllAdvanced) in one shot. AllAdvanced
+// is true only when EVERY group repo already reports a fresh graph past its
+// baseline — the engine has written all graph.fb + flushed fresh status under the
+// repolock (before the ack) while the background linksFn tail still runs.
 func (p *statusPlaneProbe) Poll() (splitPoll, error) {
 	pend, err := p.pending()
 	if err != nil {
 		return splitPoll{}, err
 	}
 	_, alive := p.readLiveness(p.root)
-	return splitPoll{RequestPending: pend, EngineAlive: alive}, nil
+	allAdvanced := len(p.repoPaths) > 0
+	statuses := make([]repoStatusSnapshot, 0, len(p.repoPaths))
+	for _, rp := range p.repoPaths {
+		f, ok := p.readStatus(rp)
+		adv := ok && repoAdvanced(f, p.baseline[rp])
+		if !adv {
+			allAdvanced = false
+		}
+		snap := repoStatusSnapshot{Slug: filepath.Base(rp), Advanced: adv}
+		if ok && f != nil {
+			snap.Indexing = f.Indexing
+			snap.Entities = f.Entities
+		}
+		statuses = append(statuses, snap)
+	}
+	return splitPoll{RequestPending: pend, EngineAlive: alive, AllAdvanced: allAdvanced, RepoStatuses: statuses}, nil
 }
 
 // Classify inspects each group repo AFTER the rebuild finished. A repo counts as
@@ -329,10 +507,12 @@ func (p *statusPlaneProbe) Poll() (splitPoll, error) {
 func (p *statusPlaneProbe) Classify() (splitResult, error) {
 	var res splitResult
 	for _, rp := range p.repoPaths {
+		slug := filepath.Base(rp)
 		f, ok := p.readStatus(rp)
-		if ok && f != nil && !f.Indexing && f.GraphFBMtime > p.baseline[rp] {
+		if ok && repoAdvanced(f, p.baseline[rp]) {
 			res.Entities += f.Entities
 			res.Rels += f.Relationships
+			res.Repos = append(res.Repos, splitRepoResult{Slug: slug, Entities: f.Entities, Rels: f.Relationships})
 			continue
 		}
 		reason := "produced no graph"
@@ -344,7 +524,8 @@ func (p *statusPlaneProbe) Classify() (splitResult, error) {
 				reason = "still indexing when the rebuild acked"
 			}
 		}
-		res.Failed = append(res.Failed, fmt.Sprintf("%s (%s)", filepath.Base(rp), reason))
+		res.Failed = append(res.Failed, fmt.Sprintf("%s (%s)", slug, reason))
+		res.Repos = append(res.Repos, splitRepoResult{Slug: slug, Failed: true, Reason: reason})
 	}
 	return res, nil
 }

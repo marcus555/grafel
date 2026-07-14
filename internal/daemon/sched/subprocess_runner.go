@@ -3,7 +3,6 @@ package sched
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/progress"
 )
 
 // backgroundYieldGOMAXPROCSDefault is the per-child GOMAXPROCS a BACKGROUND
@@ -150,6 +150,49 @@ func ReindexGraphPhaseGOMAXPROCS() int {
 	return n
 }
 
+// ForegroundReindexGOMAXPROCS resolves the child-process GOMAXPROCS a
+// human-awaited (interactive) rebuild / wizard first-index runs under. Because a
+// user is actively waiting on it, it runs at host speed rather than the
+// throttled background reindex budget: GRAFEL_REBUILD_GOMAXPROCS wins (a
+// strictly-positive integer), otherwise the host core count. It mirrors the
+// extract coordinator's rebuildGOMAXPROCS() default so the child process ceiling
+// (graph-wide phases + GC) matches the foreground extract cap the child spawns
+// its sub-subprocesses at.
+func ForegroundReindexGOMAXPROCS() int {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_REBUILD_GOMAXPROCS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	n := runtime.NumCPU()
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// resolveChildGOMAXPROCS decides the GOMAXPROCS the index-internal child process
+// runs under, and a short reason string for the daemon log.
+//
+//   - interactive (human-awaited rebuild): the FOREGROUND cap so the child's
+//     graph-wide phases + GC run at host speed. foregroundCap wins when > 0,
+//     else ForegroundReindexGOMAXPROCS(). The #5328 yield / #5602 budget only
+//     apply to BACKGROUND reindexes, never to the index the user is waiting on.
+//   - background reindex: unchanged — the #5328 foreground-yield cap while a
+//     foreground index is active, otherwise the #5602 daemon-wide budget-per-slot.
+func resolveChildGOMAXPROCS(interactive bool, foregroundCap int) (n int, reason string) {
+	if interactive {
+		if foregroundCap <= 0 {
+			foregroundCap = ForegroundReindexGOMAXPROCS()
+		}
+		return foregroundCap, "foreground rebuild"
+	}
+	if y, yield := backgroundYieldGOMAXPROCS(); yield {
+		return y, "yielding to foreground index"
+	}
+	return ReindexGraphPhaseGOMAXPROCS(), "daemon-wide reindex CPU ceiling"
+}
+
 // groupAlgoGOMAXPROCSDefault is the per-child CPU cap (Go GOMAXPROCS) for the
 // background group-algorithm subprocess. The pass (Louvain + PageRank +
 // betweenness over the whole group union) is the heaviest analytics job the
@@ -221,6 +264,15 @@ func SubprocessIndexEnabled() bool {
 	return subprocessIndexerEnabled.Load()
 }
 
+// SetSubprocessIndexEnabled overrides the toggle at runtime and returns the
+// previous value so a caller can restore it. Exposed for tests that need to
+// force one path or the other (the rebuild reroute is gated on this toggle, so
+// the in-process iteration tests force it OFF and the subprocess-reroute test
+// forces it ON, each restoring the prior value on cleanup).
+func SetSubprocessIndexEnabled(v bool) (previous bool) {
+	return subprocessIndexerEnabled.Swap(v)
+}
+
 // ipcEvent is one JSON line emitted by the child process on stdout.
 type ipcEvent struct {
 	Event string `json:"event"`
@@ -248,7 +300,7 @@ type ipcEvent struct {
 // Cancellation: ctx.Done() sends SIGTERM to the child. The child is
 // expected to exit on SIGTERM; if it does not, the parent waits and the
 // context timeout (if any) will eventually unblock the caller.
-func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, logger *slog.Logger) error {
+func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, opts *SubprocessIndexOptions, logger *slog.Logger) error {
 	binary, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("subprocess-indexer: resolve binary: %w", err)
@@ -262,42 +314,55 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	if len(skipPasses) > 0 {
 		args = append(args, "--skip-pass="+strings.Join(skipPasses, ","))
 	}
+	// Progress-republish channel (rebuild / wizard first-index). When the caller
+	// supplies a Publisher the child is told to STREAM per-module progress on
+	// stdout (--emit-progress) and to stamp events with the rebuild's group/repo
+	// slugs so republished rows key the same (group, repo, module) identity the
+	// in-process path emits. A nil opts (the scheduler background reindex) adds
+	// none of these flags, so its child args are byte-identical to before.
+	var progressPub progress.Publisher
+	if opts != nil {
+		progressPub = opts.ProgressPub
+		if opts.RepoSlug != "" {
+			args = append(args, "--repo-tag="+opts.RepoSlug)
+		}
+		if opts.ProgressPub != nil {
+			args = append(args, "--emit-progress")
+			if opts.GroupSlug != "" {
+				args = append(args, "--group-slug="+opts.GroupSlug)
+			}
+		}
+		if opts.IncrementalStateDir != "" {
+			args = append(args, "--incremental="+opts.IncrementalStateDir)
+		}
+		if opts.Interactive {
+			args = append(args, "--interactive")
+		}
+	}
 
 	cmd := exec.CommandContext(ctx, binary, args...)
 	// Daemon's state dirs are inherited via the env (GRAFEL_DAEMON_ROOT,
 	// GRAFEL_HOME). Start from the daemon's full environment so the child
 	// resolves the same state dirs and caps.
 	cmd.Env = os.Environ()
-	// #5328: if a FOREGROUND (interactive) index is running right now, make this
-	// BACKGROUND reindex yield its core share to it by capping the child's Go
-	// runtime to BackgroundYieldGOMAXPROCS() cores (default 1). GOMAXPROCS is
-	// appended last so it wins over any inherited value; it is omitted entirely
-	// when no foreground index is active, so the child falls back to its normal
-	// background cap (GRAFEL_EXTRACT_GOMAXPROCS, default 2). This is re-evaluated
-	// per subprocess launch, so background concurrency restores automatically the
-	// moment the foreground index finishes. fg preempts bg's share rather than
-	// adding to it, keeping fg+bg within the machine's core budget.
-	if n, yield := backgroundYieldGOMAXPROCS(); yield {
-		cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(n))
-		if logger != nil {
-			logger.Info("subprocess-indexer: yielding to foreground index",
-				"gomaxprocs", n, "repo", repoPath)
-		}
-	} else {
-		// #5602: daemon-wide reindex CPU ceiling. The child runs the in-process
-		// graph-wide phases (resolution / links / flow / buildIndex) at ITS
-		// GOMAXPROCS; without this it inherits the host core count, so N
-		// concurrent reindexes admitted by the IndexGate draw N × hostCores and
-		// blow past the intended ceiling (the live 200–1011%, #5602). Cap the
-		// child at the budget-per-slot share so the SUM across all concurrent
-		// reindexes stays under one daemon-wide budget. GOMAXPROCS is appended
-		// last so it wins over any inherited value.
-		n := ReindexGraphPhaseGOMAXPROCS()
-		cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(n))
-		if logger != nil {
-			logger.Info("subprocess-indexer: daemon-wide reindex CPU ceiling",
-				"gomaxprocs", n, "repo", repoPath)
-		}
+	// Resolve the child-process GOMAXPROCS. resolveChildGOMAXPROCS dispatches on
+	// interactive-vs-background:
+	//   - interactive (human-awaited rebuild / wizard first-index): the FOREGROUND
+	//     cap (GRAFEL_REBUILD_GOMAXPROCS / host cores) so the child's graph-wide
+	//     phases + GC run at host speed and the user is not throttled to the
+	//     background reindex budget.
+	//   - background reindex: unchanged — the #5328 foreground-yield cap while a
+	//     foreground index is active, else the #5602 daemon-wide budget-per-slot.
+	// GOMAXPROCS is appended last so it wins over any inherited value.
+	interactive := opts != nil && opts.Interactive
+	var foregroundCap int
+	if opts != nil {
+		foregroundCap = opts.ForegroundGOMAXPROCS
+	}
+	gmp, reason := resolveChildGOMAXPROCS(interactive, foregroundCap)
+	cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(gmp))
+	if logger != nil {
+		logger.Info("subprocess-indexer: "+reason, "gomaxprocs", gmp, "repo", repoPath)
 	}
 	// On Windows, prevent a console window from flashing when the daemon
 	// (running as a Task Scheduler task) spawns this subprocess.
@@ -337,22 +402,16 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 		}
 	}()
 
-	// Drain child stdout for IPC events.
+	// Drain child stdout for IPC events. parseSubprocessStdout demuxes the two
+	// line types: coarse lifecycle events (index_start/done/error → lastEvent for
+	// exit classification) and tagged per-module progress lines, which it
+	// republishes into progressPub so the rebuild's broker / split-mode sidecar
+	// sees the same live rows the in-process indexer would have published.
 	var lastEvent ipcEvent
 	stdoutDone := make(chan struct{})
 	go func() {
 		defer close(stdoutDone)
-		sc := bufio.NewScanner(stdoutPipe)
-		for sc.Scan() {
-			var ev ipcEvent
-			if jerr := json.Unmarshal([]byte(sc.Text()), &ev); jerr != nil {
-				continue // not a JSON line — ignore
-			}
-			lastEvent = ev
-			if logger != nil {
-				logger.Info("subprocess-indexer: event", "event", ev.Event, "repo", ev.Repo, "ref", ev.Ref)
-			}
-		}
+		lastEvent = parseSubprocessStdout(stdoutPipe, progressPub, pid, logger)
 	}()
 
 	// Wait for both pipe goroutines and the process itself.

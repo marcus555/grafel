@@ -2,6 +2,7 @@ package wiztui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -78,7 +79,14 @@ type Driver interface {
 // by the model once the user confirms; the model only renders what flows back.
 type IndexFunc func(r Result) (<-chan prog.Event, <-chan IndexOutcome)
 
-// IndexOutcome is the terminal result of indexing.
+// IndexOutcome is the terminal result of indexing — OR, when Interim is true,
+// an intermediate "graph queryable" checkpoint (#split-mode queryable state):
+// the group's graph is already queryable but the background enhancement pass
+// (linksFn tail) is still running. An interim outcome carries the
+// queryable-time Entities/Rels + the Install summary (install always finishes
+// before indexing starts, so it is safe/complete at interim time too); the
+// model stays on the index screen and keeps waiting for the FINAL
+// (Interim==false) outcome, unless the user presses enter to finish early.
 type IndexOutcome struct {
 	Entities int64
 	Rels     int64
@@ -91,6 +99,31 @@ type IndexOutcome struct {
 	// any non-fatal watcher warnings, captured so the TUI can render them inside
 	// the Done screen instead of letting raw stdout scatter over the alt-screen.
 	Install InstallSummary
+	// Interim marks a non-terminal "graph queryable, background enhancement
+	// still running" checkpoint. At most one interim outcome is ever sent,
+	// always followed by exactly one terminal (Interim==false) outcome.
+	Interim bool
+	// RepoStats carries the split-mode status-plane classify's per-repo final
+	// stats (slug, entities, rels, advanced-vs-failed), sourced independently
+	// of the folded SSE progress rows. The model applies these over the
+	// seeded/folded rows on the terminal outcome (see applyRepoStats) so a
+	// repo that emitted ZERO progress events still shows its real entity count
+	// and Done state instead of remaining blank/queued (the dropped-row bug).
+	// nil/empty in monolith mode, which has no per-repo classify — rows there
+	// fall back entirely to finalizeRows.
+	RepoStats []RepoStat
+}
+
+// RepoStat is one selected repo's final classified result (see
+// IndexOutcome.RepoStats). Slug must match the same repo-slug keying used by
+// progress.Event.RepoSlug / Row.RepoSlug (rowKey) so it overlays the correct
+// row rather than creating a duplicate.
+type RepoStat struct {
+	Slug     string
+	Entities int64
+	Rels     int64
+	Failed   bool
+	Error    string
 }
 
 // InstallSummary is the captured, structured outcome of applyGroupConfig's
@@ -137,10 +170,81 @@ type indexStartedMsg struct {
 	outcome <-chan IndexOutcome
 }
 
+// Metrics is a single live-process reading — the engine's CPU/RAM at the
+// moment of the poll — surfaced to the right of the index screen's overall
+// progress bar (wizard CPU/RAM readout). Both fields are independently
+// omittable: RSSMB<=0 hides the whole readout (the must-have signal is
+// absent, so the CPU% alone would be misleading); CPUPct<=0 with a positive
+// RSSMB renders the RAM portion only (CPU% is best-effort).
+type Metrics struct {
+	RSSMB  int64
+	CPUPct float64
+}
+
+// MetricsFunc polls the live engine process metrics (RSS/CPU) for the CPU/RAM
+// readout. It is called on a periodic tea.Tick while the index screen is
+// active (see metricsTick) — implemented by the cli package, which reads the
+// engine-liveness status-plane sidecar (internal/daemon.EngineLivenessStatus)
+// so wiztui itself stays decoupled from the daemon package. Must be cheap and
+// non-blocking (a single disk read) and must NEVER panic or hang: a missing/
+// stale status file (old engine, not-yet-started engine, monolith mode with
+// no split) is a completely normal "unknown" case and should return the zero
+// Metrics, not an error — there is no error return, by design, so a caller
+// cannot forget to handle one and wedge the TUI. nil is a valid MetricsFunc:
+// New leaves the ticker command it feeds unscheduled to skip and the readout
+// simply never appears.
+type MetricsFunc func() Metrics
+
+// metricsMsg carries one MetricsFunc poll result into Update.
+type metricsMsg Metrics
+
+// metricsPollInterval is how often the index screen polls MetricsFunc.
+// Deliberately loose — this only feeds a "still alive" readout, not a
+// precision meter — so it costs nothing noticeable against the heartbeat
+// writer's own ~5-30s cadence (see internal/daemon's
+// defaultStatusHeartbeatInterval): a value close to that cadence would just
+// re-read the same on-disk sample repeatedly.
+const metricsPollInterval = 1500 * time.Millisecond
+
+// metricsTick schedules the next MetricsFunc poll as a tea.Cmd. Returns nil
+// (no-op Cmd) when fn is nil, so a caller with no metrics wiring (e.g. a test
+// model, or a build where the cli package chose not to supply one) never
+// starts a ticker at all.
+func metricsTick(fn MetricsFunc) tea.Cmd {
+	if fn == nil {
+		return nil
+	}
+	return tea.Tick(metricsPollInterval, func(time.Time) tea.Msg {
+		return metricsMsg(fn())
+	})
+}
+
+// timerMsg is a no-payload tick used only to force a re-render of the index
+// screen's live elapsed timer (see indexView.elapsedText). The elapsed value
+// itself is computed from indexView.startedAt at render time; this message
+// carries nothing but a "wake up and redraw" signal.
+type timerMsg time.Time
+
+// timerTickInterval is how often the index screen re-renders to advance the
+// live elapsed timer. 1s matches the compact "MmSSs" display's resolution —
+// any faster would waste CPU on a value that can't visibly change.
+const timerTickInterval = 1 * time.Second
+
+// timerTick schedules the next timer tick as a tea.Cmd.
+func timerTick() tea.Cmd {
+	return tea.Tick(timerTickInterval, func(t time.Time) tea.Msg {
+		return timerMsg(t)
+	})
+}
+
 // Model is the full-screen Bubble Tea wizard model.
 type Model struct {
 	drv   Driver
 	index IndexFunc
+	// metricsFn polls the live engine CPU/RAM readout during the index screen
+	// (wizard CPU/RAM readout). nil disables the readout entirely — see
+	// MetricsFunc's doc.
+	metricsFn MetricsFunc
 
 	width, height int
 
@@ -176,13 +280,17 @@ type Model struct {
 // not re-prompt for them). mcpTools are the detected MCP-capable tools offered
 // on the "Configure MCP for which tools?" screen (#5344); pass nil/empty to
 // skip that screen entirely (e.g. a flag preset the selection, or ≤1 detected).
-func New(drv Driver, index IndexFunc, watchers, gitHooks bool, mcpTools []MCPToolOption) Model {
+// metricsFn polls the live engine CPU/RAM readout (wizard CPU/RAM readout) —
+// pass nil to disable the readout entirely (e.g. a test model, or a caller
+// that has no status-plane wiring). See MetricsFunc's doc.
+func New(drv Driver, index IndexFunc, watchers, gitHooks bool, mcpTools []MCPToolOption, metricsFn MetricsFunc) Model {
 	m := Model{
-		drv:      drv,
-		index:    index,
-		scr:      scrAction,
-		step:     StepAction,
-		mcpTools: mcpTools,
+		drv:       drv,
+		index:     index,
+		metricsFn: metricsFn,
+		scr:       scrAction,
+		step:      StepAction,
+		mcpTools:  mcpTools,
 	}
 	m.res.Watchers = watchers
 	m.res.GitHooks = gitHooks
@@ -228,14 +336,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case indexStartedMsg:
 		m.evCh = msg.events
 		m.outCh = msg.outcome
-		return m, tea.Batch(m.idx.spin.Tick, waitEvent(m.evCh), waitOutcome(m.outCh))
+		return m, tea.Batch(m.idx.spin.Tick, waitEvent(m.evCh), waitOutcome(m.outCh), metricsTick(m.metricsFn), timerTick())
 
 	case progressMsg:
 		m.idx.foldEvent(prog.Event(msg))
 		return m, waitEvent(m.evCh)
 
+	case metricsMsg:
+		m.idx.rssMB = msg.RSSMB
+		m.idx.cpuPct = msg.CPUPct
+		if m.idx.done() {
+			// Index screen is finished (Done/Failed) — stop polling rather
+			// than ticking forever in the background.
+			return m, nil
+		}
+		return m, metricsTick(m.metricsFn)
+
 	case outcomeMsg:
 		o := IndexOutcome(msg)
+		if o.Interim {
+			// Graph queryable, background enhancement still running: capture the
+			// queryable-time stats + install summary, enter the queryable
+			// sub-state, and KEEP waiting — outCh still owes us the final
+			// outcome. Never transitions to scrDone on its own (the user can
+			// press enter to finish early; see updateKey's scrIndex case).
+			m.idx.summaryEntities = o.Entities
+			m.idx.summaryRels = o.Rels
+			m.idx.install = o.Install
+			m.idx.queryable = true
+			// Stash the interim per-repo stats so an enter-early finalize (see
+			// updateKey's scrIndex case) can still overlay real per-repo counts
+			// instead of leaving a silent repo at "Done · 0 entities".
+			m.idx.interimRepoStats = o.RepoStats
+			return m, waitOutcome(m.outCh)
+		}
 		m.idx.summaryEntities = o.Entities
 		m.idx.summaryRels = o.Rels
 		m.idx.elapsed = o.Elapsed
@@ -247,13 +381,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.res.indexErr = o.Err
 		} else {
 			m.idx.terminal = true
+			// Overlay the classify's authoritative per-repo stats FIRST (fixes
+			// the dropped-row bug: a repo with zero folded progress events still
+			// gets its real count + Done here), then finalizeRows as the
+			// fallback for anything applyRepoStats didn't cover (e.g. monolith
+			// mode, or a row somehow still non-terminal after the overlay).
+			m.idx.applyRepoStats(o.RepoStats)
 			// The whole index succeeded, so every repo is done. Force any row
 			// still on an intermediate phase to Done — its final SSE events may
 			// have arrived after the RPC returned and been dropped (#5340).
 			m.idx.finalizeRows()
 		}
+		m.idx.finishedAt = time.Now()
 		m.scr = scrDone
 		m.step = StepDone
+		return m, nil
+
+	case timerMsg:
+		// Live elapsed timer: re-render at ~1s cadence while the index screen is
+		// active; stop scheduling once it's done (Done/Failed) so the ticker
+		// doesn't run forever in the background.
+		if m.scr == scrIndex && !m.idx.done() {
+			return m, timerTick()
+		}
 		return m, nil
 
 	default:
@@ -284,7 +434,24 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case scrMCP:
 		return m.updateMCP(msg)
 	case scrIndex:
-		// Index screen: only ctrl-c (handled globally) interrupts.
+		// Index screen: ctrl-c (handled globally) interrupts. Once the graph is
+		// queryable but the background enhancement pass hasn't acked yet, enter
+		// also finishes the wizard immediately as SUCCESS using the
+		// already-captured interim stats — the alternative to just waiting for
+		// the final outcome to land on its own.
+		if msg.String() == "enter" && m.idx.queryable && !m.idx.terminal {
+			m.idx.terminal = true
+			// Overlay the interim classify's per-repo stats FIRST (so a repo
+			// that emitted no progress events shows its real count, not 0),
+			// then finalizeRows as the fallback — mirrors the terminal-outcome
+			// path so finishing early is consistent with waiting.
+			m.idx.applyRepoStats(m.idx.interimRepoStats)
+			m.idx.finalizeRows()
+			m.idx.finishedAt = time.Now()
+			m.scr = scrDone
+			m.step = StepDone
+			return m, nil
+		}
 		return m, nil
 	case scrDone:
 		switch msg.String() {
@@ -526,6 +693,7 @@ func (m Model) startIndex() (tea.Model, tea.Cmd) {
 	}
 	m.idx = newIndexView(name, len(m.res.Repos))
 	m.idx.width = m.width
+	m.idx.startedAt = time.Now()
 	res := m.res
 	start := func() tea.Msg {
 		ev, out := m.index(res)
