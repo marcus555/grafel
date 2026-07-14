@@ -31,9 +31,10 @@ type AppSettings struct {
 	TelemetryEnabled bool `json:"telemetry_enabled"` // default false
 
 	// Performance — changing these requires a daemon restart
-	DaemonRSSBudgetMB   int `json:"daemon_rss_budget_mb"`  // 100–32768
-	WatcherDebounceSecs int `json:"watcher_debounce_secs"` // 1–60
-	IndexerParallelism  int `json:"indexer_parallelism"`   // 1–32
+	DaemonRSSBudgetMB     int  `json:"daemon_rss_budget_mb"`                // 100–32768
+	DaemonGoMemoryLimitMB *int `json:"daemon_go_memory_limit_mb,omitempty"` // nil = upstream auto
+	WatcherDebounceSecs   int  `json:"watcher_debounce_secs"`               // 1–60
+	IndexerParallelism    int  `json:"indexer_parallelism"`                 // 1–32
 
 	// PerfBudgets holds configurable threshold values used by the performance
 	// budget monitor (#1319). Keys are metric names (e.g. "index_wall_ms");
@@ -154,6 +155,10 @@ func validateSettings(s AppSettings) error {
 		return fmt.Errorf("daemon_rss_budget_mb must be %d–%d; got %d",
 			daemon.MinConfiguredRSSBudgetMB, daemon.MaxConfiguredRSSBudgetMB, s.DaemonRSSBudgetMB)
 	}
+	if s.DaemonGoMemoryLimitMB != nil && (*s.DaemonGoMemoryLimitMB < daemon.MinConfiguredGoMemoryLimitMB || *s.DaemonGoMemoryLimitMB > daemon.MaxConfiguredGoMemoryLimitMB) {
+		return fmt.Errorf("daemon_go_memory_limit_mb must be %d–%d; got %d",
+			daemon.MinConfiguredGoMemoryLimitMB, daemon.MaxConfiguredGoMemoryLimitMB, *s.DaemonGoMemoryLimitMB)
+	}
 	if s.WatcherDebounceSecs < 1 || s.WatcherDebounceSecs > 60 {
 		return fmt.Errorf("watcher_debounce_secs must be 1–60; got %d", s.WatcherDebounceSecs)
 	}
@@ -215,6 +220,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if current.DaemonRSSBudgetMB != previous.DaemonRSSBudgetMB {
 		restartKeys = append(restartKeys, "daemon_rss_budget_mb")
 	}
+	if !equalOptionalInt(current.DaemonGoMemoryLimitMB, previous.DaemonGoMemoryLimitMB) {
+		restartKeys = append(restartKeys, "daemon_go_memory_limit_mb")
+	}
 	if current.IndexerParallelism != previous.IndexerParallelism {
 		restartKeys = append(restartKeys, "indexer_parallelism")
 	}
@@ -231,6 +239,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		Defaults:        DefaultAppSettings(),
 		RestartRequired: restartKeys,
 	})
+}
+
+func equalOptionalInt(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // handleResetSettings — POST /api/settings/reset
