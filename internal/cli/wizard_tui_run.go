@@ -23,6 +23,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install"
@@ -342,11 +343,33 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 
 	token := progressToken()
 
-	// Establish the broker SSE subscription BEFORE triggering the Rebuild so no
-	// early per-repo extraction events are lost when the index runs fast (#5340).
-	// subscribeSSE connects synchronously (it returns only once the HTTP stream
-	// is open), so by the time we fire the Rebuild RPC the broker is listening
-	// and per-repo events (backend/frontend) are guaranteed to be delivered.
+	// SPLIT mode: the Rebuild RPC returns at ENQUEUE time (fire-and-forget), so
+	// it can NEVER signal real completion. Completion is keyed on the rebuild-
+	// request ack (runSplitIndex), REGARDLESS of whether a dashboard is up — a
+	// missing dashboard only means no live SSE bars, never a fake instant Done
+	// (#5729 blocker #10). We still establish the broker SSE subscription first
+	// (when a dashboard exists) so no early per-repo events are lost (#5340);
+	// with no dashboard sseCh stays nil and runSplitIndex simply forwards nothing.
+	if daemon.SplitModeEnabled() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var sseCh <-chan sseEvent
+		if dashPort > 0 {
+			if ch, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
+				sseCh = ch
+			}
+		}
+		o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh)
+		outCh <- toIndexOutcome(o, summary)
+		return
+	}
+
+	// MONOLITH mode (unchanged): the Rebuild RPC is synchronous, so its return
+	// IS completion and its reply carries the stats. When a dashboard is up we
+	// forward broker SSE events until the RPC returns; otherwise we just wait on
+	// the RPC. subscribeSSE connects synchronously (it returns only once the HTTP
+	// stream is open), so by the time we fire the Rebuild RPC the broker is
+	// listening and per-repo events are guaranteed to be delivered.
 	if dashPort > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
