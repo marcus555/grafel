@@ -1036,7 +1036,7 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 	var err error
 	if sched.SubprocessIndexEnabled() {
 		// S5 path: fork-exec `grafel index-internal` for memory isolation.
-		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, slog.Default())
+		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, nil, slog.Default())
 	} else {
 		// In-process path (opt-out via GRAFEL_SUBPROCESS_INDEXER=0).
 		// ADR-0016 flip-day (#808): graph.fb is always written by default now.
@@ -1233,6 +1233,36 @@ func rebuildWorkerPool(conc int, work []repoWork, workFn func(idx int, rw repoWo
 	return results
 }
 
+// rebuildSubprocessParams carries the per-repo inputs the subprocess rebuild
+// path forwards to the `grafel index-internal` child.
+type rebuildSubprocessParams struct {
+	RepoPath            string
+	RepoSlug            string
+	GroupSlug           string
+	ProgressPub         progress.Publisher
+	Interactive         bool
+	IncrementalStateDir string
+}
+
+// runRebuildSubprocess indexes one repo for a rebuild via the subprocess indexer
+// (`grafel index-internal` child), republishing the child's per-module progress
+// into p.ProgressPub. It is a package var so a test can stub the child spawn
+// without exec'ing a real binary; production points it at the sched runner.
+//
+// Unlike the scheduler's reactive reindex it passes NO --skip-pass, so the
+// rebuild produces the full graph (including the graph-algo pass) exactly as the
+// in-process rebuild path does, and forwards ref="" so the child resolves HEAD
+// via gitmeta just like the in-process indexer.
+var runRebuildSubprocess = func(ctx context.Context, p rebuildSubprocessParams) error {
+	return sched.RunSubprocessIndex(ctx, p.RepoPath, "", nil, &sched.SubprocessIndexOptions{
+		ProgressPub:         p.ProgressPub,
+		GroupSlug:           p.GroupSlug,
+		RepoSlug:            p.RepoSlug,
+		Interactive:         p.Interactive,
+		IncrementalStateDir: p.IncrementalStateDir,
+	}, slog.Default())
+}
+
 // daemonRebuildFuncCore is the testable inner implementation of the rebuild
 // logic. concurrency is supplied by the caller (captured in the closure
 // returned by makeDaemonRebuildFunc, or set directly in tests). indexFn and
@@ -1338,8 +1368,12 @@ func daemonRebuildFuncCore(
 	// indexOne executes the index function for a single repo and returns its
 	// result. It is shared by both the serial and parallel paths so the logic
 	// (panic recovery, wipe, incremental opts, progress slugs, slug tag) stays
-	// in one place.
-	indexOneInner := func(idx int, rw repoWork) repoResult {
+	// in one place. ctx bounds the SUBPROCESS child's lifetime: indexOne cancels
+	// it on the per-repo timeout (and on normal completion), so a wedged child is
+	// killed and the repolock claim released rather than leaking as a live
+	// process. The in-process indexFn takes no context, so its "orphaned
+	// goroutine finishes in the background" semantics are unchanged.
+	indexOneInner := func(ctx context.Context, idx int, rw repoWork) repoResult {
 		t0 := time.Now()
 		var indexErr error
 		func() {
@@ -1357,9 +1391,56 @@ func daemonRebuildFuncCore(
 			if args.Wipe {
 				_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
 			}
-			var opts []IndexOption
+			var incrementalStateDir string
 			if args.Incremental && !args.Wipe {
-				opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
+				incrementalStateDir = daemon.StateDirForRepo(rw.r.Path)
+			}
+			// Cross-path mutual exclusion (#5729 concurrency bug): this rebuild
+			// indexes the repo DIRECTLY (in-process OR via the subprocess child)
+			// and never touches the engine scheduler, so the scheduler's per-repo
+			// in-flight guard cannot see it. Without a shared claim, a
+			// scheduler-enqueued reindex of the same repo (e.g. from the
+			// wizard-installed `grafel watch` process, a git-HEAD switch, or a
+			// drained KindReindex request) races this rebuild, both rewriting the
+			// same graph.fb — the runaway re-index the live daemon exhibited.
+			// ClaimForeground takes PRIORITY: the scheduler yields the repo while
+			// we own it; we only block on a background index already mid-write.
+			// Acquired/released INSIDE this index goroutine so the claim tracks the
+			// index's real completion — a rebuild whose outer per-repo timeout
+			// fires but whose goroutine keeps running still holds the claim until
+			// the write finishes, and the release is idempotent (safe alongside the
+			// panic-recovery defer above). Held across BOTH paths so it also spans
+			// the child subprocess lifetime.
+			releaseClaim := repolock.DefaultRegistry.ClaimForeground(rw.r.Path)
+			defer releaseClaim()
+
+			if sched.SubprocessIndexEnabled() {
+				// #5729 follow-up: route the per-repo index through the SAME
+				// short-lived `grafel index-internal` child the scheduler uses, so
+				// the index runs in a fresh near-empty-heap process (no GC
+				// contention with the daemon's resident serving graphs). The child
+				// republishes per-module progress over stdout into progressPub (so
+				// the wizard bars are preserved), runs at the foreground CPU cap for
+				// human-awaited rebuilds, and a child index_error surfaces here as a
+				// per-repo failure — identical partial-failure semantics to an
+				// in-process error. The PARENT still owns everything around the
+				// index: the repolock claim above, the group-level linksFn, and the
+				// status-before-ack FlushRepoStatusFile. When the toggle is OFF the
+				// in-process path below runs unchanged.
+				indexErr = runRebuildSubprocess(ctx, rebuildSubprocessParams{
+					RepoPath:            rw.r.Path,
+					RepoSlug:            rw.r.Slug,
+					GroupSlug:           args.Group,
+					ProgressPub:         progressPub,
+					Interactive:         foreground,
+					IncrementalStateDir: incrementalStateDir,
+				})
+				return
+			}
+
+			var opts []IndexOption
+			if incrementalStateDir != "" {
+				opts = append(opts, WithIncremental(incrementalStateDir))
 			}
 			// Publish granular per-repo progress into the shared broker so the
 			// WebUI Index step renders live rows + file counters (#1531).
@@ -1371,22 +1452,6 @@ func daemonRebuildFuncCore(
 			// the throttled background cap. This appears AFTER indexFn's prepended
 			// default so it is the effective WithInteractive value.
 			opts = append(opts, WithInteractive(foreground))
-			// Cross-path mutual exclusion (#5729 concurrency bug): this rebuild
-			// indexes the repo DIRECTLY and never touches the engine scheduler,
-			// so the scheduler's per-repo in-flight guard cannot see it. Without
-			// a shared claim, a scheduler-enqueued reindex of the same repo (e.g.
-			// from the wizard-installed `grafel watch` process, a git-HEAD switch,
-			// or a drained KindReindex request) races this rebuild, both
-			// rewriting the same graph.fb — the runaway re-index the live daemon
-			// exhibited. ClaimForeground takes PRIORITY: the scheduler yields the
-			// repo while we own it; we only block on a background index already
-			// mid-write. Acquired/released INSIDE this index goroutine so the
-			// claim tracks the index's real completion — a rebuild whose outer
-			// per-repo timeout fires but whose goroutine keeps running still holds
-			// the claim until the write finishes, and the release is idempotent
-			// (safe alongside the panic-recovery defer above).
-			releaseClaim := repolock.DefaultRegistry.ClaimForeground(rw.r.Path)
-			defer releaseClaim()
 			// #1576: tag the graph with the CONFIG slug (not the on-disk
 			// directory basename) so doc.Repo matches the slug the dashboard
 			// keys nodes by and the slug the cross-repo link pass emits as the
@@ -1411,18 +1476,29 @@ func daemonRebuildFuncCore(
 	// in the background (matching the existing RPC-timeout semantics) rather
 	// than killed mid-write.
 	indexOne := func(idx int, rw repoWork) repoResult {
+		// Per-repo cancellable context. Cancelling it (on timeout below, or on
+		// normal completion via defer) SIGKILLs a wedged subprocess child so its
+		// parent goroutine unblocks from cmd.Wait and releases the repolock claim
+		// — no process/claim leak. The in-process path ignores ctx.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		if perRepoTimeout <= 0 {
-			return indexOneInner(idx, rw)
+			return indexOneInner(ctx, idx, rw)
 		}
 		t0 := time.Now()
 		done := make(chan repoResult, 1)
-		go func() { done <- indexOneInner(idx, rw) }()
+		go func() { done <- indexOneInner(ctx, idx, rw) }()
 		timer := time.NewTimer(perRepoTimeout)
 		defer timer.Stop()
 		select {
 		case res := <-done:
 			return res
 		case <-timer.C:
+			// Cancel the child so it is killed now and the goroutine + claim are
+			// reclaimed promptly (defer cancel() also covers this, but doing it
+			// explicitly documents intent). The in-process path's goroutine still
+			// finishes in the background — ctx cancellation is a no-op for it.
+			cancel()
 			fmt.Fprintf(os.Stderr,
 				"grafel: rebuild %s STALLED — no result after %s; surfacing as timeout and continuing with remaining repos (group=%s)\n",
 				rw.r.Slug, perRepoTimeout, args.Group)
