@@ -153,6 +153,22 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	includeModules := r.URL.Query().Get("view") == "modules" ||
 		r.URL.Query().Get("include") == "modules"
 
+	cacheKey := payloadCacheKey(group, filterKind, filterRepo, reposParam, includeExternal, includeModules)
+	if sourceVersion, versionErr := dashboardSourceVersion(group, ""); versionErr == nil {
+		if entry, hit := s.graphs.Payloads.Get(cacheKey, sourceVersion); hit {
+			w.Header().Set("ETag", entry.etag)
+			w.Header().Set("Vary", "Accept-Encoding")
+			if r.Header.Get("If-None-Match") == entry.etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(entry.body)
+			return
+		}
+	}
+
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, err.Error())
@@ -168,9 +184,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	// The cache key covers all query params that change the output.  The cache
 	// entry is invalidated by GraphCache.Invalidate(group) which is called on
 	// every re-index event and enrichment write-back.
-	cacheKey := payloadCacheKey(group, filterKind, filterRepo, reposParam, includeExternal, includeModules)
-
-	if entry, hit := s.graphs.Payloads.Get(cacheKey); hit {
+	if entry, hit := s.graphs.Payloads.Get(cacheKey, grp.sourceVersion); hit {
 		// Strong ETag — allows the browser to short-circuit the full
 		// response body on repeat visits.
 		w.Header().Set("ETag", entry.etag)
@@ -445,7 +459,7 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, r *http.Request, grp *Da
 	etag := fmt.Sprintf(`"%x"`, sum[:8])
 
 	// Store in the payload cache for future requests.
-	s.graphs.Payloads.Set(cacheKey, body, etag)
+	s.graphs.Payloads.Set(cacheKey, body, etag, grp.sourceVersion)
 
 	// Set ETag and Vary so proxies and browsers can cache correctly.
 	w.Header().Set("ETag", etag)
