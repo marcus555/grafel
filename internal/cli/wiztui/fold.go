@@ -218,6 +218,32 @@ func Fold(rows map[string]Row, e progress.Event) map[string]Row {
 		out[k] = v
 	}
 	out[key] = next
+
+	// A repo-scoped Done signal (Module == "" or Module == RepoSlug) means the
+	// WHOLE repo pipeline — which requires every module's own AST extraction
+	// to have already finished — has completed. Later pipeline phases
+	// (resolve/materialize/algorithms/write) are emitted as repo-scoped events
+	// with no Module, so they fold only into this repo's own row and never
+	// touch the per-module rows a monorepo renders. Without this, module rows
+	// freeze at "Extracting AST…" forever even though their own FilesDone
+	// reached FilesTotal (#5751 follow-up). Lift every non-terminal sibling
+	// module row to Done here, preserving its already-correct file/entity
+	// counts. This can never fire prematurely: propagation only happens once
+	// the repo itself reaches PhaseDone.
+	if next.Phase == progress.PhaseDone && (e.Module == "" || e.Module == e.RepoSlug) {
+		prefix := e.RepoSlug + "/"
+		for k, v := range out {
+			if k == key || v.RepoSlug != e.RepoSlug || v.Terminal() {
+				continue
+			}
+			if len(k) > len(prefix) && k[:len(prefix)] == prefix {
+				lifted := v
+				lifted.Phase = progress.PhaseDone
+				out[k] = lifted
+			}
+		}
+	}
+
 	return out
 }
 

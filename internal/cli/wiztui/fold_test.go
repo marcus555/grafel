@@ -283,3 +283,52 @@ func TestFold_RealPhaseReplacesIndexingFloor(t *testing.T) {
 		t.Fatalf("real PhaseScan did not replace the coarse Indexing floor: phase = %q", rows["backend"].Phase)
 	}
 }
+
+// TestFold_RepoDonePropagatesToSiblingModuleRows is the monorepo
+// module-frozen-at-"Extracting AST…" bug: once every module has finished its
+// own extraction (FilesDone==FilesTotal), the repo-level pipeline continues
+// through resolve/materialize/algorithms/write as REPO-SCOPED events
+// (Module=="") that fold into the repo's own row, never touching the module
+// rows. When the repo finally reaches PhaseDone, every sibling module row
+// must be lifted to PhaseDone too — its FilesDone/FilesTotal/EntitiesSoFar
+// must be preserved (they are already correct from the final per-module
+// flush), not reset.
+func TestFold_RepoDonePropagatesToSiblingModuleRows(t *testing.T) {
+	rows := map[string]Row{}
+
+	// Each module completes its own AST extraction (FilesDone==FilesTotal).
+	rows = Fold(rows, progress.Event{RepoSlug: "mono", Module: "a", Phase: progress.PhaseExtractAST, FilesDone: 19450, FilesTotal: 19450, EntitiesSoFar: 1000, TS: 1})
+	rows = Fold(rows, progress.Event{RepoSlug: "mono", Module: "b", Phase: progress.PhaseExtractAST, FilesDone: 23, FilesTotal: 23, EntitiesSoFar: 40, TS: 2})
+
+	// Repo-level pipeline continues (resolve/materialize/... ) as repo-scoped
+	// events — these must NOT touch the module rows (existing behavior).
+	rows = Fold(rows, ev("mono", progress.PhaseResolveRefs, 3))
+	rows = Fold(rows, ev("mono", progress.PhaseMaterialize, 4))
+
+	if rows["mono/a"].Phase != progress.PhaseExtractAST || rows["mono/b"].Phase != progress.PhaseExtractAST {
+		t.Fatalf("module rows advanced prematurely from repo-scoped in-flight events: a=%q b=%q", rows["mono/a"].Phase, rows["mono/b"].Phase)
+	}
+
+	// Repo reaches Done (module==""): every sibling module row must be lifted
+	// to Done too, preserving file/entity counts.
+	rows = Fold(rows, ev("mono", progress.PhaseDone, 5))
+
+	if rows["mono"].Phase != progress.PhaseDone {
+		t.Fatalf("repo row phase = %q, want %q", rows["mono"].Phase, progress.PhaseDone)
+	}
+	for _, key := range []string{"mono/a", "mono/b"} {
+		r, ok := rows[key]
+		if !ok {
+			t.Fatalf("module row %q missing after repo Done propagation; got keys %v", key, rowKeys(rows))
+		}
+		if r.Phase != progress.PhaseDone {
+			t.Errorf("module row %q phase = %q, want %q (repo-level Done must propagate to sibling module rows)", key, r.Phase, progress.PhaseDone)
+		}
+	}
+	if rows["mono/a"].FilesDone != 19450 || rows["mono/a"].FilesTotal != 19450 || rows["mono/a"].EntitiesSoFar != 1000 {
+		t.Errorf("module a counts not preserved: %+v", rows["mono/a"])
+	}
+	if rows["mono/b"].FilesDone != 23 || rows["mono/b"].FilesTotal != 23 || rows["mono/b"].EntitiesSoFar != 40 {
+		t.Errorf("module b counts not preserved: %+v", rows["mono/b"])
+	}
+}
