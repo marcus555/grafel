@@ -56,3 +56,26 @@ func isProtectedScanParent(parent string) bool {
 	}
 	return macOSProtectedHomeDirs[first]
 }
+
+// isProtectedHomeChild reports whether the dirent `name` under `parent` is a
+// macOS TCC-protected folder that must NOT be descended into (ReadDir'd or
+// have its .git Stat'd) during classification. It fires ONLY when `parent` IS
+// the home directory, so:
+//
+//   - classifying $HOME skips its Documents/Downloads/Pictures/Music/… children
+//     (the batch-prompt bug: childGitRepoNames Stat'd each child/.git and
+//     scanPolyglotModules ReadDir'd each child for manifests), while
+//   - explicitly classifying a protected folder itself (e.g. ~/Documents) still
+//     descends into ITS children — their parent is ~/Documents, not $HOME — so
+//     the deliberate single-prompt case keeps working, and
+//   - a folder merely named "Documents" elsewhere on disk is unaffected.
+func isProtectedHomeChild(parent, name string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	if filepath.Clean(parent) != filepath.Clean(home) {
+		return false
+	}
+	return macOSProtectedHomeDirs[name]
+}

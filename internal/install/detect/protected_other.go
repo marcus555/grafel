@@ -6,3 +6,5 @@
 package detect
 
 func isProtectedScanParent(parent string) bool { return false }
+
+func isProtectedHomeChild(parent, name string) bool { return false }
