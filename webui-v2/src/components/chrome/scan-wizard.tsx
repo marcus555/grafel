@@ -55,7 +55,12 @@ import {
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { useIndexStatus } from "@/hooks/use-index-status";
 import { aggregateProgress, nestRows, overallPhaseLabel } from "@/lib/index-progress-fold";
-import { engineStats, groupEnhancing, groupQueryable, joinIndexStatus } from "@/lib/index-status-join";
+import {
+  engineStats,
+  groupEnhancing,
+  joinIndexStatus,
+  viewGraphEnabled,
+} from "@/lib/index-status-join";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { EnhancingBar } from "@/components/chrome/enhancing-bar";
 import { ApiError } from "@/lib/api";
@@ -265,11 +270,22 @@ export function ScanWizard(props: ScanWizardProps) {
   // finished extraction (indexing===false). Gates the "View graph" button so the
   // user can only navigate once the graph will actually stream (not on job-done,
   // which can precede a servable graph.fb). Enhancing does NOT block this.
-  const queryable = groupQueryable(indexStatus.data);
+  //
+  // Primary source is the status plane (groupQueryable). Defense-in-depth for the
+  // already-indexed / "up to date" fast path (Bug A): when a rebuild touches 0
+  // repos the status plane can report zero repos (empty/stale engine sidecar), so
+  // groupQueryable stays false forever and the button froze disabled. viewGraphEnabled
+  // then falls back to the SSE feed's own terminal state — the job finished AND
+  // every per-repo row is terminal (already rendering "Indexed") — so the button
+  // unlocks. Stays false during active indexing (job not done, some row non-terminal).
+  const queryable = viewGraphEnabled(indexStatus.data, indexComplete, indexProgress.rows);
   // Join the status-plane rows (enhancing / relationships / entities) onto the
   // SSE rows, then nest monorepo package rows under a synthesized parent.
   const joinedRows = joinIndexStatus(indexProgress.rows, indexStatus.data);
   const nesting = buildNesting(scan, buildRepos(scan, selectedChildren, selectedPkgs));
+  // Total entities across all repos, for the queryable banner — mirrors the TUI's
+  // "Graph queryable (N entities)" line (indexview.go queryableBanner).
+  const totalEntities = joinedRows.reduce((n, r) => n + (r.entitiesSoFar || 0), 0);
 
   // Reset everything when the dialog closes.
   function reset() {
@@ -453,10 +469,11 @@ export function ScanWizard(props: ScanWizardProps) {
   // (parent Done) any child frozen mid-phase is lifted to Done.
   const feedGroups = nestRows(joinedRows, nesting, terminal);
   // The graph is queryable but background enrichment is still running: show the
-  // secondary bar. Never a false failure — a queryable+enhancing group is
-  // success. Only surface it once the main pass has settled (terminal) so it
-  // reads as the tail, mirroring the TUI's queryable sub-state.
-  const showEnhancing = enhancing && terminal && effectiveStatus !== "failed";
+  // secondary background-enhancement bar (mirrors the TUI's bgProgressBlock).
+  // Never a false failure — a queryable+enhancing group is success. Gated on the
+  // queryable "safe to navigate" sub-state so it reads as the background tail,
+  // exactly like the TUI, which renders bgProgressBlock under the queryable banner.
+  const showEnhancing = queryable && enhancing && effectiveStatus !== "failed";
 
   return (
     <Dialog
@@ -1134,12 +1151,6 @@ export function ScanWizard(props: ScanWizardProps) {
               />
             </div>
 
-            {/* Secondary "enhancing relationships in the background" bar (#47
-                phase 2). The main bar completes at queryable; this indeterminate
-                bar covers the background enrichment tail so the view doesn't stop
-                at Done while enhancing. */}
-            {showEnhancing && <EnhancingBar />}
-
             {/* Per-repo / per-MODULE rows (#1527) with nested monorepo modules
                 (#47 phase 2). For a monorepo the package rows nest under a parent
                 header; related-repo / single-repo layouts stay flat. */}
@@ -1150,14 +1161,33 @@ export function ScanWizard(props: ScanWizardProps) {
               className="max-h-80 overflow-y-auto pr-0.5"
             />
 
-            {/* A subtle note that background enrichment is still running once the
-                graph is already queryable — the graph is safe to open now (the
-                "View graph" button is enabled); enhancing only adds relationships
-                in the background. Never blocks navigation (#47 / v0.1.8 nav fix). */}
-            {queryable && enhancing && (
-              <p className="text-xs text-text-4" data-testid="wizard-enhancing-note">
-                Graph ready — still enhancing relationships in the background.
-              </p>
+            {/* "Graph queryable — safe to navigate" banner (mirrors the TUI's
+                queryableBanner, indexview.go). Shown once the group's graph.fb is
+                servable (queryable): a prominent success line naming the entity
+                count, a hint that opening now is safe (the "View graph" button is
+                enabled), and — while background enhancement is still running — the
+                secondary indeterminate bar (mirrors the TUI's bgProgressBlock). The
+                same information/messaging the TUI shows for this sub-state. */}
+            {queryable && (
+              <div
+                className="rounded-lg border border-success/40 bg-success/5 p-3"
+                data-testid="wizard-queryable-banner"
+              >
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="shrink-0 text-success" />
+                  <span className="text-sm font-medium text-text-1">
+                    Graph queryable
+                    {totalEntities > 0 && ` (${totalEntities.toLocaleString()} entities)`}
+                    {" — safe to view now"}
+                  </span>
+                </div>
+                <p className="mt-1 pl-[23px] text-xs text-text-4" data-testid="wizard-queryable-hint">
+                  {enhancing
+                    ? 'Open it now (safe) — or wait for background enhancement to complete.'
+                    : 'Open it now (safe).'}
+                </p>
+                {showEnhancing && <EnhancingBar className="mt-2 pl-[23px]" />}
+              </div>
             )}
 
             <div className="flex justify-end gap-2 pt-1">

@@ -18,6 +18,7 @@ import { CheckCircle2, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { rowMetricTail } from "@/lib/index-progress-row-metrics";
 import type { ProgressGroup, ProgressPhase, ProgressRow } from "@/data/types";
 
 const PHASE_LABEL: Record<ProgressPhase, string> = {
@@ -54,6 +55,8 @@ function ProgressRowItem({ row, nested }: { row: ProgressRow; nested?: boolean }
   const failed = row.phase === "error";
   const done = row.phase === "done";
   const label = row.module ?? row.repoSlug;
+  // TUI-parity metric tail: `files done/total · entities · rels` (Bug B).
+  const tail = rowMetricTail(row);
   return (
     <li
       className={cn(
@@ -101,11 +104,11 @@ function ProgressRowItem({ row, nested }: { row: ProgressRow; nested?: boolean }
             ? row.error || "error"
             : row.currentFile || (row.filesTotal > 0 ? `${row.filesDone}/${row.filesTotal} files` : "")}
         </span>
-        <span className="shrink-0 tabular-nums">
-          {row.filesTotal > 0 && `${row.filesDone}/${row.filesTotal}`}
-          {row.entitiesSoFar > 0 && ` · ${row.entitiesSoFar} entities`}
-          {row.relationships != null && row.relationships > 0 && ` · ${row.relationships} rels`}
-        </span>
+        {tail && (
+          <span className="shrink-0 tabular-nums" data-testid="row-metrics">
+            {tail}
+          </span>
+        )}
       </div>
     </li>
   );

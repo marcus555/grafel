@@ -18,6 +18,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { anyRepoActive } from "@/lib/index-status-join";
 
 /** Poll interval (ms) while the group is still indexing/enhancing. */
 const POLL_MS = 1500;
@@ -32,14 +33,23 @@ export function useIndexStatus(group: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["index-status", group],
     queryFn: () => api.getIndexStatus(group as string),
+    // Enabled whenever the wizard is on the Index step with a target group (the
+    // caller passes `progressActive` === on-index-step). This guarantees an
+    // already-indexed / "up to date" group — where nothing rebuilds — still
+    // fetches its status at least once, so the "View graph" gate can resolve.
     enabled: enabled && !!group,
-    // Poll steadily while enabled. The wizard gates `enabled` on the index step,
-    // so polling naturally spans the whole run — including the post-queryable
-    // enhancing tail — and stops when the user finishes (dialog leaves the
-    // index step). Keeping a fixed interval avoids stopping early during a brief
-    // window where the status plane momentarily reports nothing active (e.g.
-    // between "queryable" and the enhancing flag flipping on).
-    refetchInterval: () => POLL_MS,
+    // Poll steadily while the group is still working, then STOP once it settles —
+    // one successful all-settled snapshot is enough for the queryable gate; we
+    // don't poll forever after that. We keep polling while (a) we have not yet
+    // seen a snapshot that lists repos (covers the brief window between "queryable"
+    // and the enhancing flag flipping on, and the "not indexed yet" case), or (b)
+    // any repo is still indexing/enhancing (the active + background-enhancement
+    // tail). Mirrors the TUI, which keeps its status poll alive across that tail.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || data.repos.length === 0) return POLL_MS;
+      return anyRepoActive(data) ? POLL_MS : false;
+    },
     // A missing status sidecar is a normal "not indexed yet" case, not an error
     // worth retrying aggressively.
     retry: false,

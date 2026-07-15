@@ -6,6 +6,7 @@ import {
   groupEnhancing,
   groupQueryable,
   joinIndexStatus,
+  viewGraphEnabled,
 } from "./index-status-join";
 import type { IndexStatusReply, ProgressRow } from "@/data/types";
 
@@ -180,6 +181,64 @@ describe("groupQueryable — graph is servable once every repo finished extracti
 
   it("false for undefined status (no status plane yet)", () => {
     expect(groupQueryable(undefined)).toBe(false);
+  });
+});
+
+describe("viewGraphEnabled — 'View graph' button gate (Bug A)", () => {
+  it("enables via the status plane when every repo has finished extraction", () => {
+    const s = status({
+      repos: [
+        { repo_slug: "a", indexing: false, enhancing: false, entities: 10, relationships: 5, graph_fb_mtime: 1 },
+      ],
+    });
+    // Job not done yet, but the status plane already reports queryable → enabled.
+    expect(viewGraphEnabled(s, false, [row({ phase: "extracting_ast" })])).toBe(true);
+  });
+
+  it("FAST PATH: already-indexed 'up to date' group — status plane reports zero repos, but job done + all rows terminal → enabled", () => {
+    // The primary bug: a rebuild that touches 0 repos leaves the status plane
+    // empty, so groupQueryable stays false forever. The feed-terminal fallback
+    // must still unlock the button.
+    const emptyStatus = status({ repos: [] });
+    expect(groupQueryable(emptyStatus)).toBe(false);
+    expect(
+      viewGraphEnabled(emptyStatus, true, [
+        row({ repoSlug: "backend", phase: "done" }),
+        row({ repoSlug: "frontend", phase: "done" }),
+      ]),
+    ).toBe(true);
+  });
+
+  it("FAST PATH works with NO status plane at all (undefined) once the job is done and rows are terminal", () => {
+    expect(viewGraphEnabled(undefined, true, [row({ phase: "done" })])).toBe(true);
+  });
+
+  it("stays DISABLED during active indexing (job not done, a row still non-terminal, status not queryable)", () => {
+    const s = status({
+      repos: [
+        { repo_slug: "a", indexing: false, enhancing: false, entities: 3, relationships: 0, graph_fb_mtime: 1 },
+        { repo_slug: "b", indexing: true, enhancing: false, entities: 0, relationships: 0, graph_fb_mtime: 0 },
+      ],
+    });
+    expect(
+      viewGraphEnabled(s, false, [
+        row({ repoSlug: "a", phase: "done" }),
+        row({ repoSlug: "b", phase: "extracting_ast" }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("stays DISABLED when the job finished but a row is still non-terminal (no premature unlock)", () => {
+    expect(
+      viewGraphEnabled(undefined, true, [
+        row({ repoSlug: "a", phase: "done" }),
+        row({ repoSlug: "b", phase: "materializing" }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("stays DISABLED with zero rows even if the job is done (nothing to visualize)", () => {
+    expect(viewGraphEnabled(undefined, true, [])).toBe(false);
   });
 });
 

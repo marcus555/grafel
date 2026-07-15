@@ -465,9 +465,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   // the main graph shows only the connected component + low-degree leaves.
   hideUnconnected: persistedBool(HIDE_UNCONNECTED_KEY, true),
 
-  // Instant layout OFF by default — keep the animated explode/settle unless the
-  // user opts into the static drop-in.
-  instantLayout: persistedBool(INSTANT_LAYOUT_KEY, false),
+  // Instant layout ON by default — a first-time user (no stored preference) gets
+  // the static, pre-settled layout (no explode/jiggle). Users who explicitly
+  // toggled it OFF keep that stored choice (persistedBool honours a stored false).
+  instantLayout: persistedBool(INSTANT_LAYOUT_KEY, true),
 
   colorMode: "repo",
   groupBy: "repo",

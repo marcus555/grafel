@@ -75,6 +75,33 @@ export function anyRepoActive(status: IndexStatusReply | undefined): boolean {
 }
 
 /**
+ * "View graph" enable-gate for the wizard — true once the group is navigable.
+ *
+ * Primary source: `groupQueryable(status)` (the status plane reports every repo
+ * finished extraction). Defense-in-depth for the already-indexed / "up to date"
+ * fast path: when the rebuild touches 0 repos the status plane can report zero
+ * repos (or a stale/empty engine sidecar), so `groupQueryable` stays false even
+ * though the graph is on disk and servable. In that case we fall back to the SSE
+ * feed's own terminal state — the job finished (`jobDone`) AND every registered
+ * per-repo row is terminal (done/error, i.e. it already renders "Indexed"). This
+ * mirrors the TUI, which lets the user proceed to the graph once the group is
+ * queryable. Deliberately stays FALSE during active indexing (job not done and
+ * some row still non-terminal), so the button can't unlock early.
+ */
+export function viewGraphEnabled(
+  status: IndexStatusReply | undefined,
+  jobDone: boolean,
+  rows: Pick<ProgressRow, "phase">[],
+): boolean {
+  if (groupQueryable(status)) return true;
+  return (
+    jobDone &&
+    rows.length > 0 &&
+    rows.every((r) => r.phase === "done" || r.phase === "error")
+  );
+}
+
+/**
  * The engine CPU/RSS block for the badges, or undefined when there's nothing
  * meaningful to show (missing status, or an all-zero engine-liveness sidecar —
  * the backend degrades a stale/absent sidecar to a zero block).
