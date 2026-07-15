@@ -5,7 +5,9 @@ package dashboard
 
 import (
 	"fmt"
+	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -221,6 +223,80 @@ func TestSchedulePendingAlgo_NoDataRaceWithConcurrentReaders(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
+}
+
+// TestSchedulePendingAlgo_PersistFailureDoesNotRecomputeForever is the CPU-spin
+// regression guard. When persistAlgoResults cannot write the sidecar (best-effort,
+// error-swallowed: read-only state dir, disk-full, EPERM), the reloaded graph
+// still omits Pass-4, so applyAlgorithmsOnLoad re-flags the repo as pending. Before
+// the fix, schedulePendingAlgo therefore recomputed the multi-minute Pass-4 sweep
+// on EVERY reload and evicted again — an unbounded, CPU-bound loop that pinned the
+// serve daemon at hundreds of % CPU while the dashboard polled the group's graph
+// endpoint (graph.fb untouched — only the algo sidecar failed). The in-memory
+// algoComputed guard must make the compute happen at most ONCE per graph.fb
+// version regardless of whether the sidecar persisted.
+func TestSchedulePendingAlgo_PersistFailureDoesNotRecomputeForever(t *testing.T) {
+	backgroundAlgoGate = nil // run immediately
+	var computes int32
+	done := make(chan string, 4)
+	backgroundAlgoDone = func(k string) { atomic.AddInt32(&computes, 1); done <- k }
+	t.Cleanup(func() { backgroundAlgoDone = nil })
+
+	stateDir := t.TempDir()
+	// Force persistAlgoResults to fail: a read-only state dir makes its
+	// os.CreateTemp(stateDir, …) return an error, which it swallows.
+	if err := os.Chmod(stateDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(stateDir, 0o700) })
+	fbMtime := time.Now()
+
+	// First reload cycle: the repo needs Pass-4 (no sidecar, empty communities).
+	doc1 := pathGraphDoc()
+	c, grp1 := pendingGrp(t, doc1, stateDir, fbMtime)
+	c.schedulePendingAlgo("g", grp1)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first background Pass-4 never completed")
+	}
+	// Precondition: the sidecar genuinely did NOT persist (the loop's trigger).
+	if _, ok := loadPersistedAlgoResults(stateDir, fbMtime); ok {
+		t.Fatal("test precondition broken: sidecar unexpectedly persisted despite read-only dir")
+	}
+
+	// Second reload cycle — a FRESH pending repo for the SAME graph.fb version,
+	// exactly what the eviction + next dashboard poll reproduces. This is where the
+	// old code recomputed Pass-4 again (and again, forever).
+	doc2 := pathGraphDoc()
+	grp2 := &DashGroup{
+		Name:        "g",
+		Repos:       map[string]*DashRepo{"r": {Slug: "r", Doc: doc2}},
+		stateDirs:   map[string]string{"r": stateDir},
+		pendingAlgo: []pendingAlgoRepo{{doc: doc2, stateDir: stateDir, fbMtime: fbMtime}},
+	}
+	c.mu.Lock()
+	c.entries["g"] = &cacheEntry{group: grp2, loadedAt: time.Now()}
+	c.mu.Unlock()
+	c.schedulePendingAlgo("g", grp2)
+
+	select {
+	case <-done:
+		t.Fatal("Pass-4 recomputed for an already-computed graph.fb version — the compute→evict→reload CPU spin is NOT fixed")
+	case <-time.After(500 * time.Millisecond):
+		// good: the guard filtered the already-computed repo, no second sweep.
+	}
+	// The second schedule must NOT have evicted the entry: staying warm is what
+	// stops the reload→recompute cycle.
+	c.mu.Lock()
+	_, present := c.entries["g"]
+	c.mu.Unlock()
+	if !present {
+		t.Fatal("entry evicted on the second schedule — the following reload re-enters the spin")
+	}
+	if got := atomic.LoadInt32(&computes); got != 1 {
+		t.Fatalf("Pass-4 ran %d times for one graph.fb version, want exactly 1", got)
+	}
 }
 
 // TestLoadPersistedAlgoResults_StaleOnMtimeChange verifies the sidecar is

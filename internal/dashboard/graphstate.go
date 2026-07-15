@@ -314,6 +314,20 @@ type GraphCache struct {
 	entries  map[string]*cacheEntry
 	loading  map[string]*loadGate // in-flight loads, keyed by group (singleflight)
 	warmErrs map[string]error     // last load error per cache key (#5722), cleared on success
+	// algoComputed records, per repo state dir, the graph.fb mtime (UnixNano) for
+	// which the expensive Pass-4 sweep has ALREADY been computed this process
+	// lifetime — regardless of whether persistAlgoResults managed to write the
+	// sidecar. It is the termination guard for schedulePendingAlgo's
+	// compute→evict→reload cycle: persistAlgoResults is best-effort and swallows
+	// write failures (read-only state dir, disk-full, EPERM), and when it fails the
+	// reloaded graph still omits Pass-4, so applyAlgorithmsOnLoad re-flags the repo
+	// as pending and the group is recomputed on EVERY reload — an unbounded,
+	// CPU-bound Pass-4 spin (RunAlgorithms is O(V·E) betweenness) that pins serve
+	// while the dashboard polls the group's graph endpoint. Keying the guard in
+	// memory makes "compute once per graph.fb version" hold even when the on-disk
+	// sidecar cannot. A genuine re-index bumps graph.fb's mtime, so the new version
+	// is correctly recomputed (the recorded mtime no longer matches).
+	algoComputed map[string]int64 // repo stateDir -> fb mtime UnixNano already computed
 	// ttl is retained for API compatibility but NO LONGER governs freshness
 	// (#50): a loaded group stays cached until its graph.fb changes on disk
 	// (diskUnchanged) or it is explicitly Invalidate()d on a re-index event.
@@ -340,11 +354,12 @@ type loadGate struct {
 // for production; tests may use a lower value.
 func NewGraphCache(ttl time.Duration) *GraphCache {
 	return &GraphCache{
-		entries:  map[string]*cacheEntry{},
-		loading:  map[string]*loadGate{},
-		warmErrs: map[string]error{},
-		ttl:      ttl,
-		Payloads: newGraphPayloadCache(),
+		entries:      map[string]*cacheEntry{},
+		loading:      map[string]*loadGate{},
+		warmErrs:     map[string]error{},
+		algoComputed: map[string]int64{},
+		ttl:          ttl,
+		Payloads:     newGraphPayloadCache(),
 	}
 }
 
@@ -829,7 +844,20 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 	if grp == nil || len(grp.pendingAlgo) == 0 {
 		return
 	}
-	pending := grp.pendingAlgo
+	// Drop any repo whose current graph.fb version was ALREADY Pass-4-computed this
+	// process (algoComputed). This is the loop-termination guard: when
+	// persistAlgoResults fails (best-effort, swallowed), the reloaded graph still
+	// omits Pass-4 and applyAlgorithmsOnLoad re-flags the repo as pending, so
+	// without this filter the group would recompute the multi-minute sweep on
+	// EVERY reload and pin serve. If NOTHING is left to compute we must NOT evict:
+	// evicting here would force yet another reload → re-flag → re-enter, sustaining
+	// the very spin we are breaking. Returning without eviction keeps the entry
+	// warm (served with the cheap degree fallback when the sidecar could not
+	// persist — graceful degradation, never a CPU spin).
+	pending := c.filterAlreadyComputed(grp.pendingAlgo)
+	if len(pending) == 0 {
+		return
+	}
 	go func() {
 		if backgroundAlgoGate != nil {
 			<-backgroundAlgoGate
@@ -841,6 +869,10 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 			// the group was already evicted under us (concern #2).
 			res := graph.RunAlgorithms(p.doc.Entities, p.doc.Relationships)
 			persistAlgoResults(p.stateDir, p.fbMtime, res)
+			// Record that this graph.fb version has been computed BEFORE the evict
+			// below, so a reload triggered by the eviction filters this repo out
+			// (termination) even if the persist above failed.
+			c.markAlgoComputed(p.stateDir, p.fbMtime)
 		}
 		// Evict THIS entry (only if it is still the group we computed for) so the
 		// next request reloads with the persisted Pass-4 applied synchronously.
@@ -854,6 +886,38 @@ func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
 			backgroundAlgoDone(cacheKey)
 		}
 	}()
+}
+
+// filterAlreadyComputed returns the subset of pending whose repos have NOT yet
+// had Pass-4 computed for their current graph.fb mtime this process (see
+// algoComputed). A repo with a zero fbMtime is never filtered (we cannot key it
+// safely), so a graph whose file has vanished still recomputes rather than being
+// silently skipped forever. It does not mutate the input slice.
+func (c *GraphCache) filterAlreadyComputed(pending []pendingAlgoRepo) []pendingAlgoRepo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]pendingAlgoRepo, 0, len(pending))
+	for _, p := range pending {
+		if !p.fbMtime.IsZero() {
+			if done, ok := c.algoComputed[p.stateDir]; ok && done == p.fbMtime.UnixNano() {
+				continue // already computed this exact graph.fb version
+			}
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// markAlgoComputed records that stateDir's graph.fb at fbMtime has had its Pass-4
+// sweep computed this process, so filterAlreadyComputed drops it on the next
+// reload even if the sidecar write failed.
+func (c *GraphCache) markAlgoComputed(stateDir string, fbMtime time.Time) {
+	if fbMtime.IsZero() {
+		return
+	}
+	c.mu.Lock()
+	c.algoComputed[stateDir] = fbMtime.UnixNano()
+	c.mu.Unlock()
 }
 
 // attachDegreeFallback stamps a cheap degree-based PageRank proxy on every
