@@ -817,6 +817,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/daemon/mode", s.handleV2GetDaemonMode)
 	mux.HandleFunc("POST /api/v2/daemon/mode", s.handleV2SetDaemonMode)
 
+	// Web wizard poll surface (#47 phase 1): per-repo indexing/enhancing state
+	// (statusfile status plane) + engine CPU/RSS (engine-liveness sidecar),
+	// mirroring what the TUI already reads. Read-only: no writes, no index
+	// trigger.
+	mux.HandleFunc("GET /api/v2/groups/{group}/index-status", s.handleV2IndexStatus)
+
 	return s.withAuth(withGzip(mux))
 }
 
