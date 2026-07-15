@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -231,6 +233,11 @@ func (s *Server) handleV2SetDaemonMode(w http.ResponseWriter, r *http.Request) {
 // Errors are intentionally swallowed — the config write already succeeded
 // and the caller (UI) will poll /api/v2/meta to confirm the daemon came back.
 func scheduleDaemonRestart() bool {
+	bin, err := os.Executable()
+	if err != nil || bin == "" || isGoTestExecutable(bin) {
+		return false
+	}
+
 	c, err := client.Dial()
 	if err != nil {
 		// Daemon not running; the new config will be picked up on next start.
@@ -240,11 +247,6 @@ func scheduleDaemonRestart() bool {
 		return false
 	}
 	defer c.Close()
-
-	bin, err := os.Executable()
-	if err != nil || bin == "" {
-		return false
-	}
 	go func() {
 		time.Sleep(300 * time.Millisecond)
 		cmd := exec.Command(bin, "restart")
@@ -254,4 +256,10 @@ func scheduleDaemonRestart() bool {
 		_ = cmd.Wait()
 	}()
 	return true
+}
+
+func isGoTestExecutable(path string) bool {
+	normalized := strings.ReplaceAll(path, `\`, "/")
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(normalized)), ".exe")
+	return strings.HasSuffix(name, ".test")
 }

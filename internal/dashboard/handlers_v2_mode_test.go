@@ -28,6 +28,9 @@ func newModeTestServer(t *testing.T) (serverURL, daemonRoot string) {
 	if err := os.MkdirAll(daemonRoot, 0o700); err != nil {
 		t.Fatalf("mkdir daemonRoot: %v", err)
 	}
+	// Isolate daemon discovery as well as filesystem state. Without this, the
+	// test can connect to the user's live daemon and attempt to restart it.
+	t.Setenv("GRAFEL_DAEMON_ROOT", daemonRoot)
 
 	st := newFakeStore()
 	srv, err := NewServer(DefaultConfig(), st)
@@ -40,6 +43,23 @@ func newModeTestServer(t *testing.T) (serverURL, daemonRoot string) {
 	ts := httptest.NewServer(srv.routes())
 	t.Cleanup(ts.Close)
 	return ts.URL, daemonRoot
+}
+
+func TestIsGoTestExecutable(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: `C:\tmp\dashboard.test.exe`, want: true},
+		{path: "/tmp/dashboard.test", want: true},
+		{path: `C:\tmp\grafel.exe`, want: false},
+		{path: "/usr/local/bin/grafel", want: false},
+	}
+	for _, tt := range tests {
+		if got := isGoTestExecutable(tt.path); got != tt.want {
+			t.Errorf("isGoTestExecutable(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
