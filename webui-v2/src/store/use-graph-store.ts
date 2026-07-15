@@ -302,6 +302,7 @@ function persistedBool(key: string, fallback: boolean): boolean {
 }
 
 const HIDE_UNCONNECTED_KEY = "ag.v2.graph.hideUnconnected";
+const INSTANT_LAYOUT_KEY = "ag.v2.graph.instantLayout";
 
 interface GraphState {
   // Interaction
@@ -344,6 +345,16 @@ interface GraphState {
    * degree-1 leaves) and persisted to localStorage so the choice sticks.
    */
   hideUnconnected: boolean;
+
+  /**
+   * "Instant layout" — skip the force-layout settle ANIMATION (the on-load
+   * jiggle) and drop the graph straight into its converged positions. When ON,
+   * the canvas pre-runs the simulation to convergence off-screen (no painted
+   * ticks) and pins the final layout in one frame. Default OFF so the current
+   * animated explode/settle is unchanged out of the box. Persisted to
+   * localStorage (version-independent — a pure UX choice) so the pick sticks.
+   */
+  instantLayout: boolean;
 
   // View knobs
   colorMode: ColorMode;
@@ -395,6 +406,8 @@ interface GraphState {
   setMinDegree: (d: number) => void;
   /** #4641 — toggle hiding of unconnected (zero-edge) nodes (persisted). */
   setHideUnconnected: (hide: boolean) => void;
+  /** Toggle "Instant layout" — skip the settle animation (persisted). */
+  setInstantLayout: (on: boolean) => void;
   setColorMode: (m: ColorMode) => void;
   setGroupBy: (m: GroupByMode) => void;
   /**
@@ -452,6 +465,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   // the main graph shows only the connected component + low-degree leaves.
   hideUnconnected: persistedBool(HIDE_UNCONNECTED_KEY, true),
 
+  // Instant layout OFF by default — keep the animated explode/settle unless the
+  // user opts into the static drop-in.
+  instantLayout: persistedBool(INSTANT_LAYOUT_KEY, false),
+
   colorMode: "repo",
   groupBy: "repo",
   groupingTouched: false,
@@ -496,6 +513,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   setHideUnconnected: (hide) => {
     persist(HIDE_UNCONNECTED_KEY, hide);
     set({ hideUnconnected: hide });
+  },
+  setInstantLayout: (on) => {
+    persist(INSTANT_LAYOUT_KEY, on);
+    set({ instantLayout: on });
   },
   setColorMode: (colorMode) => set({ colorMode, groupingTouched: true }),
   setGroupBy: (groupBy) => set({ groupBy, groupingTouched: true }),

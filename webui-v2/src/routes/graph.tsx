@@ -779,6 +779,7 @@ export default function GraphScreen() {
                 edges={egoEdges}
                 isFocusView={focusActive}
                 streaming={stream.phase === "streaming" && !focusActive}
+                instantLayout={s.instantLayout}
                 selectedNodeId={s.selectedNodeId}
                 hoveredNodeId={s.hoveredNodeId}
                 isDark={isDark}
