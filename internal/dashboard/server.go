@@ -172,8 +172,8 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 	h := newWSHub()
 	go h.run()
 	srv := &Server{
-		cfg:        cfg,
-		registry:   store,
+		cfg:      cfg,
+		registry: store,
 		// #50: the graph cache is mtime-keyed (durable) — a loaded group stays
 		// warm until its graph.fb changes on disk or is Invalidate()d on
 		// re-index, NOT until a wall-clock timer elapses. The duration below is

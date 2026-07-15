@@ -14,6 +14,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // applyGuidance runs a real (non-dry-run) install under an isolated HOME with
@@ -22,10 +23,13 @@ import (
 // isolates the guidance path.
 func applyGuidance(t *testing.T, repo string, projectGuidance bool) *install.Result {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(home, ".grafel"))
+	// testsupport.IsolateHome sets HOME AND %USERPROFILE% (plus XDG/daemon-root
+	// vars) and asserts the redirect actually took effect. A manual
+	// t.Setenv("HOME", ...) is insufficient on Windows: os.UserHomeDir (and the
+	// registry reads install exercises) resolve %USERPROFILE%, not $HOME, so
+	// the real user home would still be touched and IsolateHome's
+	// TEST-SANDBOX-ESCAPE guard would panic.
+	testsupport.IsolateHome(t)
 
 	cfg := &registry.GroupConfig{
 		Name:  "demo",

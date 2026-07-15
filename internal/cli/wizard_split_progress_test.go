@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -175,15 +176,48 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 	}
 	evCh := make(chan progress.Event, n)
 
-	// Ack (complete) only once all n events have been forwarded into evCh.
+	// runSplitIndexCore's forwardSSEUntilCancel goroutine writes into forwardCh
+	// (not evCh directly). A monitor goroutine here drains forwardCh into evCh
+	// (so the final len(evCh)==n assertion still holds) while closing allForwarded
+	// exactly once, the instant the n-th event lands — an explicit, correctly-
+	// synchronized completion signal for the fake probe below.
+	//
+	// The previous version had the probe poll `len(evCh) < n` directly: reading
+	// the length of a channel the forwarder concurrently writes into is not a
+	// reliable "all N delivered" signal — under load the forwarder goroutine can
+	// be starved of CPU while awaitSplitCompletion's poll loop (driven by a fake
+	// clock whose Sleep never actually blocks) busy-spins, advancing virtual
+	// time straight past cfg.timeout before len(evCh) ever reaches n, surfacing a
+	// spurious real "timed out" error instead of the intended completion.
+	forwardCh := make(chan progress.Event, n)
+	var forwarded int32
+	allForwarded := make(chan struct{})
+	go func() {
+		for i := 0; i < n; i++ {
+			evCh <- <-forwardCh
+			if atomic.AddInt32(&forwarded, 1) == int32(n) {
+				close(allForwarded)
+			}
+		}
+	}()
+
+	// Ack (complete) only once all n events have been forwarded — signaled by
+	// allForwarded being closed, not by racily sampling evCh's length.
 	probe := &fakeProbe{
-		pollFn:   func(int) splitPoll { return splitPoll{RequestPending: len(evCh) < n, EngineAlive: true} },
+		pollFn: func(int) splitPoll {
+			select {
+			case <-allForwarded:
+				return splitPoll{RequestPending: false, EngineAlive: true}
+			default:
+				return splitPoll{RequestPending: true, EngineAlive: true}
+			}
+		},
 		classify: splitResult{Entities: 1, Rels: 1},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), true, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, forwardCh, probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}

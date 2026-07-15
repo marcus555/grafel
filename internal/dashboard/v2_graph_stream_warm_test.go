@@ -114,8 +114,32 @@ func TestGraphStream_ColdGroupWarmsAndStreams(t *testing.T) {
 	// exist. loadGroupForRef records the per-repo load miss but returns a
 	// (repo-less) group with NO top-level error, so the warm SUCCEEDS.
 	configPath := filepath.Join(configDir, "testgrp.fleet.json")
-	body := `{"name":"testgrp","repos":[{"slug":"testrepo","path":"` + filepath.Join(daemonRoot, "norepo") + `"}]}`
-	if err := os.WriteFile(configPath, []byte(body), 0o644); err != nil {
+	// Build the fixture via json.Marshal rather than string-concatenating the
+	// path into a raw JSON literal: on Windows filepath.Join produces
+	// backslash-separated paths, and `\n`/`\t`-style sequences inside an
+	// unescaped path (e.g. "...\norepo" containing a literal `\n`) form an
+	// invalid JSON escape when pasted straight into a string literal.
+	// json.Marshal escapes the path correctly regardless of platform.
+	cfg := struct {
+		Name  string `json:"name"`
+		Repos []struct {
+			Slug string `json:"slug"`
+			Path string `json:"path"`
+		} `json:"repos"`
+	}{
+		Name: "testgrp",
+		Repos: []struct {
+			Slug string `json:"slug"`
+			Path string `json:"path"`
+		}{
+			{Slug: "testrepo", Path: filepath.Join(daemonRoot, "norepo")},
+		},
+	}
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config fixture: %v", err)
+	}
+	if err := os.WriteFile(configPath, body, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	if err := registry.AddGroup("testgrp", configPath); err != nil {

@@ -277,8 +277,13 @@ func TestDaemonRebuild_InvalidatesCacheExplicitly(t *testing.T) {
 // partial results.
 func TestRebuildPerRepoTimeoutSurfacesStalledRepo(t *testing.T) {
 	group := setupTestGroup(t, "stall-group", []string{"fast1", "stuck", "fast2"})
-	// Tiny per-repo timeout so the test is fast.
-	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "100ms")
+	// Short per-repo timeout so the test is fast, but not so short that a
+	// "fast" mock repo can miss the window under load: a hardcoded 100ms
+	// raced real goroutine scheduling on a loaded/CI runner and could flake
+	// even though the mock fast1/fast2 index calls do essentially no work.
+	// 1.5s is still far below any real per-repo stall a human would tolerate,
+	// while giving the fast mocks generous headroom.
+	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "1500ms")
 
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) }) // unblock the stuck goroutine at test end

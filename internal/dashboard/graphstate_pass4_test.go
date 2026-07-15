@@ -6,6 +6,7 @@ package dashboard
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -236,6 +237,18 @@ func TestSchedulePendingAlgo_NoDataRaceWithConcurrentReaders(t *testing.T) {
 // algoComputed guard must make the compute happen at most ONCE per graph.fb
 // version regardless of whether the sidecar persisted.
 func TestSchedulePendingAlgo_PersistFailureDoesNotRecomputeForever(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// This test forces persistAlgoResults to fail via os.Chmod(stateDir,
+		// 0o500) on the theory that a read-only directory blocks file
+		// creation inside it — true on POSIX, but on Windows Chmod only
+		// toggles FILE_ATTRIBUTE_READONLY on the directory entry itself and
+		// does NOT block os.CreateTemp from creating a NEW file inside that
+		// directory. The test's own precondition assertion ("sidecar
+		// unexpectedly persisted despite read-only dir") would fail before
+		// ever reaching the CPU-spin regression it's meant to guard, so
+		// POSIX dir-write-permission semantics are a real requirement here.
+		t.Skip("POSIX dir-write-permission semantics required")
+	}
 	backgroundAlgoGate = nil // run immediately
 	var computes int32
 	done := make(chan string, 4)

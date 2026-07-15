@@ -51,6 +51,12 @@ func TestIndexStatusDiskFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Release the per-repo graph.fb mmap handles BEFORE t.TempDir's cleanup
+	// deletes dir. On Windows a memory-mapped file cannot be deleted while the
+	// mapping is open, so RemoveAll fails with "Access is denied" unless
+	// Server.Close() unmaps first (see server_test.go:3112's State.Close()
+	// pattern and group_algo_overlay_*_test.go, #4285).
+	t.Cleanup(srv.Close)
 
 	// Only alpha has a LIVE indexstate entry. beta and gamma have none — beta
 	// must be filled in from disk, gamma must stay absent.

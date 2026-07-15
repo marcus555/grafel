@@ -21,8 +21,8 @@ import (
 
 func TestTopology_MessageTopicKind_OrphanScans(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "t1", Name: "orders.created", Kind: "SCOPE.MessageTopic"},   // published, not subscribed → orphan publisher
-		{ID: "t2", Name: "ghost.events", Kind: "SCOPE.MessageTopic"},     // subscribed, not published → orphan subscriber
+		{ID: "t1", Name: "orders.created", Kind: "SCOPE.MessageTopic"}, // published, not subscribed → orphan publisher
+		{ID: "t2", Name: "ghost.events", Kind: "SCOPE.MessageTopic"},   // subscribed, not published → orphan subscriber
 		{ID: "svc", Name: "OrderService", Kind: "SCOPE.Service"},
 	}
 	rels := []graph.Relationship{
@@ -98,8 +98,8 @@ func TestOrient_TopologyDefaultsToChannelListing(t *testing.T) {
 // counted toward the topic's consumer_count by FromID, not ToID (#5781 review).
 func TestTopology_ChannelsConsumerCount_DeliversTo(t *testing.T) {
 	entities := []graph.Entity{
-		{ID: "t1", Name: "async.only", Kind: "SCOPE.MessageTopic"},   // only a DELIVERS_TO edge
-		{ID: "t2", Name: "both.edges", Kind: "SCOPE.MessageTopic"},   // SUBSCRIBES_TO + DELIVERS_TO, same handler → dedupe
+		{ID: "t1", Name: "async.only", Kind: "SCOPE.MessageTopic"}, // only a DELIVERS_TO edge
+		{ID: "t2", Name: "both.edges", Kind: "SCOPE.MessageTopic"}, // SUBSCRIBES_TO + DELIVERS_TO, same handler → dedupe
 		{ID: "h1", Name: "AsyncHandler", Kind: "SCOPE.Service"},
 		{ID: "h2", Name: "BothHandler", Kind: "SCOPE.Service"},
 	}
@@ -220,12 +220,12 @@ func TestMatchesKindFilter_ScopeNormalization(t *testing.T) {
 		filter string
 		want   bool
 	}{
-		{"MessageTopic", true},        // leaf, exact case
-		{"messagetopic", true},        // leaf, lower case
-		{"SCOPE.MessageTopic", true},  // fully qualified
-		{"scope.messagetopic", true},  // fully qualified, lower case
-		{"DataAccess", false},         // unrelated kind
-		{"", true},                    // empty = no filter
+		{"MessageTopic", true},       // leaf, exact case
+		{"messagetopic", true},       // leaf, lower case
+		{"SCOPE.MessageTopic", true}, // fully qualified
+		{"scope.messagetopic", true}, // fully qualified, lower case
+		{"DataAccess", false},        // unrelated kind
+		{"", true},                   // empty = no filter
 	}
 	for _, c := range cases {
 		if got := matchesKindFilter(e, c.filter); got != c.want {

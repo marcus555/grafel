@@ -47,28 +47,76 @@ func callBare(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*m
 	return resultText(res)
 }
 
-// normalizeForCompare makes a tool payload order-insensitive for comparison.
-// Several absorbed handlers (handleGetNeighbors, handleQueryGraph, …) build
-// their result from map iteration and emit rows in nondeterministic order; two
-// independent calls return the same SET shuffled. We parse the payload and, if
-// it is a JSON array, sort its elements by their canonical serialization so the
-// dispatch comparison checks content equivalence, not row order. Non-JSON or
-// non-array payloads are returned unchanged.
+// normalizeForCompare makes a tool payload order-insensitive AND
+// volatile-field-insensitive for comparison. Several absorbed handlers
+// (handleGetNeighbors, handleQueryGraph, …) build their result from map
+// iteration and emit rows in nondeterministic order; two independent calls
+// return the same SET shuffled. We parse the payload and, if it is a JSON
+// array, sort its elements by their canonical serialization so the dispatch
+// comparison checks content equivalence, not row order. Before comparing, any
+// "ts" field is stripped recursively (see stripVolatileFields) — some
+// handlers (e.g. handleFeedbackEvent, handleMetaEvent) stamp
+// time.Now().UTC().Format(time.RFC3339) independently on each call, and
+// RFC3339's 1-second resolution means a second-boundary crossing between the
+// canonical and absorbed-handler calls in assertSameDispatch would otherwise
+// make an identical payload compare unequal (TestMetaEventDispatch flake).
+// Non-JSON payloads are returned unchanged.
 func normalizeForCompare(s string) string {
-	var arr []json.RawMessage
-	if err := json.Unmarshal([]byte(s), &arr); err != nil {
-		return s // not a JSON array — compare verbatim
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return s // not JSON — compare verbatim
 	}
-	keys := make([]string, len(arr))
-	for i, e := range arr {
-		keys[i] = string(e)
+	v = stripVolatileFields(v)
+
+	if arr, ok := v.([]any); ok {
+		keys := make([]string, len(arr))
+		for i, e := range arr {
+			b, err := json.Marshal(e)
+			if err != nil {
+				return s
+			}
+			keys[i] = string(b)
+		}
+		sort.Strings(keys)
+		out, err := json.Marshal(keys)
+		if err != nil {
+			return s
+		}
+		return string(out)
 	}
-	sort.Strings(keys)
-	out, err := json.Marshal(keys)
+
+	out, err := json.Marshal(v)
 	if err != nil {
 		return s
 	}
 	return string(out)
+}
+
+// stripVolatileFields recursively removes any object key named "ts" — a
+// timestamp stamped independently by each of the two calls
+// assertSameDispatch makes, which legitimately differs run-to-run (or across
+// a second boundary) without indicating a real dispatch mismatch. All other
+// fields are preserved unchanged.
+func stripVolatileFields(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			if k == "ts" {
+				continue
+			}
+			out[k] = stripVolatileFields(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = stripVolatileFields(e)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // assertSameDispatch asserts the canonical dispatcher (with discriminator args)

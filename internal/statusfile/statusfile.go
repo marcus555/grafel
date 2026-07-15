@@ -170,6 +170,52 @@ type File struct {
 // repo.
 const statusSubdir = "status"
 
+// readFile is os.ReadFile, indirected so a test can inject a transient
+// failure (e.g. a simulated Windows sharing violation) without touching real
+// disk I/O — see readFileWithRetry.
+var readFile = os.ReadFile
+
+// isRetryableSharingViolationFn defaults to the platform-specific
+// isRetryableSharingViolation (see sharing_violation_windows.go /
+// sharing_violation_other.go) but is a var so a darwin/linux test can inject
+// a fake classifier and exercise readFileWithRetry's retry control flow
+// without needing a real Windows syscall error.
+var isRetryableSharingViolationFn = isRetryableSharingViolation
+
+// readRetryAttempts/readRetryBackoff bound the retry Read performs when the
+// underlying read hits a transient sharing violation (Windows only — see
+// isRetryableSharingViolation). 5 attempts with a few-ms backoff is enough to
+// ride out the brief window a concurrent Write's tmp+rename holds the file
+// handle on NTFS, without meaningfully delaying a genuinely failed read.
+const (
+	readRetryAttempts = 5
+	readRetryBackoff  = 4 * time.Millisecond
+)
+
+// readFileWithRetry wraps readFile with a short bounded retry when the error
+// is a transient sharing violation. On POSIX (darwin/linux) Write's
+// tmp+rename is atomic at the filesystem level and a concurrent Read never
+// observes a sharing conflict, so isRetryableSharingViolation always returns
+// false there and this degenerates to a single readFile call — identical
+// behavior to before this change. On Windows/NTFS, os.Rename's replace can
+// transiently deny a concurrent os.Open with ERROR_SHARING_VIOLATION; retrying
+// a few times with a short backoff lets the real status-plane poller ride out
+// that window instead of surfacing a spurious failure.
+func readFileWithRetry(path string) ([]byte, error) {
+	var data []byte
+	var err error
+	for attempt := 0; attempt < readRetryAttempts; attempt++ {
+		data, err = readFile(path)
+		if err == nil || !isRetryableSharingViolationFn(err) {
+			return data, err
+		}
+		if attempt < readRetryAttempts-1 {
+			time.Sleep(readRetryBackoff)
+		}
+	}
+	return data, err
+}
+
 // PathFor returns the deterministic on-disk path for repoPath's status file.
 // The same repoPath always maps to the same path (sha256-hashed so the file
 // name is filesystem-safe and length-bounded regardless of the repo path's
@@ -265,7 +311,7 @@ func Read(repoPath string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+	data, err := readFileWithRetry(path)
 	if err != nil {
 		return nil, err
 	}
