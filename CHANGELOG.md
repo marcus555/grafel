@@ -10,6 +10,130 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.8] — 2026-07-16
+
+**Stable consolidation cut: decouple MCP serving from the indexing engine, plus
+a polished first-index experience.** grafel v0.1.8 splits `serve` (MCP + query)
+from `engine` (indexing) into separate, supervised processes (ADR-0024) and
+turns that split **on by default** — so a heavy reindex can no longer stall MCP
+query traffic. On top of the split it delivers a first-index experience that is
+finally honest in both the TUI and a new browser wizard: live per-repo and
+per-module progress, distinct indexing-vs-enhancing status, and "safe to
+navigate" gating so you know exactly when the graph is queryable. The rest of
+the release is a large batch of daemon/index correctness and corpus-dashboard
+fixes that harden the split under real monorepos.
+
+### Added
+
+- **Serve/engine split (ADR-0024, #5732):** carve separate serve/engine
+  entrypoints + config seam (#5741), serve supervises the engine child (#5744),
+  serve reads the engine status-plane instead of in-process scheduler memory
+  (#5748), and a serve→engine request-file queue drives reindex triggers (#5749).
+- **Status-plane foundation (#5734):** an `indexed_commit` SHA plus a poll-safe
+  heartbeat/status file that both the CLI and MCP read.
+- **Split-mode progress bridge:** an NDJSON progress-sidecar data-plane (#5760)
+  wired as an engine sidecar tee + serve tailer (#5761), surfacing live indexing
+  progress across the process boundary.
+- **Web index wizard:** a `GET /api/v2/groups/{group}/index-status` API (#47
+  phase 1) powering a browser wizard with TUI parity — gated view-graph, files
+  metric, safe-to-navigate gating, enhancing bar, and nested module rows (#47).
+- **Index TUI polish:** live engine CPU%/RSS readout beside the progress bar
+  (#5768); readable module labels, live timer, commafied counts, and
+  queryable/Enter-or-wait completion (#5771); a frozen-at-"Done" timer with a
+  secondary background-enhancement bar (#5776).
+- **`grafel statusline` (#5767):** explainer for surfacing index status in a
+  shell statusline (no auto-install).
+- **fastapi `APIRouter(prefix=)` route folding (#5750):** the mount prefix is
+  folded into extracted routes.
+- **grafel.app landing site:** a modular Astro static site for Cloudflare Pages
+  with a sticky navbar, merged Get Started, and engine cards.
+- **Graph/engine capabilities:** synthesize `DELIVERS_TO` async-trigger edges so
+  callers/impact/trace cross the async boundary (#5706); `DataAccess`→physical-
+  table data-lineage links (#5704); a real warming/readiness signal in `whoami`
+  + status (#5703); per-phase `extract_ms`/`link_ms` index timings (#5699); a
+  grafel-feedback Findings & Interpretation synthesis phase (#5694); and
+  self-gating personal `~/.claude/CLAUDE.md` guidance on install (#5708).
+
+### Changed
+
+- **Default serve/engine split ON** with a `GRAFEL_SPLIT_MODE=0` escape hatch
+  (#5755); install retargets the OS service unit daemon→serve with a
+  monolith-aware doctor + safe engine reaper (#5746).
+- **First-index routing:** the wizard/rebuild first index now runs through the
+  subprocess-indexer — fast, flat daemon heap, per-module bars preserved (#5769)
+  — and completes at "graph queryable" (~6 min) rather than the full enrichment
+  ack (#5770).
+- **Defer enrichment** to a silent, bounded, cancellable background worker off
+  the critical path (#5736).
+- **UI polish:** drop the MODULES sidebar, add an instant-layout toggle, and show
+  group-card Modules/Repos counts (#53, #55); migrate the standalone landing to
+  a modular Astro static site (#5780).
+- **CI:** pin setup-go to go-version 1.26 across all workflows (#5756); gate
+  workflows to release tags + dispatch to conserve free-tier Actions minutes
+  (#5728).
+
+### Fixed
+
+- **Wizard/TUI progress correctness:** real per-module progress + completion in
+  split mode with no fake instant Done and no false-fail (#5766); one progress
+  row per module for monorepos (#5759); independent per-module extraction ticks
+  (#5762); seed a row for every selected repo so an indexed repo can't render
+  invisibly (#5773); drive per-repo rows live from the status plane (#5774);
+  propagate repo-level Done to monorepo module rows (#43); always write the
+  `graph-stats.json` sidecar, not only when Pass 4 ran (#5772).
+- **False "index failed":** split indexing/enhancing flags to kill a false
+  wizard "Failed" on the enrichment tail (#45, #46); ask the AI-tools selection
+  once, dropping the redundant MCP screen (#44); the wizard waits for queryable
+  and lets the user click "View graph" instead of auto-navigating (#52).
+- **Corpus dashboard graph load:** surface graph warm/load failures instead of
+  an infinite spinner (#5737); non-blocking corpus graph load — serve
+  immediately, compute Pass-4 off-path (#50) and stop the recompute→evict spin
+  when the sidecar write fails (#50 follow-up); stream cold large graphs instead
+  of hanging, gzip the SSE stream, add a high-LoD cap knob (#48, #49); clear
+  `warmErrs` on Invalidate/InvalidateAll (#5743).
+- **Delete / cancellation:** cancel in-flight indexing/enrichment on group delete
+  (#57); `grafel delete` full cleanup + wizard stale-manifest (#51).
+- **Split-mode daemon hardening:** harden the split against orphaned engines
+  (#5757); serialize foreground group-rebuild with the scheduler per-repo
+  (#5758); single-flight group rebuild + engine-RSS memory bench (#5763); bound
+  rebuild-drain crash-resume + engine-side single-flight (#5765); unblock the
+  request-drain via a background rebuild worker + safe coalescing (refs #29);
+  surface foreground-rebuild indexing in the status plane (#5777); split-mode-
+  gate `Service.Rebuild` + GC request acks (#5751); engine child inherits serve
+  env so store roots agree (#5753); MCP bridge fail-fast on a dead serve vs
+  ride-out engine restart + ctx-cancel retries (#5752); shutdown watchdog +
+  pidfile reclaim for a wedged rebuild (#5715).
+- **macOS TCC permission prompts:** stop the wizard fs listing from triggering
+  prompts (#58) and stop `ClassifyPath($HOME)` from descending into TCC-protected
+  home children (#58 follow-up).
+- **Index/watch correctness:** HEAD-gate the watch poll so unchanged repos no-op,
+  stopping a perpetual re-index loop (#5764); reindex circuit-breaker so an
+  over-2GiB repo stops hot-looping (#5742); resolve an empty ref to HEAD in
+  `SchedulerIncremental` (#5724); the incremental indexer no longer serves a
+  stale/empty graph silently (#5716); re-stamp a reparsed repo on the read path
+  when overlay mtime is unchanged (#5740); restore the conservative background
+  concurrency cap (#5709); register monorepos as one repo with Modules, not N
+  flat repos (#5714).
+- **php/enrichment:** Lumen framework attribution + Slim group/map exclusion +
+  enrichment orphan-temp cleanup (#5745); synthesize `http_endpoint_definition`
+  for Slim routes and guard route-shaped ops from pruning (#5738); version/
+  prefix-aware HTTP joins + an honest orphan metric (#5735).
+- **MCP/status/misc:** `grafel_index_status` disk fallback so it agrees with CLI
+  status (#5718); `index_status` errors on an unresolved group instead of empty
+  repos (#5696); recover MCP tool-handler panics + widen the bridge reconnect
+  budget (#5731); fail-soft on an oversized-graph marshal panic + scheduler
+  recover so the daemon survives (#5730); doctor live-graph counts in a single
+  O(E) pass + relabel optional enrichment (#5698); `get_source` resolves nested-
+  module-relative `source_file` paths (#5700); subgraph locality-first ranking +
+  hub-aware stop for expand (#5697); feedback collector maps to real FB-loaded
+  fields (#5695); de-flake `TestBulkDetection` with a deterministic clock +
+  distinct filenames (#5754); focus name/docs text inputs so keystrokes are
+  accepted (#5713); capture the wizard tool selection so only chosen adapters are
+  scaffolded (#5707); cap betweenness on large graphs + scale background extract
+  fan-out (#5705).
+
+---
+
 ## [0.1.7.3] — 2026-06-27
 
 **Hotfix: fully reconcile the manifest on the incremental fallback.** The
