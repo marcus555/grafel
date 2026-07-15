@@ -28,10 +28,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/registry"
 )
+
+// statusFilesMu serializes sidecar access within the daemon. Windows does not
+// allow replacing a file while another goroutine has it open for reading, so
+// atomic rename alone is insufficient when an immediate flush overlaps the
+// periodic status writer or a reader.
+var statusFilesMu sync.RWMutex
 
 // File is the on-disk status-plane schema for one repo. Fields are additive
 // only — a reader must tolerate a file written by an older engine version
@@ -199,6 +206,9 @@ func Write(repoPath string, f *File) error {
 	if err != nil {
 		return err
 	}
+	statusFilesMu.Lock()
+	defer statusFilesMu.Unlock()
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("statusfile: mkdir %s: %w", dir, err)
@@ -218,10 +228,10 @@ func Write(repoPath string, f *File) error {
 	// NOT a fixed path+".tmp": two concurrent Writes to the same repo would
 	// otherwise both O_TRUNC and interleave into the SAME tmp inode, then each
 	// rename a torn/garbled file into place. Rename is atomic, but it would be
-	// publishing corruption. The daemon serializes its own writes via the
-	// single coalescing statusWriter goroutine (see internal/daemon), but a
-	// unique tmp name makes Write correct under concurrency regardless of who
-	// calls it — belt and suspenders (review #5734).
+	// publishing corruption. The daemon can write from both the coalescing
+	// statusWriter and foreground rebuild flushes, so the package lock protects
+	// Windows file replacement while unique temp names keep each write isolated
+	// (review #5734).
 	tmpf, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("statusfile: create tmp: %w", err)
@@ -265,6 +275,9 @@ func Read(repoPath string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
+	statusFilesMu.RLock()
+	defer statusFilesMu.RUnlock()
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -294,6 +307,9 @@ func ReadAll() ([]*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("statusfile: resolve home dir: %w", err)
 	}
+	statusFilesMu.RLock()
+	defer statusFilesMu.RUnlock()
+
 	dir := filepath.Join(home, statusSubdir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {

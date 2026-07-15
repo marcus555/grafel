@@ -83,8 +83,8 @@ func indexedCommitShortNoGit(repoPath string) string {
 // best-effort observability aid, never load-bearing for indexing itself, so
 // a write failure must never propagate into the scheduler/RPC hot path.
 //
-// This is only ever called from the single statusWriter goroutine (or directly
-// from tests), so it never races another writer for the same repo.
+// The periodic writer and foreground rebuild flushes may call this concurrently.
+// statusfile serializes sidecar access so those paths remain safe on Windows.
 func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 	f := &statusfile.File{
 		EnginePID:   os.Getpid(),
