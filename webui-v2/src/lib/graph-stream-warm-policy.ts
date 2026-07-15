@@ -66,6 +66,24 @@ export function warmAttemptAfterHeartbeat(_current: number): number {
   return 0;
 }
 
+/**
+ * Backend `error` SSE codes that mean "still warming, just slow" rather than a
+ * terminal failure (#50). On these the consumer must RECONNECT and keep waiting
+ * (bounded by the retry ceiling) instead of surfacing `error` and falling back
+ * to the uncapped, blocking full-payload blob — which re-pays the SAME slow load
+ * and hangs. `warm_timeout` is the bounded-warm deadline elapsing; the graph is
+ * still loading server-side, so a reconnect resumes the warm.
+ */
+const RECONNECTABLE_WARM_CODES = new Set<string>(["warm_timeout"]);
+
+/**
+ * Whether a backend `error` SSE event with this code should trigger a reconnect
+ * (keep waiting) rather than a fall-back-to-blob error (#50).
+ */
+export function isReconnectableWarmError(code: string): boolean {
+  return RECONNECTABLE_WARM_CODES.has(code);
+}
+
 /** Parsed shape of the backend's `error` SSE event (v2GraphStreamError). */
 export interface WarmErrorDetail {
   code: string;

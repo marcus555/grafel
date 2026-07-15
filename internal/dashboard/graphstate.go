@@ -168,6 +168,62 @@ type DashGroup struct {
 	Repos  map[string]*DashRepo // slug -> repo
 	Links  []CrossRepoLink
 	Search *SearchIndex // pre-built search index; nil until buildSearchIndex runs
+
+	// stateDirs maps each repo slug to the on-disk state directory the graph
+	// was loaded from. Captured at load so diskUnchanged can re-stat the
+	// graph.fb / graph.json without a registry round-trip and decide whether
+	// the cached group is still fresh (mtime-keyed durable cache, replacing the
+	// old 60s wall-clock TTL — #50).
+	stateDirs map[string]string
+
+	// pendingAlgo lists repos whose served graph omitted Pass-4 (and had no
+	// fresh sidecar), so the full sweep is computed OFF the request after this
+	// group is published (schedulePendingAlgo, #50). Read-only after load.
+	pendingAlgo []pendingAlgoRepo
+}
+
+// diskUnchanged reports whether the graph.fb (or graph.json fallback) for every
+// repo still has the same mtime it had when the group was loaded. It is the
+// freshness test for the durable, mtime-keyed cache (#50): a loaded group stays
+// cached until its underlying graph file actually changes (a re-index), instead
+// of being aged out by a 60s timer that discarded a possibly multi-minute warm.
+//
+// When no stateDirs were captured (defensive / test-injected groups) or a file
+// has since disappeared, it returns true so the cache falls back to explicit
+// Invalidate() (called on re-index events) rather than looping on reload.
+func (g *DashGroup) diskUnchanged() bool {
+	if g == nil {
+		return false
+	}
+	if len(g.stateDirs) == 0 {
+		return true
+	}
+	for slug, dir := range g.stateDirs {
+		dr := g.Repos[slug]
+		if dr == nil {
+			continue
+		}
+		cur := statGraphMtime(dir)
+		if cur.IsZero() {
+			continue // file gone — don't force a reload loop
+		}
+		if !cur.Equal(dr.mtime) {
+			return false
+		}
+	}
+	return true
+}
+
+// statGraphMtime returns the modification time of the graph.fb in stateDir,
+// falling back to graph.json, or the zero time when neither exists.
+func statGraphMtime(stateDir string) time.Time {
+	if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
+		return info.ModTime()
+	}
+	if info, e := os.Stat(filepath.Join(stateDir, "graph.json")); e == nil {
+		return info.ModTime()
+	}
+	return time.Time{}
 }
 
 // CrossRepoLink mirrors mcp.CrossRepoLink.
@@ -258,6 +314,12 @@ type GraphCache struct {
 	entries  map[string]*cacheEntry
 	loading  map[string]*loadGate // in-flight loads, keyed by group (singleflight)
 	warmErrs map[string]error     // last load error per cache key (#5722), cleared on success
+	// ttl is retained for API compatibility but NO LONGER governs freshness
+	// (#50): a loaded group stays cached until its graph.fb changes on disk
+	// (diskUnchanged) or it is explicitly Invalidate()d on a re-index event.
+	// The old 60s wall-clock TTL evicted multi-minute Pass-4 warms before they
+	// could be reused; mtime-keyed invalidation keeps them until the data
+	// actually changes.
 	ttl      time.Duration
 	Payloads *graphPayloadCache // pre-serialised dense graph JSON, keyed by group+params
 }
@@ -303,14 +365,16 @@ func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bo
 	}
 	c.mu.Lock()
 	ent, ok := c.entries[cacheKey]
-	if ok && time.Since(ent.loadedAt) < c.ttl {
-		grp := ent.group
-		c.mu.Unlock()
-		return grp, true
-	}
 	c.mu.Unlock()
-	// Not warm (or stale): trigger an async warm so the next caller is fast,
-	// but return immediately so we never block first paint.
+	// Durable cache (#50): a warm entry stays valid until its graph file
+	// changes on disk, NOT until a 60s timer elapses. This keeps a (possibly
+	// background-computed) multi-minute Pass-4 warm reusable instead of being
+	// TTL-evicted before a second request can benefit from it.
+	if ok && ent.group.diskUnchanged() {
+		return ent.group, true
+	}
+	// Not warm (or the file changed): trigger an async warm so the next caller
+	// is fast, but return immediately so we never block first paint.
 	go func() { _, _ = c.GetGroupForRef(groupName, ref) }()
 	return nil, false
 }
@@ -428,11 +492,24 @@ func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
 		cacheKey = groupName + "@" + ref
 	}
 	c.mu.Lock()
-	now := time.Now()
-	if ent, ok := c.entries[cacheKey]; ok && now.Sub(ent.loadedAt) < c.ttl {
+	if ent, ok := c.entries[cacheKey]; ok {
 		grp := ent.group
 		c.mu.Unlock()
-		return grp, nil
+		// Durable cache (#50): serve the cached group as long as its underlying
+		// graph file has not changed on disk. Statting is done OUTSIDE c.mu (it
+		// is I/O) so it never wedges other groups.
+		if grp.diskUnchanged() {
+			return grp, nil
+		}
+		// The graph file changed under us (a re-index that did not route through
+		// Invalidate): evict this stale entry and fall through to a fresh load.
+		c.mu.Lock()
+		if cur, ok := c.entries[cacheKey]; ok && cur.group == grp {
+			closeDashGroupReaders(grp)
+			delete(c.entries, cacheKey)
+		}
+		c.mu.Unlock()
+		c.mu.Lock()
 	}
 
 	// Cold / stale. Coordinate a single in-flight load via a loadGate so
@@ -469,6 +546,15 @@ func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
 
 	gate.grp, gate.err = grp, err
 	close(gate.done)
+
+	// The group is now published in the cache (entry stored above). Compute any
+	// deferred Pass-4 OFF the request, read-only over the published docs, then
+	// evict so the next request reloads with it applied (#50). Scheduled AFTER
+	// the entry store so the goroutine's eviction can find and drop it (no
+	// lost-wakeup).
+	if err == nil {
+		c.schedulePendingAlgo(cacheKey, grp)
+	}
 	return grp, err
 }
 
@@ -503,8 +589,9 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 		return nil, err
 	}
 	grp := &DashGroup{
-		Name:  groupName,
-		Repos: map[string]*DashRepo{},
+		Name:      groupName,
+		Repos:     map[string]*DashRepo{},
+		stateDirs: map[string]string{},
 	}
 	for _, r := range cfg.Repos {
 		dr := &DashRepo{Slug: r.Slug, Path: r.Path}
@@ -514,16 +601,25 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 		} else {
 			stateDir = daemon.StateDirForRepo(r.Path)
 		}
+		grp.stateDirs[r.Slug] = stateDir
 		doc, err := graph.LoadGraphFromDir(stateDir)
 		if err != nil {
 			dr.err = err.Error()
 		} else {
-			// graph.fb (the canonical store) omits community/pagerank/god-node
-			// data — those fields live only in graph.json and are not encoded in
-			// the FlatBuffers schema. Re-derive them from the loaded entities so
-			// the dashboard graph endpoints (centroids, mid, full) see the data.
-			if len(doc.Communities) == 0 && len(doc.Entities) > 0 {
-				attachAlgorithmResults(doc)
+			// Record the newer of fb/json mtime for cache invalidation.
+			dr.mtime = statGraphMtime(stateDir)
+			// graph.fb (the canonical store) omits community/pagerank/centrality/
+			// god-node/articulation data — those fields live only in graph.json
+			// and are not encoded in the FlatBuffers schema. For a group indexed
+			// with --skip-pass=graph-algo, doc.Communities is empty. Fix A#1 (#50):
+			// NEVER block this load on the full multi-minute Pass-4 sweep. Apply a
+			// fresh sidecar if present (Fix B); otherwise stamp a cheap fallback
+			// ordering now and defer the real sweep to schedulePendingAlgo (run
+			// after the group is published), which is read-only over this doc.
+			if applyAlgorithmsOnLoad(doc, stateDir, dr.mtime) {
+				grp.pendingAlgo = append(grp.pendingAlgo, pendingAlgoRepo{
+					doc: doc, stateDir: stateDir, fbMtime: dr.mtime,
+				})
 			}
 			dr.Doc = doc
 			// S8 (#2159): open a zero-copy mmap reader alongside the Document
@@ -533,12 +629,6 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 			fbPath := filepath.Join(stateDir, "graph.fb")
 			if rdr, rerr := fbreader.Open(fbPath); rerr == nil {
 				dr.Reader = rdr
-			}
-			// Record the newer of fb/json mtime for cache invalidation.
-			if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
-				dr.mtime = info.ModTime()
-			} else if info, e = os.Stat(filepath.Join(stateDir, "graph.json")); e == nil {
-				dr.mtime = info.ModTime()
 			}
 		}
 		grp.Repos[r.Slug] = dr
@@ -668,14 +758,153 @@ func enrichLinkEndpoints(grp *DashGroup, links []CrossRepoLink, moduleRoots map[
 	return out
 }
 
-// attachAlgorithmResults re-derives community, pagerank, and god-node data
-// for a Document loaded from graph.fb.  graph.fb does not encode these
-// fields (they are only present in graph.json), so the dashboard server runs
-// the same Pass-4 algorithms that the indexer ran at index time.  Results are
-// attached in place so subsequent handler calls see the community-derived
-// topology needed by serveGraphCentroids and serveGraphMid.
+// algoSidecarName is the file (written next to graph.fb in the repo state dir)
+// that persists a computed Pass-4 result so a later cold load — or a daemon
+// restart — can apply it cheaply instead of recomputing the multi-minute sweep
+// (Fix B, #50). It is keyed to the graph.fb mtime it was computed against, so a
+// re-index (new graph.fb) transparently invalidates it.
+const algoSidecarName = "graph-algo.json"
+
+// persistedAlgo is the on-disk sidecar payload: the full Pass-4 result plus the
+// graph.fb mtime it was computed against (for staleness detection).
+type persistedAlgo struct {
+	FBMtimeUnixNano int64                   `json:"fb_mtime_unix_nano"`
+	Results         *graph.AlgorithmResults `json:"results"`
+}
+
+// backgroundAlgoGate, when non-nil, blocks a scheduled background Pass-4
+// computation until it receives — a TEST-ONLY seam so a test can deterministically
+// assert the load returned WITHOUT the full sweep having run. Never set in prod.
+var backgroundAlgoGate chan struct{}
+
+// backgroundAlgoDone, when non-nil, is invoked with the cache key after a
+// background Pass-4 computation has been persisted AND its cache entry evicted.
+// Test-only seam so a test can wait for the async work without polling. Never
+// set in prod.
+var backgroundAlgoDone func(cacheKey string)
+
+// pendingAlgoRepo names a repo whose served graph.fb omitted Pass-4 and whose
+// sidecar was absent/stale, so the full sweep must be computed off the request
+// (Fix A#1, #50). doc holds the already-materialised (heap) Entities/Relationships
+// the sweep READS — never a mmap reader — so a stale sweep after eviction is
+// harmless (concern #2).
+type pendingAlgoRepo struct {
+	doc      *graph.Document
+	stateDir string
+	fbMtime  time.Time
+}
+
+// applyAlgorithmsOnLoad fills a served graph's Pass-4 attributes on the
+// SYNCHRONOUS load path (before the group is published through the cache, so no
+// concurrent reader exists yet — the writes here are race-free). graph.fb omits
+// Pass-4, so for a --skip-pass=graph-algo group doc.Communities is empty.
+// Priority:
+//
+//  1. a fresh persisted sidecar (Fix B) — apply it cheaply, no compute → false;
+//  2. otherwise stamp a cheap degree-based fallback ordering so the graph is
+//     immediately usable, and return true so the caller schedules the real
+//     Pass-4 to be computed OFF the request (never mutating this now-published,
+//     concurrently-read doc — data-race fix, #50).
+func applyAlgorithmsOnLoad(doc *graph.Document, stateDir string, fbMtime time.Time) (needsBackground bool) {
+	if len(doc.Communities) != 0 || len(doc.Entities) == 0 {
+		return false
+	}
+	if res, ok := loadPersistedAlgoResults(stateDir, fbMtime); ok {
+		applyAlgorithmResults(doc, res)
+		return false
+	}
+	attachDegreeFallback(doc)
+	return true
+}
+
+// schedulePendingAlgo computes the full Pass-4 sweep for every pending repo of a
+// just-published group, OFF the request goroutine (Fix A#1, #50). It is
+// deliberately READ-ONLY over each published doc: it never calls
+// applyAlgorithmResults on the live, concurrently-read doc (the data race the
+// review caught). Instead it persists the computed result to the sidecar and
+// then EVICTS this exact cache entry, so the next request reloads the group and
+// applies the freshly-persisted Pass-4 synchronously (pre-publish) — publishing
+// atomically through the same c.mu-guarded cache every handler already reads.
+func (c *GraphCache) schedulePendingAlgo(cacheKey string, grp *DashGroup) {
+	if grp == nil || len(grp.pendingAlgo) == 0 {
+		return
+	}
+	pending := grp.pendingAlgo
+	go func() {
+		if backgroundAlgoGate != nil {
+			<-backgroundAlgoGate
+		}
+		for _, p := range pending {
+			// READ-ONLY over p.doc.Entities/Relationships (RunAlgorithms mutates
+			// neither, and touches only heap slices — not the mmap reader). Safe
+			// to run concurrently with handlers reading the same doc, and safe if
+			// the group was already evicted under us (concern #2).
+			res := graph.RunAlgorithms(p.doc.Entities, p.doc.Relationships)
+			persistAlgoResults(p.stateDir, p.fbMtime, res)
+		}
+		// Evict THIS entry (only if it is still the group we computed for) so the
+		// next request reloads with the persisted Pass-4 applied synchronously.
+		c.mu.Lock()
+		if ent, ok := c.entries[cacheKey]; ok && ent.group == grp {
+			closeDashGroupReaders(ent.group)
+			delete(c.entries, cacheKey)
+		}
+		c.mu.Unlock()
+		if backgroundAlgoDone != nil {
+			backgroundAlgoDone(cacheKey)
+		}
+	}()
+}
+
+// attachDegreeFallback stamps a cheap degree-based PageRank proxy on every
+// connected entity so importance-ordered views (e.g. the graph stream's
+// important-first ordering) have a sensible ordering the instant the graph is
+// served — before the real Pass-4 lands in the background. O(entities+edges),
+// no matrix math. Overwritten by the real PageRank when the background sweep
+// completes.
+func attachDegreeFallback(doc *graph.Document) {
+	deg := make(map[string]int, len(doc.Entities))
+	for i := range doc.Relationships {
+		deg[doc.Relationships[i].FromID]++
+		deg[doc.Relationships[i].ToID]++
+	}
+	maxDeg := 0
+	for _, d := range deg {
+		if d > maxDeg {
+			maxDeg = d
+		}
+	}
+	if maxDeg == 0 {
+		return
+	}
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if d := deg[e.ID]; d > 0 {
+			pr := float64(d) / float64(maxDeg)
+			e.PageRank = &pr
+		}
+	}
+}
+
+// attachAlgorithmResults computes AND applies the full Pass-4 sweep synchronously.
+// Retained for callers/tests that want the derived attributes inline; the live
+// dashboard load path uses deriveOrScheduleAlgorithms instead so it never blocks.
 func attachAlgorithmResults(doc *graph.Document) {
 	res := graph.RunAlgorithms(doc.Entities, doc.Relationships)
+	applyAlgorithmResults(doc, res)
+}
+
+// applyAlgorithmResults copies a computed Pass-4 result onto a Document in place.
+//
+// #50 discard-bug fix: the previous implementation kept ONLY community, pagerank
+// and god-node data and silently DISCARDED the betweenness Centrality and
+// ArticulationPoints it had already paid to compute. All computed attributes are
+// now written (centrality + articulation + surprise), and the result is
+// persisted (see persistAlgoResults) so subsequent cold loads reuse it.
+func applyAlgorithmResults(doc *graph.Document, res *graph.AlgorithmResults) {
+	if res == nil {
+		return
+	}
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
 		if cid, ok := res.CommunityID[e.ID]; ok {
@@ -686,14 +915,81 @@ func attachAlgorithmResults(doc *graph.Document) {
 			prCopy := pr
 			e.PageRank = &prCopy
 		}
+		if bt, ok := res.Centrality[e.ID]; ok {
+			btCopy := bt
+			e.Centrality = &btCopy
+		}
 		if res.GodNodes[e.ID] {
 			e.IsGodNode = true
 		}
+		if res.ArticulationPoints[e.ID] {
+			e.IsArticulationPt = true
+		}
+		if res.SurpriseEndpoints[e.ID] {
+			e.IsSurpriseEndpoint = true
+		}
 	}
 	doc.Communities = res.Communities
+	if len(res.SurpriseEdges) > 0 {
+		doc.SurpriseEdges = res.SurpriseEdges
+	}
 	if doc.AlgorithmStats == nil {
 		stats := res.Stats
 		doc.AlgorithmStats = &stats
+	}
+}
+
+// loadPersistedAlgoResults reads the Pass-4 sidecar from stateDir, returning the
+// stored result only when it was computed against the CURRENT graph.fb mtime
+// (staleness guard). A missing / malformed / stale sidecar returns (nil, false)
+// so the caller recomputes.
+func loadPersistedAlgoResults(stateDir string, fbMtime time.Time) (*graph.AlgorithmResults, bool) {
+	data, err := os.ReadFile(filepath.Join(stateDir, algoSidecarName))
+	if err != nil {
+		return nil, false
+	}
+	var p persistedAlgo
+	if json.Unmarshal(data, &p) != nil || p.Results == nil {
+		return nil, false
+	}
+	if !fbMtime.IsZero() && p.FBMtimeUnixNano != fbMtime.UnixNano() {
+		return nil, false // stale: graph.fb changed since this was computed
+	}
+	return p.Results, true
+}
+
+// persistAlgoResults writes the Pass-4 sidecar next to graph.fb, keyed to the
+// graph.fb mtime it was computed against. The write is ATOMIC (temp file +
+// rename) so a concurrent loadPersistedAlgoResults never observes a torn,
+// half-written sidecar (review non-blocking #1). Best-effort: any failure just
+// means the next cold load recomputes.
+func persistAlgoResults(stateDir string, fbMtime time.Time, res *graph.AlgorithmResults) {
+	if res == nil {
+		return
+	}
+	data, err := json.Marshal(persistedAlgo{
+		FBMtimeUnixNano: fbMtime.UnixNano(),
+		Results:         res,
+	})
+	if err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(stateDir, algoSidecarName+".tmp-*")
+	if err != nil {
+		return
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return
+	}
+	if err := os.Rename(tmpName, filepath.Join(stateDir, algoSidecarName)); err != nil {
+		_ = os.Remove(tmpName)
 	}
 }
 

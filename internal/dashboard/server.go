@@ -174,6 +174,10 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 	srv := &Server{
 		cfg:        cfg,
 		registry:   store,
+		// #50: the graph cache is mtime-keyed (durable) — a loaded group stays
+		// warm until its graph.fb changes on disk or is Invalidate()d on
+		// re-index, NOT until a wall-clock timer elapses. The duration below is
+		// a retained-for-compat backstop and no longer governs eviction.
 		graphs:     NewGraphCache(60 * time.Second),
 		hub:        h,
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),

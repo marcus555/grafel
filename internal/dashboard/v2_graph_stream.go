@@ -78,8 +78,16 @@ const graphStreamChunkSize = 750
 // the bounded warm proceeds, keeping the connection (and any intermediary
 // proxies) alive so the browser stays in its "warming" state rather than
 // erroring on an idle socket. Both are vars so tests can shrink the cadence.
+// defaultStreamWarmDeadline is the named deadline knob (#50). With the
+// non-blocking served-graph load (Fix A#1), a cold group becomes warm as soon
+// as graph.fb is deserialized (Pass-4 fills in the background), so the stream
+// gets data quickly and this ceiling is only reached by a genuinely stuck warm.
+// It is raised well above the old 25s so a legitimately large corpus never trips
+// warm_timeout during an ordinary cold start.
+const defaultStreamWarmDeadline = 180 * time.Second
+
 var (
-	streamWarmDeadline  = 25 * time.Second
+	streamWarmDeadline  = defaultStreamWarmDeadline
 	streamWarmHeartbeat = 1 * time.Second
 )
 

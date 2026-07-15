@@ -12,6 +12,7 @@ import {
   MAX_WARM_ATTEMPTS,
   WARM_BACKOFF_MS,
   decideWarmRetry,
+  isReconnectableWarmError,
   parseWarmErrorEvent,
   warmAttemptAfterHeartbeat,
 } from "./graph-stream-warm-policy";
@@ -73,6 +74,21 @@ describe("decideWarmRetry", () => {
     }
     expect(decision.kind).toBe("giveUp");
     expect(attempt).toBeLessThan(1000);
+  });
+});
+
+describe("isReconnectableWarmError", () => {
+  it("treats warm_timeout as reconnectable (keep waiting, NOT fall back to blob)", () => {
+    // #50 — a warm_timeout means the graph is still loading server-side; the
+    // consumer must reconnect and keep waiting rather than surface `error` and
+    // fall back to the uncapped, blocking full-payload blob.
+    expect(isReconnectableWarmError("warm_timeout")).toBe(true);
+  });
+
+  it("treats terminal load failures as NOT reconnectable (surface error → blob fallback)", () => {
+    expect(isReconnectableWarmError("load_failed")).toBe(false);
+    expect(isReconnectableWarmError("unknown")).toBe(false);
+    expect(isReconnectableWarmError("")).toBe(false);
   });
 });
 

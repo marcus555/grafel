@@ -49,6 +49,7 @@ import {
 } from "@/lib/graph-stream-reducer";
 import {
   decideWarmRetry,
+  isReconnectableWarmError,
   parseWarmErrorEvent,
   warmAttemptAfterHeartbeat,
 } from "@/lib/graph-stream-warm-policy";
@@ -240,6 +241,17 @@ export function useGraphStream(
         if (ev instanceof MessageEvent && typeof ev.data === "string") {
           const detail = parseWarmErrorEvent(ev.data);
           closeES();
+          // #50 — a `warm_timeout` is NOT terminal: the graph is still loading
+          // server-side (the bounded-warm deadline just elapsed). RECONNECT and
+          // keep waiting (bounded by the retry ceiling) instead of surfacing an
+          // error and falling back to the uncapped, blocking full-payload blob —
+          // which would re-pay the SAME slow load and hang.
+          if (isReconnectableWarmError(detail.code)) {
+            setPhase("warming");
+            phaseRef.current = "warming";
+            scheduleWarmRetry();
+            return;
+          }
           setErrorMessage(detail.message);
           setPhase("error");
           phaseRef.current = "error";
