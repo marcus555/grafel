@@ -83,6 +83,7 @@ import type {
   ControlFlowResponse,
   ControlFlowDetail,
   SourceReply,
+  IndexStatusReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -164,6 +165,16 @@ export const api = {
    */
   progressStreamUrl: (group: string) =>
     `${BASE}/index-progress/${encodeURIComponent(group)}`,
+
+  /**
+   * GET /api/v2/groups/:group/index-status (#47) — read-only poll surface for
+   * per-repo indexing/enhancing state (status plane) + engine CPU/RSS. The web
+   * wizard polls this DURING and AFTER the index job to drive the secondary
+   * "enhancing" bar and CPU/RAM badges, joining rows to the SSE feed by
+   * repo_slug. Handler: internal/dashboard/handlers_index_status.go.
+   */
+  getIndexStatus: (group: string) =>
+    requestV2<IndexStatusReply>(`/groups/${encodeURIComponent(group)}/index-status`),
 
   /** v2 — daemon bootstrap: version, supported surfaces, group slugs. */
   getMeta: () => requestV2<Meta>("/meta"),

@@ -1525,6 +1525,91 @@ export interface ProgressRow {
   error?: string;
   /** Wall-clock ms of the most recent event for this row. */
   ts: number;
+  /* ---- #47 phase 2 — status-plane join (GET .../index-status) ---- */
+  /** True while the engine is actively indexing this repo (status plane). */
+  indexing?: boolean;
+  /**
+   * True while background relationship enhancement is still running for this
+   * repo (graph already queryable). Drives the secondary "enhancing" bar; a
+   * queryable+enhancing repo is success, NOT a failure.
+   */
+  enhancing?: boolean;
+  /** Relationship count from the status plane (SSE only carries entities). */
+  relationships?: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Index status plane — GET /api/v2/groups/{group}/index-status (#47).
+ * A read-only poll surface the web wizard hits DURING and AFTER the index job
+ * to drive the secondary "enhancing" bar + CPU/RSS badges, mirroring the TUI.
+ * repo_slug matches the SSE progress stream's repo_slug (the join key).
+ * ------------------------------------------------------------------ */
+
+/** Engine-global CPU/RSS block. */
+export interface IndexStatusEngine {
+  cpu_pct: number;
+  rss_mb: number;
+}
+
+/** One repo's status-plane row. */
+export interface IndexStatusRepo {
+  repo_slug: string;
+  indexing: boolean;
+  enhancing: boolean;
+  entities: number;
+  relationships: number;
+  /** Graph flatbuffer mtime in ns; 0 when never indexed by this engine. */
+  graph_fb_mtime: number;
+}
+
+/** Payload for GET /api/v2/groups/{group}/index-status. */
+export interface IndexStatusReply {
+  engine: IndexStatusEngine;
+  repos: IndexStatusRepo[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Nested per-module rows for monorepos (#47 phase 2). Each monorepo package
+ * is registered as its own repo_slug, so the feed GROUPS the sibling package
+ * rows under a synthesized monorepo parent, mirroring the TUI's per-module
+ * nesting. Related-repo (non-monorepo) groups stay flat. The wizard derives
+ * this descriptor from the repo list it registers.
+ * ------------------------------------------------------------------ */
+
+/** How one child repo_slug nests under a monorepo parent. */
+export interface RepoNestingEntry {
+  /** The child repo slug as it appears on the SSE / status streams. */
+  repoSlug: string;
+  /** Synthetic parent id shared by every package of the monorepo. */
+  parentSlug: string;
+  /** Human label for the monorepo parent header row. */
+  parentLabel: string;
+  /** Package-root path shown as the indented child's module label. */
+  moduleLabel: string;
+}
+
+/** repoSlug → nesting entry. Empty for related-repo / single-repo groups. */
+export type RepoNesting = Record<string, RepoNestingEntry>;
+
+/**
+ * One rendered node in the nested progress feed: either a flat repo row
+ * (kind === "repo") or a monorepo parent with indented per-module children
+ * (kind === "monorepo").
+ */
+export interface ProgressGroup {
+  /** Stable React key (parentSlug for a monorepo, repoSlug for a flat repo). */
+  key: string;
+  kind: "monorepo" | "repo";
+  /** Header label — monorepo parent name, or the repo slug. */
+  label: string;
+  /** Aggregate group phase — done once every child/row is terminal. */
+  phase: ProgressPhase;
+  /** Present for kind === "repo": the single row. */
+  row?: ProgressRow;
+  /** Present for kind === "monorepo": the indented per-module child rows. */
+  children: ProgressRow[];
+  /** True when any child/row is still enhancing in the background. */
+  enhancing?: boolean;
 }
 
 /** POST /api/v2/maintenance/cleanup result. */

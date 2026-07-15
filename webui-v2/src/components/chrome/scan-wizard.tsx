@@ -53,10 +53,13 @@ import {
   useMCPToolsDetect,
 } from "@/hooks/use-wizard";
 import { useIndexProgress } from "@/hooks/use-index-progress";
-import { aggregateProgress, overallPhaseLabel } from "@/lib/index-progress-fold";
+import { useIndexStatus } from "@/hooks/use-index-status";
+import { aggregateProgress, nestRows, overallPhaseLabel } from "@/lib/index-progress-fold";
+import { engineStats, groupEnhancing, joinIndexStatus } from "@/lib/index-status-join";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
+import { EnhancingBar } from "@/components/chrome/enhancing-bar";
 import { ApiError } from "@/lib/api";
-import type { ScanInspectReply, WizardRepo } from "@/data/types";
+import type { RepoNesting, ScanInspectReply, WizardRepo } from "@/data/types";
 import {
   WIZARD_ACTIONS,
   defaultActionFor,
@@ -124,6 +127,35 @@ function buildRepos(
     }));
   }
   return [{ path: scan.absPath, slug: scan.suggestedSlug }];
+}
+
+/**
+ * #47 phase 2 — the monorepo nesting descriptor for the progress feed. Each
+ * selected package is registered as its OWN repo_slug (see buildRepos), so the
+ * feed nests those sibling package rows UNDER a synthesized monorepo parent
+ * (mirroring the TUI). Only monorepo (package) layouts nest; child-git-repo and
+ * single-repo layouts stay flat (empty descriptor). Keyed by child repo_slug so
+ * nestRows can join it to the folded rows.
+ */
+function buildNesting(scan: ScanInspectReply | null, repos: WizardRepo[]): RepoNesting {
+  if (!scan?.valid) return {};
+  const hasChildGitRepos = (scan.childGitRepos?.length ?? 0) > 0;
+  const isMonorepo = (scan.packages?.length ?? 0) > 0;
+  if (hasChildGitRepos || !isMonorepo) return {};
+  const parentSlug = scan.suggestedSlug || scan.suggestedGroup;
+  const parentLabel = scan.suggestedGroup || scan.suggestedSlug;
+  const nesting: RepoNesting = {};
+  for (const r of repos) {
+    if (r.slug && r.modules && r.modules.length > 0) {
+      nesting[r.slug] = {
+        repoSlug: r.slug,
+        parentSlug,
+        parentLabel,
+        moduleLabel: r.modules[0],
+      };
+    }
+  }
+  return nesting;
 }
 
 export function ScanWizard(props: ScanWizardProps) {
@@ -220,6 +252,19 @@ export function ScanWizard(props: ScanWizardProps) {
     seedSlugs,
     complete: indexComplete,
   });
+
+  // #47 phase 2 — poll the index status plane alongside the SSE feed to surface
+  // the `enhancing` (background enrichment) tail + engine CPU/RSS, joined to the
+  // per-repo rows by repo_slug. Enabled while on the Index step so we observe
+  // the whole enhancing tail after the graph is queryable.
+  const indexStatus = useIndexStatus(targetGroup, progressActive);
+  const engine = engineStats(indexStatus.data);
+  // True while any repo is still enhancing in the background (graph queryable).
+  const enhancing = groupEnhancing(indexStatus.data);
+  // Join the status-plane rows (enhancing / relationships / entities) onto the
+  // SSE rows, then nest monorepo package rows under a synthesized parent.
+  const joinedRows = joinIndexStatus(indexProgress.rows, indexStatus.data);
+  const nesting = buildNesting(scan, buildRepos(scan, selectedChildren, selectedPkgs));
 
   // Reset everything when the dialog closes.
   function reset() {
@@ -392,6 +437,15 @@ export function ScanWizard(props: ScanWizardProps) {
   // Subtle "alive" pulse while non-terminal — especially during the
   // sub-progress-less phases that would otherwise look frozen.
   const barActive = !terminal;
+  // Nested feed groups (#47 phase 2): monorepo package rows nest under a parent;
+  // related-repo / single-repo layouts stay flat. Once the wizard is terminal
+  // (parent Done) any child frozen mid-phase is lifted to Done.
+  const feedGroups = nestRows(joinedRows, nesting, terminal);
+  // The graph is queryable but background enrichment is still running: show the
+  // secondary bar. Never a false failure — a queryable+enhancing group is
+  // success. Only surface it once the main pass has settled (terminal) so it
+  // reads as the tail, mirroring the TUI's queryable sub-state.
+  const showEnhancing = enhancing && terminal && effectiveStatus !== "failed";
 
   return (
     <Dialog
@@ -1032,6 +1086,20 @@ export function ScanWizard(props: ScanWizardProps) {
                 {effectiveStatus === "failed" && (job.data?.error || "Indexing failed.")}
                 {!effectiveStatus && "Starting…"}
               </span>
+
+              {/* Live engine CPU% / RSS badges (#47 phase 2) — mirrors the TUI's
+                  live readout. Only shown when the engine-liveness sidecar
+                  reports non-zero. */}
+              {engine && (
+                <span className="ml-auto flex shrink-0 items-center gap-1.5" data-testid="wizard-engine-stats">
+                  <Badge tone="neutral" className="tabular-nums">
+                    CPU {Math.round(engine.cpu_pct)}%
+                  </Badge>
+                  <Badge tone="neutral" className="tabular-nums">
+                    RSS {engine.rss_mb} MB
+                  </Badge>
+                </span>
+              )}
             </div>
 
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
@@ -1055,10 +1123,18 @@ export function ScanWizard(props: ScanWizardProps) {
               />
             </div>
 
-            {/* Per-repo / per-MODULE rows (#1527). For a monorepo this shows
-                one row per package; for a single repo, one row per repo. */}
+            {/* Secondary "enhancing relationships in the background" bar (#47
+                phase 2). The main bar completes at queryable; this indeterminate
+                bar covers the background enrichment tail so the view doesn't stop
+                at Done while enhancing. */}
+            {showEnhancing && <EnhancingBar />}
+
+            {/* Per-repo / per-MODULE rows (#1527) with nested monorepo modules
+                (#47 phase 2). For a monorepo the package rows nest under a parent
+                header; related-repo / single-repo layouts stay flat. */}
             <IndexProgressFeed
-              rows={indexProgress.rows}
+              rows={joinedRows}
+              groups={feedGroups}
               loading={!indexProgress.hasData && !terminal}
               className="max-h-80 overflow-y-auto pr-0.5"
             />

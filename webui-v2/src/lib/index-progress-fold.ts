@@ -17,7 +17,12 @@
    under `vitest run src/lib` without a DOM.
    ============================================================ */
 
-import type { ProgressEvent, ProgressRow } from "@/data/types";
+import type {
+  ProgressEvent,
+  ProgressGroup,
+  ProgressRow,
+  RepoNesting,
+} from "@/data/types";
 
 /**
  * Stable key for a row. ONE row per repo: keyed by repo_slug only so a repo-
@@ -369,4 +374,122 @@ export function sortRows(rows: Iterable<ProgressRow>): ProgressRow[] {
     if (a.repoSlug !== b.repoSlug) return a.repoSlug.localeCompare(b.repoSlug);
     return (a.module ?? "").localeCompare(b.module ?? "");
   });
+}
+
+/* ------------------------------------------------------------------
+   Nested per-module rows for monorepos (#47 phase 2).
+
+   In the web wizard each monorepo package is registered as its OWN repo_slug
+   (so it gets its own flat progress row). nestRows regroups those sibling
+   package rows UNDER a synthesized monorepo parent — parent header row + indented
+   per-module children — mirroring the TUI (internal/cli/wiztui/fold.go's
+   per-module nesting + the repo-scoped PhaseDone that lifts sibling module rows).
+   Related-repo / single-repo groups (no nesting entry) stay FLAT: one repo group
+   per row. This is a PRESENTATION-layer regroup over the already-folded rows, so
+   it never reintroduces the dropped/duplicate rows the fold code was hardened
+   against (#5326) — it only buckets existing rows.
+   ------------------------------------------------------------------ */
+
+/** True once every row in the set has reached a terminal (done/error) phase. */
+function allTerminal(rows: ProgressRow[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.phase === "done" || r.phase === "error");
+}
+
+/**
+ * Aggregate phase for a set of sibling rows: `done` once every row is terminal
+ * (or the whole index is `complete`), otherwise the LEAST-advanced active
+ * phase — the phase the group is gated on. Never reports a false failure: an
+ * all-terminal group is `done` unless a row genuinely carries `error`.
+ */
+function groupPhaseFor(rows: ProgressRow[], complete: boolean): ProgressRow["phase"] {
+  if (complete || allTerminal(rows)) {
+    return rows.some((r) => r.phase === "error") ? "error" : "done";
+  }
+  const active = rows.filter((r) => r.phase !== "done" && r.phase !== "error");
+  if (active.length === 0) return "done";
+  return active.reduce((min, r) => (PHASE_ORDER[r.phase] < PHASE_ORDER[min.phase] ? r : min)).phase;
+}
+
+/**
+ * Lift any non-terminal child to `done` once the parent group is Done — mirrors
+ * fold.go's repo-scoped PhaseDone lifting sibling module rows that froze at
+ * "Extracting AST…" because the later repo-scoped phases carried no module.
+ * Preserves each child's file/entity counts.
+ */
+function liftChildrenToDone(rows: ProgressRow[]): ProgressRow[] {
+  return rows.map((r) => (r.phase === "done" || r.phase === "error" ? r : { ...r, phase: "done" }));
+}
+
+/**
+ * Regroup flat progress rows into nested groups. Monorepo package rows (those
+ * with a `nesting` entry, sharing a `parentSlug`) collapse into ONE
+ * `kind:"monorepo"` group with indented children; every other row becomes its
+ * own `kind:"repo"` group. `complete` (the wizard's successful-completion
+ * signal) forces every group + child to Done so a straggler frozen mid-phase
+ * agrees with the overall "Done" (#5348 analogue). Groups are ordered
+ * active → queued → done (statusRank on the group's representative phase), then
+ * by label, so the rows the user cares about stay in view (#5495 analogue).
+ */
+export function nestRows(
+  rows: ProgressRow[],
+  nesting?: RepoNesting,
+  complete = false,
+): ProgressGroup[] {
+  const groups: ProgressGroup[] = [];
+  // Parent buckets, keyed by parentSlug, in first-seen order.
+  const parents = new Map<string, { label: string; children: ProgressRow[] }>();
+
+  for (const r of rows) {
+    const entry = nesting?.[r.repoSlug];
+    if (entry) {
+      let bucket = parents.get(entry.parentSlug);
+      if (!bucket) {
+        bucket = { label: entry.parentLabel, children: [] };
+        parents.set(entry.parentSlug, bucket);
+      }
+      // Stamp the module label for the indented child display.
+      bucket.children.push({ ...r, module: entry.moduleLabel });
+    } else {
+      const row = complete && r.phase !== "done" && r.phase !== "error" ? { ...r, phase: "done" as const } : r;
+      groups.push({
+        key: `repo:${r.repoSlug}`,
+        kind: "repo",
+        label: r.repoSlug,
+        phase: row.phase,
+        row,
+        children: [],
+        enhancing: row.enhancing,
+      });
+    }
+  }
+
+  for (const [parentSlug, bucket] of parents) {
+    const phase = groupPhaseFor(bucket.children, complete);
+    const parentDone = phase === "done" || phase === "error";
+    const children = sortRows(parentDone ? liftChildrenToDone(bucket.children) : bucket.children);
+    groups.push({
+      key: `mono:${parentSlug}`,
+      kind: "monorepo",
+      label: bucket.label,
+      phase,
+      children,
+      enhancing: bucket.children.some((c) => c.enhancing),
+    });
+  }
+
+  // Active groups on top, queued next, done sinks — same rank scheme as sortRows.
+  return groups.sort((a, b) => {
+    const ra = groupStatusRank(a);
+    const rb = groupStatusRank(b);
+    if (ra !== rb) return ra - rb;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+/** statusRank for a whole group, from its representative row/aggregate phase. */
+function groupStatusRank(g: ProgressGroup): number {
+  if (g.kind === "repo" && g.row) return statusRank(g.row);
+  if (g.phase === "done" || g.phase === "error") return 2;
+  // A monorepo whose children have all emitted is "indexing"; otherwise queued.
+  return g.children.some((c) => c.ts > 0) ? 0 : 1;
 }
