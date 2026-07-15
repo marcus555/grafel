@@ -34,6 +34,7 @@ package repolock
 import (
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // Registry tracks per-repo index claims. The zero value is not usable; call
@@ -50,6 +51,15 @@ type Registry struct {
 type keyState struct {
 	held   bool // an index (foreground OR background) is currently running
 	fgWant int  // foreground claimants that intend to hold or are holding
+	// fgStartNano is the wall-clock start (UnixNano) of the CURRENT foreground
+	// claim period — stamped when fgWant transitions 0→1 and cleared to 0 when
+	// it drains back to 0. The status-plane writer compares it against the
+	// on-disk graph.fb mtime to tell EXTRACTION (graph not yet written this run
+	// → indexing) apart from ENRICHMENT (graph written at/after this start,
+	// claim still held → enhancing). Monotone-safe: mtime only advances, so once
+	// graph.fb crosses fgStartNano the classification never flips backwards for
+	// the life of the claim.
+	fgStartNano int64
 }
 
 // New returns an empty Registry.
@@ -96,6 +106,11 @@ func (r *Registry) ClaimForeground(key string) (release func()) {
 	r.mu.Lock()
 	ks := r.stateOf(key)
 	ks.fgWant++
+	if ks.fgWant == 1 {
+		// First claimant of an idle key: stamp the run's start so the status
+		// writer can date the eventual graph.fb write against it.
+		ks.fgStartNano = time.Now().UnixNano()
+	}
 	for ks.held {
 		r.cond.Wait()
 	}
@@ -108,11 +123,63 @@ func (r *Registry) ClaimForeground(key string) (release func()) {
 			r.mu.Lock()
 			ks.held = false
 			ks.fgWant--
+			if ks.fgWant == 0 {
+				ks.fgStartNano = 0
+			}
 			r.gcLocked(key, ks)
 			r.cond.Broadcast()
 			r.mu.Unlock()
 		})
 	}
+}
+
+// ForegroundClaimStart reports whether a foreground claim is currently intended
+// or held for key (held), and the UnixNano wall-clock start of that claim
+// period (startNano, 0 when not held). It is a pure in-memory read (no blocking,
+// no I/O), safe to call from the status-plane writer that must never block
+// behind an in-flight index.
+//
+// The status writer uses it to split the single "indexing" signal: while the
+// claim is held, a graph.fb whose mtime is >= startNano was written by THIS run
+// (extraction is done → enhancing), whereas an older or absent graph.fb means
+// the graph is not yet queryable this run (still extracting → indexing).
+func (r *Registry) ForegroundClaimStart(key string) (startNano int64, held bool) {
+	key = filepath.Clean(key)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ks := r.st[key]
+	if ks == nil || ks.fgWant == 0 {
+		return 0, false
+	}
+	return ks.fgStartNano, true
+}
+
+// HasForegroundClaim reports whether a foreground claim is currently intended
+// or held for key — i.e. whether ClaimForeground has been called for key and
+// its release has not yet run. This is a pure in-memory read (no blocking, no
+// I/O), safe to call from any goroutine, including a status-plane writer that
+// must never block behind an in-flight index.
+//
+// The FOREGROUND rebuild/subprocess path (cmd/grafel daemonRebuildFuncCore)
+// bypasses the scheduler entirely, so indexstate never observes it as
+// StateIndexing. HasForegroundClaim is the seam that lets the status-plane
+// writer (internal/daemon/statuswriter.go) detect that case and still report
+// Indexing=true, without threading scheduler-shaped state through a path that
+// deliberately does not use the scheduler.
+func (r *Registry) HasForegroundClaim(key string) bool {
+	key = filepath.Clean(key)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ks := r.st[key]
+	return ks != nil && ks.fgWant > 0
+}
+
+// HasForegroundClaim is the package-level convenience form of
+// Registry.HasForegroundClaim against DefaultRegistry, mirroring the
+// package's existing DefaultRegistry.<Method> call-site style (e.g.
+// repolock.DefaultRegistry.ClaimForeground in cmd/grafel/daemon.go).
+func HasForegroundClaim(key string) bool {
+	return DefaultRegistry.HasForegroundClaim(key)
 }
 
 // TryClaimBackground attempts to acquire the key for a background scheduler

@@ -2,14 +2,19 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
+	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/install/mcptools"
 	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // enabledIDs resolves the effective adapter IDs for a config via the same
@@ -228,6 +233,114 @@ func TestInteractiveTUI_DeselectAllHintsAndDefaultsToAll(t *testing.T) {
 	cfg := newGroupConfigFromResult(wiztui.Result{GroupName: "demo"}, nil, false, toolIDs)
 	if got := enabledIDs(cfg); !reflect.DeepEqual(got, tooladapter.AllIDs()) {
 		t.Fatalf("empty enablement must resolve to all adapters, got %v", got)
+	}
+}
+
+// TestSingleToolsScreen_PrechecksInstalledToolEvenIfOldConfig is the #44
+// preselection-regression guard. The wizard now asks about AI tools ONCE, and
+// that single screen drives BOTH rules-file scaffolding AND MCP registration.
+// Its precheck must therefore be the BROAD "installed tools" default
+// (DetectInstalled — config/parent dir present at all), NOT the mcptools B+C
+// narrowing (config-modified-≤30d OR has-grafel-entry). Otherwise a first-time
+// user whose Claude config EXISTS but is stale (>30d) and has no grafel entry
+// would see Claude UNCHECKED and get NO scaffolding for a tool they actually
+// have installed. This creates exactly that stale-config-no-grafel-entry state
+// and asserts the screen's precheck source (wizardToolChoices) still pre-checks
+// it — while confirming the mcptools default (the WRONG source, which the buggy
+// toolsSmartPreselection used) would have left it unchecked.
+func TestSingleToolsScreen_PrechecksInstalledToolEvenIfOldConfig(t *testing.T) {
+	testsupport.IsolateHome(t)
+
+	// Claude Code reads ~/.claude.json; write one that EXISTS, is 40 days old,
+	// and has NO grafel MCP entry.
+	claudePath, err := mcpreg.SettingsPath(mcpreg.ClaudeCode)
+	if err != nil {
+		t.Fatalf("SettingsPath(claude): %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(claudePath), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(claudePath, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
+		t.Fatalf("write claude config: %v", err)
+	}
+	old := time.Now().Add(-40 * 24 * time.Hour)
+	if err := os.Chtimes(claudePath, old, old); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	// The screen's precheck source (what promptTools renders): claude must be
+	// pre-checked because DetectInstalled() sees the config file at all.
+	var claudePrechecked, claudeSeen bool
+	for _, c := range wizardToolChoices() {
+		if c.ID == "claude" {
+			claudeSeen = true
+			claudePrechecked = c.PreChecked
+		}
+	}
+	if !claudeSeen {
+		t.Fatal("claude missing from wizardToolChoices()")
+	}
+	if !claudePrechecked {
+		t.Error("claude NOT pre-checked on the single tools screen despite an installed (if stale) config — scaffolding would be silently skipped for an installed tool")
+	}
+
+	// Cross-check the regression's root cause: the mcptools B+C default (the
+	// source the buggy toolsSmartPreselection used) DOES leave this stale,
+	// grafel-entry-less config unchecked. This is precisely why the precheck
+	// must come from the broad installed-tools default, not from here.
+	var mcpDefaultForClaude, mcpSawClaude bool
+	for _, tool := range mcptools.Detect() {
+		if tool.ID == "claude" {
+			mcpSawClaude = true
+			mcpDefaultForClaude = tool.DefaultSelected
+		}
+	}
+	if !mcpSawClaude {
+		t.Fatal("claude missing from mcptools.Detect() (config should be detected)")
+	}
+	if mcpDefaultForClaude {
+		t.Fatal("test premise broken: mcptools default unexpectedly TRUE for a stale, grafel-entry-less config")
+	}
+}
+
+// TestHuhFallback_AsksToolsOnce is the #44 ask-once guard for the non-TTY (huh)
+// fallback path. The huh flow used to ask about AI tools/agents TWICE — step 4a
+// promptTools (rules scaffolding, cfg.Tools) AND step 4b promptMCPTools ("which
+// tools get the grafel MCP server?", opts.MCPTools). resolveHuhTools now asks
+// ONCE via promptTools and leaves opts.MCPTools nil so install.Apply reuses
+// cfg.Tools's adapters for MCP too. This drives the exact seam finishWizard uses
+// (promptTools injected so no TTY is needed) and asserts: the tools picker runs
+// exactly once, no second MCP selection is captured (opts.MCPTools stays nil),
+// and MCP+rules registration resolves to exactly the single tools selection.
+func TestHuhFallback_AsksToolsOnce(t *testing.T) {
+	calls := 0
+	restore := promptTools
+	promptTools = func() ([]string, error) {
+		calls++
+		return []string{"claude", "cursor"}, nil
+	}
+	defer func() { promptTools = restore }()
+
+	cfg := &registry.GroupConfig{Name: "demo"}
+	opts := wizardOptions{} // interactive (NonInteractive false), no --tools, no --mcp-tools
+
+	if err := resolveHuhTools(cfg, &opts); err != nil {
+		t.Fatalf("resolveHuhTools: %v", err)
+	}
+
+	if calls != 1 {
+		t.Errorf("tools picker ran %d times, want exactly 1 (asked once, no second MCP prompt)", calls)
+	}
+	if opts.MCPTools != nil {
+		t.Errorf("opts.MCPTools = %v, want nil (MCP follows the tools selection; no separate MCP question)", *opts.MCPTools)
+	}
+	if !reflect.DeepEqual(cfg.Tools, []string{"claude", "cursor"}) {
+		t.Errorf("cfg.Tools = %v, want [claude cursor]", cfg.Tools)
+	}
+	// With opts.MCPTools nil, install.Apply reuses cfg.Tools's adapters — so both
+	// rules scaffolding and MCP registration target exactly the single selection.
+	if got := enabledIDs(cfg); !reflect.DeepEqual(got, []string{"claude", "cursor"}) {
+		t.Errorf("enabled adapters (rules + MCP) = %v, want only [claude cursor]", got)
 	}
 }
 

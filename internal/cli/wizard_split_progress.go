@@ -462,12 +462,18 @@ func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr li
 }
 
 // repoAdvanced reports whether a repo's status file shows it is graph-queryable:
-// the file exists, it is not mid-index, and its graph_fb_mtime advanced past the
-// pre-enqueue baseline (i.e. graph.fb was (re)written by THIS rebuild). Shared by
-// Poll (the AllAdvanced early-completion predicate) and Classify (per-repo result)
-// so both use one definition of "this repo produced a fresh graph".
+// the file exists, its graph_fb_mtime advanced past the pre-enqueue baseline
+// (i.e. graph.fb was (re)written by THIS rebuild), and it is not still in the
+// pre-queryable EXTRACTION phase (indexing). A repo that is ENHANCING
+// (indexing=false, enhancing=true) IS queryable — the graph is written and only
+// the background enrichment tail remains — so it counts as advanced. The
+// `|| f.Enhancing` clause also makes this robust to a stale indexing=true flag
+// still set at the instant the rebuild RPC acked mid-enhance: enhancing implies
+// queryable, so it can never be misread as "still extracting". Shared by Poll
+// (the AllAdvanced early-completion predicate) and Classify (per-repo result) so
+// both use one definition of "this repo produced a queryable graph".
 func repoAdvanced(f *statusfile.File, baseline int64) bool {
-	return f != nil && !f.Indexing && f.GraphFBMtime > baseline
+	return f != nil && f.GraphFBMtime > baseline && (!f.Indexing || f.Enhancing)
 }
 
 // Poll reads the completion signal (our request still queued?), engine liveness,

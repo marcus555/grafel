@@ -43,9 +43,14 @@ type Result struct {
 	Watchers   bool
 	GitHooks   bool
 	// MCPTools is the user's choice of which AI tools get the grafel MCP
-	// server (#5344). nil = no explicit choice (caller falls back to its
-	// default behaviour); non-nil (incl. empty) = register exactly these tool
-	// IDs. Set by the "Configure MCP for which tools?" screen.
+	// server. Always nil from the TUI itself (#44 — the wizard asks the
+	// tools/agents question ONCE, via the shared promptTools picker captured
+	// by resolveInteractiveTools BEFORE the alt-screen program starts; there
+	// is no separate in-TUI MCP screen). The apply path reuses that single
+	// selection for both rules-scaffolding and MCP registration — nil here
+	// means "same set as the tools selection", not "no explicit choice". A
+	// non-nil override can still come from the --mcp-tools/--no-mcp flags
+	// (opts.MCPTools in the cli package), never from this Result.
 	MCPTools  *[]string
 	Cancelled bool // user pressed ctrl-c / esc out of the first screen
 
@@ -147,20 +152,9 @@ const (
 	scrGroupPick // add-to-group: pick target group
 	scrName
 	scrDocs
-	scrMCP // choose which AI tools get the grafel MCP server (#5344)
 	scrIndex
 	scrDone
 )
-
-// MCPToolOption is one selectable AI tool in the "Configure MCP for which
-// tools?" screen (#5344). The cli package builds these from the tool detector;
-// wiztui stays decoupled from the install package.
-type MCPToolOption struct {
-	ID              string // adapter ID persisted + passed to install
-	DisplayName     string // human-facing name
-	HasGrafel       bool   // already has a grafel entry (shown as "configured")
-	DefaultSelected bool   // B+C computed default checkbox state
-}
 
 // progressMsg / outcomeMsg are tea messages carrying indexing data.
 type progressMsg prog.Event
@@ -237,6 +231,27 @@ func timerTick() tea.Cmd {
 	})
 }
 
+// bgAnimMsg drives the secondary (background-enhancement) bar's indeterminate
+// sweep animation (see indexView.advanceBgAnim). Scheduled only while the
+// model is in the interim/queryable sub-state (see the outcomeMsg Interim
+// branch and the bgAnimMsg case in Update) and deliberately NOT rescheduled
+// once that state ends (terminal outcome lands, or the user finishes early) —
+// so the ticker never leaks into the background after the screen is done.
+type bgAnimMsg time.Time
+
+// bgAnimTickInterval is the cadence of the indeterminate sweep. Faster than
+// timerTickInterval (which only needs to redraw a 1s-resolution clock) since
+// this drives a visibly moving/pulsing bar — smooth motion needs a shorter
+// period.
+const bgAnimTickInterval = 90 * time.Millisecond
+
+// bgAnimTick schedules the next background-animation tick as a tea.Cmd.
+func bgAnimTick() tea.Cmd {
+	return tea.Tick(bgAnimTickInterval, func(t time.Time) tea.Msg {
+		return bgAnimMsg(t)
+	})
+}
+
 // Model is the full-screen Bubble Tea wizard model.
 type Model struct {
 	drv   Driver
@@ -257,12 +272,7 @@ type Model struct {
 	groupPick  listModel
 	nameInput  inputModel
 	docsInput  inputModel
-	mcpList    multiListModel
 	idx        indexView
-
-	// mcpTools are the detected MCP-capable tools offered on the scrMCP
-	// screen, in display order. Empty (or len<=1) skips the screen (#5344).
-	mcpTools []MCPToolOption
 
 	// accumulated result
 	res Result
@@ -277,20 +287,20 @@ type Model struct {
 
 // New builds the wizard model. watchers/gitHooks seed the result defaults
 // (features are taken from flags, matching the current behavior — the TUI does
-// not re-prompt for them). mcpTools are the detected MCP-capable tools offered
-// on the "Configure MCP for which tools?" screen (#5344); pass nil/empty to
-// skip that screen entirely (e.g. a flag preset the selection, or ≤1 detected).
-// metricsFn polls the live engine CPU/RAM readout (wizard CPU/RAM readout) —
-// pass nil to disable the readout entirely (e.g. a test model, or a caller
-// that has no status-plane wiring). See MetricsFunc's doc.
-func New(drv Driver, index IndexFunc, watchers, gitHooks bool, mcpTools []MCPToolOption, metricsFn MetricsFunc) Model {
+// not re-prompt for them). There is no in-TUI "which tools get MCP" screen
+// (#44 — the wizard asks the tools/agents question ONCE, via the shared
+// promptTools picker the caller runs before entering the full-screen program;
+// the apply path reuses that single selection for both rules-scaffolding and
+// MCP registration). metricsFn polls the live engine CPU/RAM readout (wizard
+// CPU/RAM readout) — pass nil to disable the readout entirely (e.g. a test
+// model, or a caller that has no status-plane wiring). See MetricsFunc's doc.
+func New(drv Driver, index IndexFunc, watchers, gitHooks bool, metricsFn MetricsFunc) Model {
 	m := Model{
 		drv:       drv,
 		index:     index,
 		metricsFn: metricsFn,
 		scr:       scrAction,
 		step:      StepAction,
-		mcpTools:  mcpTools,
 	}
 	m.res.Watchers = watchers
 	m.res.GitHooks = gitHooks
@@ -368,7 +378,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// updateKey's scrIndex case) can still overlay real per-repo counts
 			// instead of leaving a silent repo at "Done · 0 entities".
 			m.idx.interimRepoStats = o.RepoStats
-			return m, waitOutcome(m.outCh)
+			// Stamp the queryable moment (freezes the main header elapsed there,
+			// and anchors the secondary bar's own elapsed — see elapsedText /
+			// bgElapsedText) and kick off the indeterminate sweep animation. At
+			// most one interim outcome is ever sent, so this normally runs once;
+			// gate BOTH the stamp and the tick-start on IsZero so a (spurious)
+			// second interim outcome can't spawn a second concurrent tick chain.
+			cmds := []tea.Cmd{waitOutcome(m.outCh)}
+			if m.idx.queryableAt.IsZero() {
+				m.idx.queryableAt = time.Now()
+				cmds = append(cmds, bgAnimTick())
+			}
+			return m, tea.Batch(cmds...)
 		}
 		m.idx.summaryEntities = o.Entities
 		m.idx.summaryRels = o.Rels
@@ -406,6 +427,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case bgAnimMsg:
+		// Secondary bar's indeterminate sweep: advance one frame and reschedule
+		// only while still in the interim/queryable sub-state. Once terminal (the
+		// background pass finished, or the user finished early) this simply stops
+		// rescheduling — no goroutine/ticker leak.
+		if m.idx.queryable && !m.idx.terminal {
+			m.idx.advanceBgAnim()
+			return m, bgAnimTick()
+		}
+		return m, nil
+
 	default:
 		// Spinner ticks while indexing.
 		if m.scr == scrIndex {
@@ -431,8 +463,6 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateName(msg)
 	case scrDocs:
 		return m.updateDocs(msg)
-	case scrMCP:
-		return m.updateMCP(msg)
 	case scrIndex:
 		// Index screen: ctrl-c (handled globally) interrupts. Once the graph is
 		// queryable but the background enhancement pass hasn't acked yet, enter
@@ -539,7 +569,7 @@ func (m Model) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.res.Repos = repos
 		if m.res.Action == ActionAddGroup {
-			return m.enterMCP()
+			return m.startIndex()
 		}
 		return m.enterName()
 	}
@@ -628,56 +658,6 @@ func (m Model) updateDocs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.docsInput, cmd = m.docsInput.Update(msg)
 	if m.docsInput.done {
 		m.res.GroupDocs = strings.TrimSpace(m.docsInput.value())
-		return m.enterMCP()
-	}
-	return m, cmd
-}
-
-// enterMCP transitions to the "Configure MCP for which tools?" screen (#5344).
-// When ≤1 tool is detected the screen is skipped and the detected set is
-// auto-used (no screen for a trivial choice).
-func (m Model) enterMCP() (tea.Model, tea.Cmd) {
-	if len(m.mcpTools) <= 1 {
-		// ≤1 detected: auto-use it (or leave nil when none) and index.
-		if len(m.mcpTools) == 1 {
-			sel := []string{m.mcpTools[0].ID}
-			m.res.MCPTools = &sel
-		}
-		return m.startIndex()
-	}
-	cands := make([]Candidate, 0, len(m.mcpTools))
-	for _, t := range m.mcpTools {
-		label := t.DisplayName
-		if t.HasGrafel {
-			label += " (configured)"
-		}
-		cands = append(cands, Candidate{Label: label, Value: t.ID, Selected: t.DefaultSelected})
-	}
-	m.mcpList = newMultiListModel("Configure MCP for which tools?", cands)
-	m.mcpList.context = "Your AI agents that can query this graph."
-	m.scr = scrMCP
-	m.step = StepName
-	return m, nil
-}
-
-func (m Model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.String() == "esc" {
-		// Back to the docs screen.
-		m.docsInput = newInputModel("Path to shared group docs",
-			"A folder of shared markdown docs surfaced in the graph. Optional — press enter to skip.", m.res.GroupDocs, true)
-		m.scr = scrDocs
-		m.step = StepName
-		// newInputModel already focuses the input; kick off the cursor blink.
-		return m, textinput.Blink
-	}
-	var cmd tea.Cmd
-	m.mcpList, cmd = m.mcpList.Update(msg)
-	if m.mcpList.chosen {
-		sel := m.mcpList.values()
-		if sel == nil {
-			sel = []string{} // distinguish "chose none" from "no choice"
-		}
-		m.res.MCPTools = &sel
 		return m.startIndex()
 	}
 	return m, cmd
@@ -724,9 +704,6 @@ func (m Model) View() string {
 	case scrDocs:
 		body = m.docsInput.view()
 		hint = hintInputOpt()
-	case scrMCP:
-		body = m.mcpList.view(m.bodyHeight())
-		hint = hintMulti()
 	case scrIndex:
 		body = m.idx.view()
 		hint = hintIndex()

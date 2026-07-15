@@ -264,9 +264,17 @@ func Set(n int) {
 
 // Snapshot is a point-in-time view of the indexing state.
 type Snapshot struct {
-	// IsIndexing is true when at least one index job OR a group-algorithm pass
-	// is in flight.
+	// IsIndexing is true when at least one index (EXTRACTION) job is in flight.
+	// It deliberately does NOT include the group-algorithm enrichment tail —
+	// that is reported separately via IsEnhancing so a consumer can distinguish
+	// "still extracting" from "queryable, enriching in the background" and never
+	// report "indexing" during enrichment.
 	IsIndexing bool
+	// IsEnhancing is true when a group-algorithm ENRICHMENT pass is in flight
+	// (the post-extraction tail: cross-repo links/flows/centrality). Distinct
+	// from IsIndexing so the enrichment tail is surfaced as enhancing, not
+	// indexing. Busy (below) is the OR of both plus in-process parses.
+	IsEnhancing bool
 	// InFlight is the number of index jobs currently running.
 	InFlight int
 	// GroupAlgoInFlight is the number of group-algorithm passes currently
@@ -295,7 +303,8 @@ func Get() Snapshot {
 	ga := groupAlgoInFlight.Load()
 	pf := parseInFlight.Load()
 	s := Snapshot{
-		IsIndexing:        n > 0 || ga > 0,
+		IsIndexing:        n > 0,
+		IsEnhancing:       ga > 0,
 		InFlight:          int(n),
 		GroupAlgoInFlight: int(ga),
 		ParseInFlight:     int(pf),
