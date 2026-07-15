@@ -1,0 +1,6 @@
+# Cloudflare Pages config for the grafel landing site (site/).
+# Direct upload:  wrangler pages deploy site --project-name grafel
+# Or from repo root (uses pages_build_output_dir below):  wrangler pages deploy
+name = "grafel"
+pages_build_output_dir = "site"
+compatibility_date = "2026-07-16"
