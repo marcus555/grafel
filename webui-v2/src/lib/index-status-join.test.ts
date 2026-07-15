@@ -4,6 +4,7 @@ import {
   anyRepoActive,
   engineStats,
   groupEnhancing,
+  groupQueryable,
   joinIndexStatus,
 } from "./index-status-join";
 import type { IndexStatusReply, ProgressRow } from "@/data/types";
@@ -133,6 +134,52 @@ describe("anyRepoActive — poll-continuation predicate", () => {
 
   it("false for undefined", () => {
     expect(anyRepoActive(undefined)).toBe(false);
+  });
+});
+
+describe("groupQueryable — graph is servable once every repo finished extraction", () => {
+  it("false while ANY repo is still indexing (button stays disabled, no nav)", () => {
+    expect(
+      groupQueryable(
+        status({
+          repos: [
+            { repo_slug: "a", indexing: false, enhancing: false, entities: 10, relationships: 5, graph_fb_mtime: 1 },
+            { repo_slug: "b", indexing: true, enhancing: false, entities: 0, relationships: 0, graph_fb_mtime: 0 },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("true once every repo has indexing === false (button enables)", () => {
+    expect(
+      groupQueryable(
+        status({
+          repos: [
+            { repo_slug: "a", indexing: false, enhancing: false, entities: 10, relationships: 5, graph_fb_mtime: 1 },
+            { repo_slug: "b", indexing: false, enhancing: false, entities: 8, relationships: 3, graph_fb_mtime: 2 },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("true even while enhancing runs in the background (does NOT block on enhancing)", () => {
+    expect(
+      groupQueryable(
+        status({
+          repos: [{ repo_slug: "a", indexing: false, enhancing: true, entities: 10, relationships: 5, graph_fb_mtime: 1 }],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("false when there are zero repos (nothing to visualize yet)", () => {
+    expect(groupQueryable(status({ repos: [] }))).toBe(false);
+  });
+
+  it("false for undefined status (no status plane yet)", () => {
+    expect(groupQueryable(undefined)).toBe(false);
   });
 });
 

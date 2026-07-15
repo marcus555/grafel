@@ -53,6 +53,20 @@ export function groupEnhancing(status: IndexStatusReply | undefined): boolean {
 }
 
 /**
+ * Queryability predicate: true once the group's graph is written and servable —
+ * i.e. there is at least one repo and EVERY repo has finished extraction
+ * (`indexing === false`), so its graph.fb is on disk and the graph view can
+ * stream. Background enhancement (`enhancing === true`) may still be running;
+ * that does NOT gate queryability — an enhancing group is already visualizable —
+ * so this deliberately ignores `enhancing`. Mirrors the TUI wizard, which only
+ * lets the user proceed to the graph once the group is queryable (see #47).
+ * False when the status plane is missing or reports zero repos.
+ */
+export function groupQueryable(status: IndexStatusReply | undefined): boolean {
+  return !!status && status.repos.length > 0 && status.repos.every((r) => !r.indexing);
+}
+
+/**
  * Poll-continuation predicate: true while any repo is indexing OR enhancing, so
  * the wizard keeps polling the status plane until every repo has settled.
  */

@@ -55,7 +55,7 @@ import {
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { useIndexStatus } from "@/hooks/use-index-status";
 import { aggregateProgress, nestRows, overallPhaseLabel } from "@/lib/index-progress-fold";
-import { engineStats, groupEnhancing, joinIndexStatus } from "@/lib/index-status-join";
+import { engineStats, groupEnhancing, groupQueryable, joinIndexStatus } from "@/lib/index-status-join";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { EnhancingBar } from "@/components/chrome/enhancing-bar";
 import { ApiError } from "@/lib/api";
@@ -261,6 +261,11 @@ export function ScanWizard(props: ScanWizardProps) {
   const engine = engineStats(indexStatus.data);
   // True while any repo is still enhancing in the background (graph queryable).
   const enhancing = groupEnhancing(indexStatus.data);
+  // True once the group's graph is written + servable: every registered repo has
+  // finished extraction (indexing===false). Gates the "View graph" button so the
+  // user can only navigate once the graph will actually stream (not on job-done,
+  // which can precede a servable graph.fb). Enhancing does NOT block this.
+  const queryable = groupQueryable(indexStatus.data);
   // Join the status-plane rows (enhancing / relationships / entities) onto the
   // SSE rows, then nest monorepo package rows under a synthesized parent.
   const joinedRows = joinIndexStatus(indexProgress.rows, indexStatus.data);
@@ -284,16 +289,22 @@ export function ScanWizard(props: ScanWizardProps) {
     scanRepos.reset();
   }
 
-  // Drive completion toasts off the job poller.
+  // Drive completion toasts off the job poller. We DELIBERATELY do NOT navigate
+  // to the graph here (web-wizard nav bug, gates v0.1.8): job "done" fires when
+  // the rebuild RPC returns, which can be BEFORE the group's graph.fb is written
+  // and servable — auto-navigating then dropped the user onto an infinitely
+  // loading graph. Navigation is now user-driven via the gated "View graph"
+  // button below, which only enables once the status plane reports the group
+  // queryable (groupQueryable) — mirroring the TUI, which holds on the progress
+  // screen until queryable.
   useEffect(() => {
     if (!job.data) return;
     if (job.data.status === "done") {
       toast.success(job.data.message ?? "Indexing complete.");
-      onIndexed?.(job.data.group);
     } else if (job.data.status === "failed") {
       toast.error(job.data.error ?? "Indexing failed.");
     }
-  }, [job.data, onIndexed]);
+  }, [job.data]);
 
   const pathDuplicate = path.trim() !== "" && existingPaths.includes(path.trim());
   const nameSlug = slugify(name || scan?.suggestedGroup || "");
@@ -1139,9 +1150,20 @@ export function ScanWizard(props: ScanWizardProps) {
               className="max-h-80 overflow-y-auto pr-0.5"
             />
 
+            {/* A subtle note that background enrichment is still running once the
+                graph is already queryable — the graph is safe to open now (the
+                "View graph" button is enabled); enhancing only adds relationships
+                in the background. Never blocks navigation (#47 / v0.1.8 nav fix). */}
+            {queryable && enhancing && (
+              <p className="text-xs text-text-4" data-testid="wizard-enhancing-note">
+                Graph ready — still enhancing relationships in the background.
+              </p>
+            )}
+
             <div className="flex justify-end gap-2 pt-1">
               <Button
                 type="button"
+                variant="secondary"
                 disabled={!terminal}
                 onClick={() => {
                   reset();
@@ -1151,6 +1173,23 @@ export function ScanWizard(props: ScanWizardProps) {
               >
                 {terminal ? "Done" : "Indexing…"}
               </Button>
+              {/* Web-wizard nav fix (v0.1.8): navigation to the graph view happens
+                  ONLY on this click, and ONLY once the group is queryable — the
+                  graph.fb is written + servable so it will actually stream. It is
+                  DISABLED while any repo is still extracting (queryable === false),
+                  mirroring the TUI which holds on the progress screen. Rendered
+                  only when a navigation handler is wired (create mode). */}
+              {onIndexed && (
+                <Button
+                  type="button"
+                  disabled={!queryable}
+                  onClick={() => onIndexed(job.data?.group ?? targetGroup ?? "")}
+                  data-testid="wizard-view-graph"
+                >
+                  View graph
+                  <ArrowRight size={13} />
+                </Button>
+              )}
             </div>
           </div>
         )}
