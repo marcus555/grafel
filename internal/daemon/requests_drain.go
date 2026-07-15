@@ -14,6 +14,36 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 )
 
+// rebuildBackoffBase / rebuildBackoffMax bound the crash-resume re-apply
+// window for a KindRebuild that keeps dying mid-flight (epic #5729 issue #29,
+// defect b). They mirror the scheduler's own same-ref failure breaker
+// (sched.reindexFailBackoff) so a persisted-but-uncompleted rebuild is
+// re-applied on a growing schedule instead of back-to-back on every 2s tick.
+const (
+	rebuildBackoffBase = 30 * time.Second
+	rebuildBackoffMax  = 5 * time.Minute
+)
+
+// rebuildBackoff returns the backoff for the nth crash-resume attempt (n=1 is
+// the first re-apply). Doubles each additional attempt, capped at
+// rebuildBackoffMax. It is a package var so tests can shrink the window.
+var rebuildBackoff = func(attempts int) time.Duration {
+	if attempts < 1 {
+		attempts = 1
+	}
+	d := rebuildBackoffBase
+	for i := 1; i < attempts; i++ {
+		d *= 2
+		if d >= rebuildBackoffMax {
+			return rebuildBackoffMax
+		}
+	}
+	if d > rebuildBackoffMax {
+		return rebuildBackoffMax
+	}
+	return d
+}
+
 // requestsDrainInterval is how often the engine's drain loop scans for
 // pending serve→engine request files (ADR-0024 PR4, epic #5729). Requests
 // are also fire-and-forget from serve's perspective (Service.Index returns
@@ -97,23 +127,46 @@ func requestsRoot() string {
 	return StoreDir()
 }
 
-// drainRequestsOnce performs a single pass: discover every requests/ dir
-// under root, list its pending records, and apply each via
-// requests.ApplyAndAck. KindReindex (PR4) and KindRebuild (PR6 prerequisite,
-// epic #5729) are understood — see internal/daemon/requests's Kind doc
-// comments for why KindSubmitRepair / KindDocgenApply / KindEnrichmentEnqueue
-// are defined but not (yet) produced or consumed anywhere (their handlers
-// already write their sidecars directly and are picked up lazily by the next
-// scheduled index pass, so they are already cross-process safe with no
-// engine-side action needed).
+// requestsDrainer owns a single drain pass's collaborators plus the
+// background rebuild worker whose state must PERSIST across ticks (defect:
+// wizard-queue starvation, epic #5729). A single instance is created by
+// startRequestsDrainLoop and reused for every tick, so the worker's
+// single-in-flight-per-group bookkeeping and crash-resume backoff survive
+// between passes.
+type requestsDrainer struct {
+	scheduler *sched.Scheduler
+	rebuildFn RebuildFunc
+	logger    *slog.Logger
+	rebuilds  *rebuildWorker
+}
+
+// newRequestsDrainer wires a drainer over the given collaborators. rebuildFn
+// and scheduler may be nil (tests exercise one path at a time); logger may be
+// nil.
+func newRequestsDrainer(scheduler *sched.Scheduler, rebuildFn RebuildFunc, logger *slog.Logger) *requestsDrainer {
+	return &requestsDrainer{
+		scheduler: scheduler,
+		rebuildFn: rebuildFn,
+		logger:    logger,
+		rebuilds:  newRebuildWorker(rebuildFn, logger),
+	}
+}
+
+// drainOnce performs a single pass: discover every requests/ dir under root,
+// list its pending records, and route each by kind. The CRITICAL property
+// (Fix 1, epic #5729) is that the expensive, multi-minute KindRebuild is
+// NEVER applied inline on this goroutine — it is handed to a separate
+// single-in-flight background worker that drainOnce does NOT await. So cheap
+// KindReindex requests for OTHER groups/repos keep draining every tick even
+// while a group rebuild runs for minutes in the background, instead of sitting
+// at "Queued" until it finishes.
 //
-// rebuildFn is the engine's in-process rebuild entrypoint (cfg.Rebuild — the
-// SAME RebuildFunc Service.Rebuild calls directly in monolith/engine mode);
-// may be nil (a KindRebuild request then acks as an error, same shape as a
-// reindex request arriving with no scheduler attached).
-//
-// logger may be nil (tests exercise the apply path without one).
-func drainRequestsOnce(root string, scheduler *sched.Scheduler, rebuildFn RebuildFunc, logger *slog.Logger) error {
+// KindReindex (PR4) is applied inline (a cheap scheduler.Enqueue). KindRebuild
+// (PR6 prerequisite, epic #5729) is dispatched to the background worker. Other
+// defined-but-unproduced kinds (KindSubmitRepair / KindDocgenApply /
+// KindEnrichmentEnqueue) keep the plain inline at-least-once ApplyAndAck — see
+// internal/daemon/requests's Kind doc comments for why they are safe.
+func (d *requestsDrainer) drainOnce(root string) error {
 	dirs, err := discoverRequestsDirs(root)
 	if err != nil {
 		return fmt.Errorf("requests: discover dirs: %w", err)
@@ -121,44 +174,284 @@ func drainRequestsOnce(root string, scheduler *sched.Scheduler, rebuildFn Rebuil
 	for _, dir := range dirs {
 		recs, err := requests.ListPending(dir)
 		if err != nil {
-			if logger != nil {
-				logger.Warn("requests: list pending failed (skipping dir)", "dir", dir, "err", err)
+			if d.logger != nil {
+				d.logger.Warn("requests: list pending failed (skipping dir)", "dir", dir, "err", err)
 			}
 			continue
 		}
 		for _, rec := range recs {
 			rec := rec
-			apply := func(r requests.Record) error {
-				return applyRequest(scheduler, rebuildFn, r)
-			}
-			// KindRebuild is the multi-minute, non-incremental path: route it
-			// through the crash-resume-bounded consumer so an apply that keeps
-			// getting killed mid-flight is re-applied at most maxRebuildAttempts
-			// times (persisted across engine restarts) and then dead-lettered,
-			// instead of re-running on every drain tick forever (defect d).
-			// Cheap/idempotent kinds (KindReindex) keep the plain at-least-once
-			// ApplyAndAck — re-enqueuing is harmless and coalesces.
 			if rec.Kind == requests.KindRebuild {
-				outcome, applyErr := requests.ApplyAndAckBounded(dir, rec, maxRebuildAttempts, apply)
-				if logger != nil {
-					switch {
-					case applyErr != nil:
-						logger.Warn("requests: rebuild apply/ack failed", "dir", dir, "id", rec.ID, "attempts", rec.Attempts, "err", applyErr)
-					case outcome == requests.OutcomeCrashed:
-						logger.Warn("requests: rebuild apply crashed mid-flight; will retry (bounded)", "dir", dir, "id", rec.ID, "attempt", rec.Attempts+1, "max", maxRebuildAttempts)
-					case outcome == requests.OutcomeDeadLettered:
-						logger.Error("requests: rebuild dead-lettered after max attempts; giving up (not re-running)", "dir", dir, "id", rec.ID, "max", maxRebuildAttempts)
-					}
-				}
+				// Hand off to the background worker (non-blocking). It coalesces
+				// every pending same-group rebuild in this dir and applies at
+				// most one at a time, keyed by group — the drain loop keeps
+				// scanning/enqueuing while it runs. Submitting once per dir is
+				// enough (the worker re-lists the dir itself); a second submit
+				// for an already-active group is a no-op.
+				d.rebuilds.submit(root, dir, rebuildGroup(rec))
 				continue
 			}
+			apply := func(r requests.Record) error {
+				return applyRequest(d.scheduler, d.rebuildFn, r)
+			}
 			applyErr := requests.ApplyAndAck(dir, rec, apply)
-			if applyErr != nil && logger != nil {
-				logger.Warn("requests: apply/ack failed", "dir", dir, "id", rec.ID, "kind", rec.Kind, "err", applyErr)
+			if applyErr != nil && d.logger != nil {
+				d.logger.Warn("requests: apply/ack failed", "dir", dir, "id", rec.ID, "kind", rec.Kind, "err", applyErr)
 			}
 		}
 	}
 	return nil
+}
+
+// drainRequestsOnce is the one-shot, SYNCHRONOUS drain used by tests and any
+// caller that wants a single pass to complete (including any background
+// rebuild it dispatches) before returning. The periodic engine loop uses a
+// persistent requestsDrainer directly (see startRequestsDrainLoop) so its
+// worker state survives across ticks and rebuilds do NOT block the loop.
+//
+// rebuildFn is the engine's in-process rebuild entrypoint (cfg.Rebuild — the
+// SAME RebuildFunc Service.Rebuild calls directly in monolith/engine mode);
+// may be nil. logger may be nil.
+func drainRequestsOnce(root string, scheduler *sched.Scheduler, rebuildFn RebuildFunc, logger *slog.Logger) error {
+	d := newRequestsDrainer(scheduler, rebuildFn, logger)
+	err := d.drainOnce(root)
+	d.rebuilds.waitIdle()
+	return err
+}
+
+// rebuildGroup extracts the target group from a KindRebuild record's payload,
+// used only as the worker's single-flight/backoff map key. A payload we can't
+// decode yields "" — the worker still lists+applies the dir's rebuilds (a bad
+// payload error-acks through applyRequest), it just shares the zero key.
+func rebuildGroup(rec requests.Record) string {
+	var args proto.RebuildArgs
+	if err := json.Unmarshal(rec.Payload, &args); err != nil {
+		return ""
+	}
+	return args.Group
+}
+
+// rebuildWorker applies KindRebuild requests OFF the drain goroutine, one at a
+// time per group, so a multi-minute rebuild never starves the cheap-request
+// drain (Fix 1). It also coalesces duplicate pending same-group rebuilds
+// (Fix 2a) and spaces crash-resume re-applies by a growing backoff (Fix 2b).
+type rebuildWorker struct {
+	rebuildFn RebuildFunc
+	logger    *slog.Logger
+
+	mu          sync.Mutex
+	active      map[string]struct{}  // groups with a running goroutine
+	nextAttempt map[string]time.Time // group -> earliest next apply (crash backoff)
+	wg          sync.WaitGroup       // tracks in-flight goroutines (waitIdle)
+
+	// now / backoff are injectable for deterministic tests.
+	now     func() time.Time
+	backoff func(attempts int) time.Duration
+}
+
+func newRebuildWorker(fn RebuildFunc, logger *slog.Logger) *rebuildWorker {
+	return &rebuildWorker{
+		rebuildFn:   fn,
+		logger:      logger,
+		active:      map[string]struct{}{},
+		nextAttempt: map[string]time.Time{},
+		now:         time.Now,
+		backoff:     rebuildBackoff,
+	}
+}
+
+// submit ensures a single background goroutine is draining group's pending
+// rebuilds in dir. It is non-blocking and a no-op when one is already active
+// for the group (single-in-flight per group). root is where dead-letters are
+// surfaced.
+func (w *rebuildWorker) submit(root, dir, group string) {
+	w.mu.Lock()
+	if _, running := w.active[group]; running {
+		w.mu.Unlock()
+		return
+	}
+	w.active[group] = struct{}{}
+	w.wg.Add(1)
+	w.mu.Unlock()
+
+	go func() {
+		defer func() {
+			w.mu.Lock()
+			delete(w.active, group)
+			w.mu.Unlock()
+			w.wg.Done()
+		}()
+		w.runGroup(root, dir, group)
+	}()
+}
+
+// waitIdle blocks until no background rebuild goroutine is running. Used by
+// the synchronous drainRequestsOnce helper and tests.
+func (w *rebuildWorker) waitIdle() { w.wg.Wait() }
+
+// rebuildBucket is one set of pending KindRebuild records that are SEMANTICALLY
+// identical (same Group+Slug+Wipe+Incremental — see semanticRebuildKey) and can
+// therefore be coalesced into a single rebuild. survivor is the one that
+// actually runs; duplicates are the coalesced-away records whose completion
+// tokens are only satisfied once the survivor truly finishes.
+type rebuildBucket struct {
+	survivor   requests.Record
+	duplicates []requests.Record
+}
+
+// runGroup partitions dir's pending rebuilds into semantic buckets and applies
+// each bucket's survivor. Divergent-payload rebuilds (different slug/wipe/
+// incremental) land in DIFFERENT buckets and each run — coalescing never
+// collapses across differing rebuild work (review finding #1). Buckets run
+// sequentially in this single per-group goroutine, so the engine-side
+// single-flight is preserved and the drain loop is never blocked.
+func (w *rebuildWorker) runGroup(root, dir, group string) {
+	recs, err := requests.ListPending(dir)
+	if err != nil {
+		if w.logger != nil {
+			w.logger.Warn("requests: rebuild list pending failed (skipping dir)", "dir", dir, "err", err)
+		}
+		return
+	}
+	for _, b := range partitionRebuilds(recs) {
+		w.applyBucket(root, dir, group, b)
+	}
+}
+
+// applyBucket applies one semantic bucket's survivor and, ONLY on the
+// survivor's real completion (or dead-letter), satisfies the coalesced-away
+// duplicates' completion tokens (review finding #2). On a mid-flight crash the
+// duplicates are left pending so every waiting token stays true and the
+// survivor is retried under backoff.
+func (w *rebuildWorker) applyBucket(root, dir, group string, b rebuildBucket) {
+	rec := b.survivor
+
+	// Crash-resume backoff gate (Fix 2b): a survivor that already carries a
+	// persisted attempt claim (Attempts>=1) but never completed is being
+	// re-applied after a crash. Space the re-applies by a growing window keyed
+	// on the attempt count instead of re-running on every 2s tick. The gate is
+	// per-group; a bucket with a fresh (Attempts==0) survivor is never gated.
+	if rec.Attempts >= 1 {
+		w.mu.Lock()
+		next, gated := w.nextAttempt[group]
+		if gated && w.now().Before(next) {
+			w.mu.Unlock()
+			return // still backing off; a later tick re-dispatches
+		}
+		w.mu.Unlock()
+	}
+
+	apply := func(r requests.Record) error {
+		// applyRequest holds engineGroupRebuildGuard for this group, so the
+		// single-flight invariant is preserved and we must NOT re-acquire it
+		// here. scheduler is irrelevant for KindRebuild.
+		return applyRequest(nil, w.rebuildFn, r)
+	}
+	outcome, applyErr := requests.ApplyAndAckBounded(dir, rec, maxRebuildAttempts, apply)
+
+	switch {
+	case outcome == requests.OutcomeCrashed:
+		// Schedule the next re-apply behind a growing backoff (keyed on the
+		// now-persisted higher attempt count) so the following ticks don't
+		// hammer the doomed rebuild back-to-back. Leave the duplicates PENDING:
+		// their tokens must not flip until the survivor really completes.
+		w.mu.Lock()
+		w.nextAttempt[group] = w.now().Add(w.backoff(rec.Attempts + 1))
+		w.mu.Unlock()
+		if w.logger != nil {
+			w.logger.Warn("requests: rebuild apply crashed mid-flight; will retry (bounded, backing off)", "dir", dir, "id", rec.ID, "attempt", rec.Attempts+1, "max", maxRebuildAttempts)
+		}
+	case outcome == requests.OutcomeDeadLettered:
+		w.clearBackoff(group)
+		w.ackCoalesced(dir, b.duplicates)
+		if err := recordDeadLetter(root, deadLetterFromRec(group, rec)); err != nil && w.logger != nil {
+			w.logger.Warn("requests: surface dead-letter failed", "dir", dir, "id", rec.ID, "err", err)
+		}
+		if w.logger != nil {
+			w.logger.Error("requests: rebuild dead-lettered after max attempts; giving up (not re-running)", "dir", dir, "id", rec.ID, "max", maxRebuildAttempts)
+		}
+	default:
+		w.clearBackoff(group)
+		w.ackCoalesced(dir, b.duplicates)
+		if applyErr != nil && w.logger != nil {
+			w.logger.Warn("requests: rebuild apply/ack failed", "dir", dir, "id", rec.ID, "attempts", rec.Attempts, "err", applyErr)
+		}
+	}
+}
+
+// ackCoalesced satisfies each coalesced-away duplicate's completion token AFTER
+// the survivor has really finished: a no-op ApplyAndAck writes an ok ack,
+// deletes the request, and GCs the ack — so RebuildRequestPending flips false
+// for every waiting token only now, never early (review finding #2).
+func (w *rebuildWorker) ackCoalesced(dir string, dups []requests.Record) {
+	for _, d := range dups {
+		if err := requests.ApplyAndAck(dir, d, func(requests.Record) error { return nil }); err != nil && w.logger != nil {
+			w.logger.Warn("requests: coalesce-ack of duplicate rebuild failed", "dir", dir, "id", d.ID, "err", err)
+		}
+	}
+}
+
+// clearBackoff drops any crash-resume backoff scheduled for group (called once
+// a rebuild either completes or is dead-lettered).
+func (w *rebuildWorker) clearBackoff(group string) {
+	w.mu.Lock()
+	delete(w.nextAttempt, group)
+	w.mu.Unlock()
+}
+
+// semanticRebuildKey returns a stable key over the SEMANTIC fields of a rebuild
+// payload — Group+Slug+Wipe+Incremental — the fields that determine what work
+// the rebuild performs. It deliberately EXCLUDES ProgressToken (a per-caller
+// wizard completion handle, not a semantic difference) and bookkeeping
+// (Attempts/ID/CreatedAt). Two requests share a key iff collapsing them loses
+// no rebuild work (review finding #1). A payload that cannot be decoded gets a
+// unique key so it is never coalesced with anything.
+func semanticRebuildKey(rec requests.Record) string {
+	var a proto.RebuildArgs
+	if err := json.Unmarshal(rec.Payload, &a); err != nil {
+		return "undecodable:" + rec.ID
+	}
+	return fmt.Sprintf("g=%s\x00s=%s\x00w=%t\x00i=%t", a.Group, a.Slug, a.Wipe, a.Incremental)
+}
+
+// partitionRebuilds groups recs' KindRebuild records into semantic buckets
+// (first-seen order for determinism). Within a bucket the survivor is the
+// record with the HIGHEST Attempts (tie-broken by newest CreatedAt), so a fresh
+// duplicate enqueue can never reset a crash-looping record's attempt budget or
+// skip its backoff gate (review finding #3); the remaining records become the
+// bucket's coalesced-away duplicates.
+func partitionRebuilds(recs []requests.Record) []rebuildBucket {
+	order := make([]string, 0)
+	byKey := make(map[string][]requests.Record)
+	for _, r := range recs {
+		if r.Kind != requests.KindRebuild {
+			continue
+		}
+		k := semanticRebuildKey(r)
+		if _, seen := byKey[k]; !seen {
+			order = append(order, k)
+		}
+		byKey[k] = append(byKey[k], r)
+	}
+	buckets := make([]rebuildBucket, 0, len(order))
+	for _, k := range order {
+		members := byKey[k]
+		survivorIdx := 0
+		for i, r := range members {
+			s := members[survivorIdx]
+			if r.Attempts > s.Attempts || (r.Attempts == s.Attempts && r.CreatedAt.After(s.CreatedAt)) {
+				survivorIdx = i
+			}
+		}
+		dups := make([]requests.Record, 0, len(members)-1)
+		for i, r := range members {
+			if i != survivorIdx {
+				dups = append(dups, r)
+			}
+		}
+		buckets = append(buckets, rebuildBucket{survivor: members[survivorIdx], duplicates: dups})
+	}
+	return buckets
 }
 
 // applyRequest dispatches a single drained Record to the same in-process
@@ -210,6 +503,13 @@ func applyRequest(scheduler *sched.Scheduler, rebuildFn RebuildFunc, rec request
 func startRequestsDrainLoop(scheduler *sched.Scheduler, rebuildFn RebuildFunc, logger *slog.Logger) (stop func()) {
 	done := make(chan struct{})
 	stopped := make(chan struct{})
+	// One persistent drainer for the lifetime of the loop: its background
+	// rebuild worker's single-in-flight-per-group + crash-resume-backoff state
+	// must survive across ticks. Each tick dispatches any rebuild to that
+	// worker WITHOUT awaiting it (drainOnce, not the synchronous
+	// drainRequestsOnce helper), so cheap reindex requests keep draining while
+	// a multi-minute rebuild runs in the background.
+	drainer := newRequestsDrainer(scheduler, rebuildFn, logger)
 	go func() {
 		defer close(stopped)
 		ticker := time.NewTicker(requestsDrainInterval)
@@ -219,7 +519,7 @@ func startRequestsDrainLoop(scheduler *sched.Scheduler, rebuildFn RebuildFunc, l
 			case <-done:
 				return
 			case <-ticker.C:
-				if err := drainRequestsOnce(requestsRoot(), scheduler, rebuildFn, logger); err != nil && logger != nil {
+				if err := drainer.drainOnce(requestsRoot()); err != nil && logger != nil {
 					logger.Warn("requests: drain pass failed", "err", err)
 				}
 			}
@@ -228,5 +528,6 @@ func startRequestsDrainLoop(scheduler *sched.Scheduler, rebuildFn RebuildFunc, l
 	return func() {
 		close(done)
 		<-stopped
+		drainer.rebuilds.waitIdle()
 	}
 }
