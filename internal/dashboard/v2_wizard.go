@@ -230,9 +230,34 @@ func (s *Server) handleV2ScanInspect(w http.ResponseWriter, r *http.Request) {
 		HasAgentsMD:     fileExists(abs, "AGENTS.md") || fileExists(abs, "CLAUDE.md") || fileExists(abs, "GEMINI.md"),
 	}
 	if fileExists(abs, ".grafel/group.json") {
-		reply.AlreadyRegistered = readManifestGroup(filepath.Join(abs, ".grafel", "group.json"))
+		// Bug 2: a manifest can name a group that has since been DELETED from
+		// the registry. Reporting that stale name as "already registered" shows
+		// the wizard a false "already in group X". Only trust the manifest when
+		// the group it names still exists (belt-and-suspenders alongside the
+		// delete command's manifest removal — a lingering manifest for a deleted
+		// group must never produce a false "already registered").
+		if g := readManifestGroup(filepath.Join(abs, ".grafel", "group.json")); g != "" && s.groupExists(g) {
+			reply.AlreadyRegistered = g
+		}
 	}
 	writeV2JSON(w, http.StatusOK, v2OK(reply))
+}
+
+// groupExists reports whether name is a group currently in the registry. Used
+// by the scan/inspect handler to ignore a stale in-repo manifest whose group
+// was deleted (Bug 2). A registry read error is treated as "does not exist" so
+// a transient failure never fabricates a false "already registered".
+func (s *Server) groupExists(name string) bool {
+	groups, err := s.registry.ListGroups()
+	if err != nil {
+		return false
+	}
+	for _, g := range groups {
+		if g.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

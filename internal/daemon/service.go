@@ -22,6 +22,7 @@ import (
 	"github.com/cajasmota/grafel/internal/perf"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/version"
 )
 
@@ -1063,6 +1064,12 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 	}
 
 	if cfg != nil {
+		// #34 guard: a repo's underlying store, in-repo manifest, and status
+		// sidecar may be SHARED — referenced by another still-registered group.
+		// Compute the set of repo paths every OTHER group references so per-repo
+		// state is only torn down when NO surviving group still needs it.
+		sharedPaths := otherGroupRepoPaths(args.Group)
+
 		for _, r := range cfg.Repos {
 			// Stop watcher.
 			if s.watcher != nil {
@@ -1075,8 +1082,13 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 			if cfg.Features.GitHooks {
 				_ = hooks.Uninstall(r.Path)
 			}
-			// Delete per-repo cache.
-			if !args.KeepCaches {
+
+			shared := sharedPaths[canonRepoKey(r.Path)]
+
+			// Delete per-repo cache (the repo store: graph.fb, links, …). Never
+			// when another group still references this repo — that would strip a
+			// live group's graph out from under it (#34).
+			if !args.KeepCaches && !shared {
 				cacheDir := StateDirForRepo(r.Path)
 				if _, err := os.Stat(cacheDir); err == nil {
 					freed, _ := dirSize(cacheDir)
@@ -1084,6 +1096,26 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 					_ = os.RemoveAll(cacheDir)
 				}
 			}
+
+			// Remove the per-repo orphaned state that outlives the group in the
+			// registry (Bug 1): the committed in-repo manifest
+			// <repo>/.grafel/group.json (the source of the wizard's stale
+			// "already in group" note) and the engine status-plane sidecar
+			// ~/.grafel/status/<hash>.json. Same #34 guard: only when no other
+			// group still references this repo.
+			if !shared {
+				manifest := filepath.Join(r.Path, ".grafel", "group.json")
+				if _, err := os.Stat(manifest); err == nil {
+					_ = os.Remove(manifest)
+					// Best-effort: drop the now-likely-empty .grafel dir. Fails
+					// harmlessly (and is skipped) if anything else lives there.
+					_ = os.Remove(filepath.Join(r.Path, ".grafel"))
+				}
+				if sp, err := statusfile.PathFor(r.Path); err == nil {
+					_ = os.Remove(sp)
+				}
+			}
+
 			reply.RemovedRepos = append(reply.RemovedRepos, r.Slug)
 		}
 	}
@@ -1102,7 +1134,115 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 		_ = os.RemoveAll(stateDir)
 	}
 
+	// Remove the GROUP-LEVEL artifacts keyed by the deleted group name. These
+	// are always safe to remove (they belong to this group alone, never shared
+	// with another): the link/algo sidecars under ~/.grafel/groups/<group>-*.json
+	// and the group store dir(s) ~/.grafel/store/group-<group>-*.
+	reply.FreedBytes += removeGroupArtifacts(args.Group)
+
 	return nil
+}
+
+// canonRepoKey normalises a repo path for equality comparison (absolute +
+// lexically clean) so the #34 shared-repo guard matches the same repo referenced
+// by two groups regardless of how each config spelled the path.
+func canonRepoKey(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		abs = p
+	}
+	return filepath.Clean(abs)
+}
+
+// otherGroupRepoPaths returns the set of repo paths (canonRepoKey-normalised)
+// referenced by every registered group EXCEPT exclude. DeleteGroup consults it
+// so a repo shared with a surviving group keeps its store/manifest/status (#34).
+func otherGroupRepoPaths(exclude string) map[string]bool {
+	out := map[string]bool{}
+	groups, err := registry.Groups()
+	if err != nil {
+		return out
+	}
+	for _, g := range groups {
+		if g.Name == exclude {
+			continue
+		}
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil || cfg == nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			out[canonRepoKey(r.Path)] = true
+		}
+	}
+	return out
+}
+
+// removeGroupArtifacts deletes the group-level (not per-repo) state keyed by a
+// group name: the ~/.grafel/groups/<group>-*.json link/algo sidecars and the
+// ~/.grafel/store/group-<group>-* group store dir(s). Returns bytes freed.
+//
+// The globs are prefix-based and a group name can be a hyphen-prefix of a
+// SURVIVING group's name (delete "api" while "api-v2" survives): "api-*.json"
+// also matches "api-v2-links.json", and "group-api-*" also matches
+// "group-api-v2-<hash>". So each candidate match is attributed to the LONGEST
+// registered group-name prefix that owns it, and a match owned by a surviving
+// group is left intact — the group-level analog of the per-repo
+// otherGroupRepoPaths survivor-exclusion guard (#34).
+func removeGroupArtifacts(group string) int64 {
+	// Owner-candidate names: the deleted group PLUS every still-registered group
+	// (survivors — RemoveGroup already ran, so registry.Groups() excludes the
+	// deleted one). Longest-prefix attribution over this set distinguishes
+	// "api"'s artifacts from "api-v2"'s.
+	names := []string{group}
+	if groups, err := registry.Groups(); err == nil {
+		for _, g := range groups {
+			if g.Name != group {
+				names = append(names, g.Name)
+			}
+		}
+	}
+	// ownerIsDeleted reports whether subj (a match's basename minus its fixed
+	// prefix) is owned by the group being deleted: the deleted group is the
+	// LONGEST candidate name N for which subj == N or subj starts with N+"-".
+	ownerIsDeleted := func(subj string) bool {
+		owner := ""
+		for _, n := range names {
+			if subj == n || strings.HasPrefix(subj, n+"-") {
+				if len(n) > len(owner) {
+					owner = n
+				}
+			}
+		}
+		return owner == group
+	}
+
+	var freed int64
+	remove := func(m string) {
+		if sz, err := dirSize(m); err == nil {
+			freed += sz
+		}
+		_ = os.RemoveAll(m)
+	}
+
+	// groups/<group>-*.json — subject is the basename (e.g. "api-v2-links.json").
+	if home, err := registry.HomeDir(); err == nil {
+		matches, _ := filepath.Glob(filepath.Join(home, "groups", group+"-*.json"))
+		for _, m := range matches {
+			if ownerIsDeleted(filepath.Base(m)) {
+				remove(m)
+			}
+		}
+	}
+	// store/group-<group>-* — subject is the basename with the "group-" prefix
+	// stripped (e.g. "api-v2-<hash>").
+	matches, _ := filepath.Glob(filepath.Join(StoreDir(), "group-"+group+"-*"))
+	for _, m := range matches {
+		if ownerIsDeleted(strings.TrimPrefix(filepath.Base(m), "group-")) {
+			remove(m)
+		}
+	}
+	return freed
 }
 
 // dirSize returns the total number of bytes in a directory tree.
