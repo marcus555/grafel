@@ -69,8 +69,19 @@ type File struct {
 	// this status file was last refreshed.
 	GraphFBMtime int64 `json:"graph_fb_mtime,omitempty"`
 
-	// Indexing is true while a reindex for RepoPath is in flight right now.
+	// Indexing is true ONLY while the graph for RepoPath is NOT yet queryable —
+	// the EXTRACTION phase of an in-flight index, before the first queryable
+	// graph.fb is written for this run. It flips to false at the
+	// extraction→enrichment boundary (see Enhancing). A reader that wants "is
+	// the graph usable yet?" should treat indexing=true as "not yet".
 	Indexing bool `json:"indexing"`
+	// Enhancing is true while the graph IS queryable but the long background
+	// ENRICHMENT tail (cross-repo links, flows, group algorithms, warming) for
+	// the current index run is still running. indexing=false && enhancing=true
+	// means "queryable now, still improving in the background" — a terminal
+	// SUCCESS for completion classifiers, never a failure. Both false means
+	// idle/done. The pair is never simultaneously true.
+	Enhancing bool `json:"enhancing,omitempty"`
 	// QueueLen is the number of index jobs queued behind this repo (or,
 	// process-wide, the scheduler's queue depth — see the writer for which
 	// scope it publishes).

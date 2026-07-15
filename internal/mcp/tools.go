@@ -3076,14 +3076,18 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		// this is the exact pre-#5729-PR3 behavior, preserved for equivalence.
 		ix := indexstate.Get()
 		totals["is_indexing"] = ix.IsIndexing
+		// is_enhancing surfaces the post-extraction ENRICHMENT tail (group-algo
+		// passes) distinctly from extraction, so a consumer never mistakes the
+		// enrichment tail for "still indexing".
+		totals["is_enhancing"] = ix.IsEnhancing
 		if ix.IsIndexing {
 			totals["indexing_in_flight"] = ix.InFlight
-			if ix.GroupAlgoInFlight > 0 {
-				totals["group_algo_in_flight"] = ix.GroupAlgoInFlight
-			}
-			if !ix.StartedAt.IsZero() {
-				totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
-			}
+		}
+		if ix.IsEnhancing {
+			totals["group_algo_in_flight"] = ix.GroupAlgoInFlight
+		}
+		if (ix.IsIndexing || ix.IsEnhancing) && !ix.StartedAt.IsZero() {
+			totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
 		}
 	}
 

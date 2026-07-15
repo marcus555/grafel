@@ -97,6 +97,7 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 	// #5729 PR3: also publish the raw State/HeadRef/Dirty so a serve process
 	// with no in-process scheduler can reconstruct grafel_index_status rows
 	// identically to today's indexstate.RepoStates()-backed handler.
+	schedIndexing := false
 	for _, st := range indexstate.RepoStates() {
 		if st.Path != repoPath {
 			continue
@@ -105,25 +106,13 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		f.HeadRef = st.HeadRef
 		f.State = st.State
 		f.Dirty = st.Dirty
-		f.Indexing = st.State == indexstate.StateIndexing || st.State == indexstate.StateDirty
+		schedIndexing = st.State == indexstate.StateIndexing || st.State == indexstate.StateDirty
 		break
 	}
-	// The FOREGROUND rebuild/subprocess path (cmd/grafel daemonRebuildFuncCore)
-	// deliberately bypasses the scheduler and never enters s.inflight, so the
-	// scheduler-derived f.Indexing above stays false throughout that path even
-	// though a real index is running. repolock.ClaimForeground is held for the
-	// exact lifetime of that index (keyed on the SAME repoPath the rebuild
-	// derives from the group config — see internal/repolock's package doc), so
-	// OR-ing in HasForegroundClaim closes the gap without touching the
-	// scheduler/watcher path's (already-correct) StateIndexing/StateDirty
-	// signal above.
-	f.Indexing = f.Indexing || repolock.DefaultRegistry.HasForegroundClaim(repoPath)
-	// Process-wide queue depth (#5493 concurrency gate) — the closest
-	// available proxy for "how much work is ahead of this repo" without
-	// threading per-repo queue position through the scheduler snapshot.
-	conc := indexstate.GetIndexConcurrency()
-	f.QueueLen = conc.Queued
 
+	// Read the on-disk graph.fb mtime up front — it is the "graph queryable"
+	// witness the indexing/enhancing split below keys on. GraphFBMtime is also
+	// published for readers regardless of the split.
 	stateDir := StateDirForRepo(repoPath)
 	if stateDir != "" {
 		f.Entities, f.Relationships = readGraphStatsSidecar(stateDir)
@@ -131,6 +120,41 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 			f.GraphFBMtime = mtimeNano
 		}
 	}
+
+	// Split the single "indexing" signal into indexing (extraction, graph not
+	// yet queryable) vs enhancing (graph queryable, background enrichment tail
+	// still running). The FOREGROUND rebuild/subprocess path (cmd/grafel
+	// daemonRebuildFuncCore) bypasses the scheduler and holds a
+	// repolock.ClaimForeground for the exact lifetime of the whole run —
+	// extraction AND the long enrichment tail — so it is the seam we date the
+	// graph.fb write against:
+	//   - claim held & no graph.fb written at/after the claim start → the graph
+	//     is not queryable this run yet → indexing=true, enhancing=false.
+	//   - claim held & a graph.fb was written at/after the claim start → the
+	//     graph became queryable and the run is now enriching → indexing=false,
+	//     enhancing=true. graph.fb mtime only advances, so this never flips back
+	//     to indexing for the life of the claim.
+	//   - claim released → fall back to the scheduler-derived signal (the
+	//     watcher/reactive path), enhancing=false. Both false when idle.
+	// This fixes the wizard's false-"Failed": the rebuild RPC acks while the
+	// enrichment tail runs; with a single always-true "indexing" flag the
+	// completion classifier saw indexing=true at ack time and reported the
+	// (already-queryable, 287k-entity) graph as failed.
+	if fgStart, fgHeld := repolock.DefaultRegistry.ForegroundClaimStart(repoPath); fgHeld {
+		graphQueryableThisRun := f.GraphFBMtime > 0 && fgStart > 0 && f.GraphFBMtime >= fgStart
+		if graphQueryableThisRun {
+			f.Indexing, f.Enhancing = false, true
+		} else {
+			f.Indexing, f.Enhancing = true, false
+		}
+	} else {
+		f.Indexing, f.Enhancing = schedIndexing, false
+	}
+	// Process-wide queue depth (#5493 concurrency gate) — the closest
+	// available proxy for "how much work is ahead of this repo" without
+	// threading per-repo queue position through the scheduler snapshot.
+	conc := indexstate.GetIndexConcurrency()
+	f.QueueLen = conc.Queued
 
 	// Write path is git-free: read the short SHA off disk, never shell out
 	// (review #5734 non-blocking #3).
