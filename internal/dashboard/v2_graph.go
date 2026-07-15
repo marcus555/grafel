@@ -357,6 +357,14 @@ func communityColorIndex(id int) int {
 
 // ── LoD helpers ──────────────────────────────────────────────────────────────
 
+// highLodNodeCap is THE single knob for the high/full level-of-detail node
+// budget. 0 = unlimited: per the current product decision, the high LoD serves
+// the WHOLE graph (delivered progressively via the /stream endpoint) rather
+// than capping the node count. To switch on a finite cap later — e.g. 50000 —
+// change THIS one constant; nothing else needs to move (handleV2Graph's
+// thinning at v2_graph.go already gates on `nodeCap > 0`).
+const highLodNodeCap = 0
+
 // lodNodeCap maps a ?lod= query value to a node budget (0 = unlimited).
 // Canonical names: overview|normal|full.
 // Legacy frontend LodLevel strings: low|mid|high are also accepted.
@@ -365,7 +373,7 @@ func lodNodeCap(lod string) int {
 	case "overview", "low":
 		return 500
 	case "full", "high":
-		return 0 // unlimited
+		return highLodNodeCap
 	default:
 		// "normal", "mid", "" (no param), and unknown values all default to 3000.
 		return 3000

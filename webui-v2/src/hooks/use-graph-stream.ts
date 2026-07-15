@@ -47,7 +47,11 @@ import {
   type GraphStreamMetaWire,
   type GraphStreamChunkWire,
 } from "@/lib/graph-stream-reducer";
-import { decideWarmRetry, parseWarmErrorEvent } from "@/lib/graph-stream-warm-policy";
+import {
+  decideWarmRetry,
+  parseWarmErrorEvent,
+  warmAttemptAfterHeartbeat,
+} from "@/lib/graph-stream-warm-policy";
 
 export type GraphStreamPhase = "idle" | "warming" | "streaming" | "done" | "error";
 
@@ -186,6 +190,22 @@ export function useGraphStream(
           }
         } catch {
           /* malformed meta — leave the onerror path to handle recovery. */
+        }
+      });
+
+      // #48 — the backend now keeps the connection OPEN on a cold group and
+      // flushes `warming` heartbeats while it performs a bounded blocking warm
+      // (instead of a bare 503). Each heartbeat is server-confirmed progress:
+      // stay in the warming phase and RESET the retry budget so a legitimately
+      // slow-but-progressing large-graph warm is never cut off by the give-up
+      // ceiling. The connection stays open, so we do NOT fall back to the blob.
+      conn.addEventListener("warming", () => {
+        if (cancelled) return;
+        warmAttempt = warmAttemptAfterHeartbeat(warmAttempt);
+        clearRetry();
+        if (phaseRef.current !== "streaming" && phaseRef.current !== "done") {
+          setPhase("warming");
+          phaseRef.current = "warming";
         }
       });
 

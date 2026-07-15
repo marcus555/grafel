@@ -50,6 +50,22 @@ export function decideWarmRetry(attempt: number): WarmDecision {
   return { kind: "retry", delayMs: WARM_BACKOFF_MS[idx] };
 }
 
+/**
+ * Reset the warm-retry budget after a server `warming` heartbeat (#48).
+ *
+ * The backend now keeps the SSE connection open on a cold group and flushes
+ * `warming` heartbeats while it performs a BOUNDED blocking warm, instead of
+ * returning a bare 503. A heartbeat is server-confirmed progress, so a genuinely
+ * large graph that legitimately takes a long time to warm must not be cut off by
+ * the give-up ceiling: every heartbeat resets the attempt counter to 0, so the
+ * client keeps waiting/retrying as long as the server is demonstrably still
+ * working. The ceiling then only fires when heartbeats STOP (a truly stuck or
+ * failed warm), never on a slow-but-progressing one.
+ */
+export function warmAttemptAfterHeartbeat(_current: number): number {
+  return 0;
+}
+
 /** Parsed shape of the backend's `error` SSE event (v2GraphStreamError). */
 export interface WarmErrorDetail {
   code: string;
