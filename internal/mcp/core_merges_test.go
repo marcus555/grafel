@@ -102,11 +102,11 @@ func TestCoreOrientDispatch(t *testing.T) {
 	assertSameDispatch(t, "view=clusters", srv.handleCoreOrient, with(map[string]any{"view": "clusters"}), srv.handleListCommunities, base)
 	assertSameDispatch(t, "view=modules", srv.handleCoreOrient, with(map[string]any{"view": "modules"}), srv.handleModuleAnalysis, base)
 	assertSameDispatch(t, "view=stats", srv.handleCoreOrient, with(map[string]any{"view": "stats"}), srv.handleGraphStats, base)
-	// topology: dispatcher defaults action=orphan_publishers; compare with the
+	// topology: dispatcher defaults action=channels (#5781); compare with the
 	// same explicit action against the absorbed handler.
 	assertSameDispatch(t, "view=topology", srv.handleCoreOrient,
 		with(map[string]any{"view": "topology"}),
-		srv.handleTopology, with(map[string]any{"action": "orphan_publishers"}))
+		srv.handleTopology, with(map[string]any{"action": "channels"}))
 }
 
 // 2. grafel_find search= → query_graph (bm25) / search_entities (substring).

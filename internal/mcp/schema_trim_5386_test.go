@@ -172,7 +172,7 @@ var wantToolParams = map[string]string{
 	"grafel_template_patterns":           "cwd,group,kind,limit,repo_filter|req:",
 	"grafel_test_coverage":               "cwd,entity_id,group,limit,ref,repo_filter,severity,top_directories|req:",
 	"grafel_test_reachability":           "cwd,endpoints_only,entity_id,group,limit,ref,repo_filter,untested_only|req:",
-	"grafel_topology":                    "action,cwd,group,repo_filter,topic_id|req:action",
+	"grafel_topology":                    "action,cwd,group,repo_filter,topic_id|req:",
 	"grafel_trace":                       "action,cwd,detail,entity_id,group,include,kind,limit,ref,repo_filter,sink_kind,source,target|req:",
 	"grafel_traces":                      "action,cwd,entry_point_id,group,limit,max_depth,process_id,ref,repo_filter,token_budget|req:",
 	"grafel_whoami":                      "cwd,group,ref|req:",

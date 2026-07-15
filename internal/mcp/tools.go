@@ -608,6 +608,12 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	}
 	repoFilter := argStringSlice(req, "repo_filter")
 	crossRepo := argBool(req, "cross_repo", false)
+	// #5781: the bm25 find path historically IGNORED kind_filter — a query like
+	// `kind_filter=MessageTopic` returned the full ranked set (Package/Schema/…),
+	// while callers expected only that kind. We now enforce it (see the
+	// enumerateByKind fold below). Normalisation (leaf/SCOPE. stripping) lives in
+	// matchesKindFilter, so `MessageTopic` matches the stored `SCOPE.MessageTopic`.
+	kindFilter := strings.ToLower(argString(req, "kind_filter", ""))
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
 	minConfidence := argMinConfidence(req) // #2769 Phase 1C
@@ -706,6 +712,20 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			filtered = append(filtered, sc)
 		}
 		all = filtered
+	}
+
+	// #5781: enforce kind_filter in the bm25 path. Two things happen here:
+	//   1. bm25 hits whose kind doesn't match are dropped (so the result is ONLY
+	//      the requested kind, not the full ranked set).
+	//   2. every in-scope entity of that kind that bm25 didn't surface is folded
+	//      in, turning kind_filter into an enumeration so `kind_filter=MessageTopic
+	//      cross_repo=true` returns the per-repo topic nodes even when the query
+	//      text doesn't textually rank them.
+	// Kind enumeration is not text-score gated, so we disable the min_score cull
+	// below (a topic named "kafka:orders" won't BM25-match a generic query).
+	if kindFilter != "" {
+		all = enumerateByKind(all, repos, kindFilter, includeNoise, minConfidence, maxResults)
+		minScore = 0
 	}
 
 	// Re-rank (#1614): real, lined, qualified entities sort above
@@ -1067,6 +1087,67 @@ const (
 // whole-repo dump so the caller knows to retry rather than treating a
 // non-selective result as a real subgraph.
 const noStrongMatchHint = "no strong matches above min_score — the query terms don't match any entity names; try different/more specific terms, or use grafel_orient / grafel_topology to explore the repo"
+
+// enumerateByKind enforces a kind_filter over the bm25-scored hit set and folds
+// in every in-scope entity of that kind that bm25 didn't already surface (#5781).
+//
+// Result: ONLY entities whose kind matches kindFilter (via matchesKindFilter,
+// which strips a leading "SCOPE." and compares case-insensitively so a display
+// kind "MessageTopic" matches the stored "SCOPE.MessageTopic"). bm25-ranked
+// matches keep their score and order; folded-in entities get a nominal score so
+// they sort last but still enumerate. Noise / low-confidence entities are
+// excluded on the same terms as the normal ranked path.
+// foldCap bounds how many entities the enumeration folds in. The ranked list is
+// truncated to maxResults downstream regardless, so folding much beyond that is
+// wasted O(N)/O(N log N) work for a huge common kind (e.g. Function). We keep a
+// small multiple of maxResults so the re-rank still has enough real hits to
+// choose from, then stop.
+func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, includeNoise bool, minConfidence float64, maxResults int) []scored {
+	foldCap := maxResults * 4
+	if foldCap < 200 {
+		foldCap = 200
+	}
+	seen := make(map[*LoadedRepo]map[string]bool, len(repos))
+	// 1. Keep only kind-matching bm25 hits (reuse the backing array).
+	out := all[:0]
+	for _, sc := range all {
+		if !matchesKindFilter(sc.hit.Entity, kindFilter) {
+			continue
+		}
+		out = append(out, sc)
+		if seen[sc.repo] == nil {
+			seen[sc.repo] = map[string]bool{}
+		}
+		seen[sc.repo][sc.hit.Entity.ID] = true
+	}
+	// 2. Fold in kind-matching entities bm25 didn't surface (enumeration),
+	//    bounded by foldCap so a huge kind can't drive unbounded alloc/sort.
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			if len(out) >= foldCap {
+				return out
+			}
+			e := &r.Doc.Entities[i]
+			if !matchesKindFilter(e, kindFilter) {
+				continue
+			}
+			if seen[r] != nil && seen[r][e.ID] {
+				continue
+			}
+			if !includeNoise && isNoise(e) {
+				continue
+			}
+			if !entityPassesConfidence(e, minConfidence) {
+				continue
+			}
+			out = append(out, scored{repo: r, hit: Hit{Entity: e, Score: 0.0001, Source: "kind_filter"}})
+		}
+	}
+	return out
+}
 
 // serializeHits is the structured (full=true) shape.
 //

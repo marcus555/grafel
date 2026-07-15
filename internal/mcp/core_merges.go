@@ -65,11 +65,11 @@ func (s *Server) handleCoreOrient(ctx context.Context, req mcpapi.CallToolReques
 	case "clusters", "communities":
 		return s.handleListCommunities(ctx, req)
 	case "topology":
-		// handleTopology requires action=; default to orphan publishers scan
-		// when the caller did not pass one through the orient surface.
-		if argString(req, "action", "") == "" {
-			req = reqWithArgs(req, map[string]any{"action": "orphan_publishers"})
-		}
+		// #5781: handleTopology now defaults action to "channels" (the full topic
+		// listing with publisher/consumer counts) when none is supplied, so
+		// `orient view=topology` shows the message topics the caller expects
+		// rather than only the orphan-publisher subset. Explicit action=... still
+		// routes to the orphan/detail scans.
 		return s.handleTopology(ctx, req)
 	case "modules", "module_analysis":
 		return s.handleModuleAnalysis(ctx, req)

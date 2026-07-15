@@ -1207,11 +1207,12 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_diff", s.handleAnalysisDiff))
 
-	// grafel_topology — message-channel topology (#1281). action=orphan_publishers|orphan_subscribers|topic_detail.
+	// grafel_topology — message-channel topology (#1281, #5781).
+	// action=channels(default)|orphan_publishers|orphan_subscribers|topic_detail.
 	// verbose=true (default false) read from request map to stay under token ceiling.
 	s.addTool(mcpapi.NewTool("grafel_topology",
-		mcpapi.WithDescription("Message-channel topology: orphans and topic detail."),
-		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithDescription("Message topics: channels(default), orphan pubs/subs, topic detail."),
+		mcpapi.WithAny("action"),
 		mcpapi.WithAny("topic_id"),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
@@ -2051,7 +2052,7 @@ func extractIDs(res *mcpapi.CallToolResult) (nodeIDs, edgeIDs []string) {
 			"id", "entity_id", "node_id", "pattern_id", "topic_id", "process_id")...)
 		nodeIDs = append(nodeIDs, collectSliceIDs(payload,
 			"results", "nodes", "steps", "orphans", "patterns", "orphan_publishers",
-			"orphan_subscribers", "dead_ends", "truncated_flows", "publishers",
+			"orphan_subscribers", "channels", "dead_ends", "truncated_flows", "publishers",
 			"subscribers", "exemplars",
 			"callers", "callees", "affected", "dead_code", "dependencies")...)
 		edgeIDs = append(edgeIDs, collectSliceIDs(payload, "edges")...)
