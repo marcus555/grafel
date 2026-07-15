@@ -266,26 +266,12 @@ func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) 
 	}
 
 	// Step 4a — choose which AI coding tools get their install artifacts (rules
-	// files + MCP) scaffolded (#5701). Only prompt when no explicit --tools was
-	// given (cfg.Tools already set) and we are interactive; the non-interactive
-	// path leaves cfg.Tools empty so the empty-means-all contract is preserved.
-	if len(cfg.Tools) == 0 && !opts.NonInteractive {
-		ids, err := promptTools()
-		if err != nil {
-			return err
-		}
-		cfg.Tools = ids
-	}
-
-	// Step 4b — choose which AI tools get the grafel MCP server (#5344). Only
-	// prompt interactively when no explicit selection was passed via flags. The
-	// non-interactive path leaves opts.MCPTools as-is (nil → all detected).
-	if opts.MCPTools == nil && !opts.NonInteractive {
-		sel, err := promptMCPTools()
-		if err != nil {
-			return err
-		}
-		opts.MCPTools = sel
+	// files + MCP) scaffolded, asked ONCE (#44). This single selection drives
+	// BOTH rules-file scaffolding AND MCP registration — there is no separate
+	// "which tools get the grafel MCP server?" question anymore (it could only
+	// ever narrow this one). See resolveHuhTools.
+	if err := resolveHuhTools(cfg, &opts); err != nil {
+		return err
 	}
 
 	// Steps 5-7 — persist + register + manifests + install. Shared with the
@@ -309,55 +295,64 @@ func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) 
 	return maybeIndexGroup(out, opts.errWriter(), cfg.Name, opts.NoIndex)
 }
 
-// promptMCPTools runs the non-TTY (huh) MCP-tools picker (#5344). It returns a
-// non-nil selection of tool IDs to register the grafel MCP server in, defaulted
-// per the B+C heuristic (recently-used / previously-configured checked,
-// remembered last choice overriding). When ≤1 tool is detected the picker is
-// skipped and the detected set is auto-used (nil when none are detected, which
-// preserves the all-detected back-compat behaviour downstream).
-func promptMCPTools() (*[]string, error) {
-	tools := mcptools.Detect()
-	if len(tools) == 0 {
-		return nil, nil // nothing detected — keep back-compat (register all)
-	}
-	if len(tools) == 1 {
-		sel := []string{tools[0].ID}
-		return &sel, nil
-	}
-	opts := make([]huh.Option[string], 0, len(tools))
-	for _, t := range tools {
-		label := t.DisplayName
-		if t.HasGrafel {
-			label += " (configured)"
+// resolveHuhTools resolves the single AI-tools/agents selection for the non-TTY
+// huh fallback, asked ONCE (#44). It captures the enablement set via promptTools
+// into cfg.Tools (unless an explicit --tools already set it, or we are non-
+// interactive — both leave cfg.Tools as-is), and DELIBERATELY does not ask a
+// second "which tools get the grafel MCP server?" question: MCP now follows the
+// same selection. opts.MCPTools is left untouched — nil unless --mcp-tools /
+// --no-mcp set it — so applyGroupConfig → install.Apply falls back to cfg.Tools's
+// adapters, exactly as the alt-screen TUI path now does. This is the huh-flow
+// twin of the TUI's resolveInteractiveTools; the duplicate MCP prompt used to
+// live here (promptMCPTools) and could only ever narrow the tools selection.
+func resolveHuhTools(cfg *registry.GroupConfig, opts *wizardOptions) error {
+	if len(cfg.Tools) == 0 && !opts.NonInteractive {
+		ids, err := promptTools()
+		if err != nil {
+			return err
 		}
-		opts = append(opts, huh.NewOption(label, t.ID).Selected(t.DefaultSelected))
+		cfg.Tools = ids
 	}
-	selected := mcptools.DefaultSelection(tools)
-	if err := huh.NewMultiSelect[string]().
-		Title("Configure MCP for which tools?").
-		Description("Your AI agents that can query this graph.\n" + navHintMulti).
-		Options(opts...).
-		Height(wizardListHeight(len(tools))).
-		Value(&selected).
-		WithTheme(wizardTheme()).
-		Run(); err != nil {
-		return nil, err
-	}
-	return &selected, nil
+	return nil
+}
+
+// wizardToolChoices is the pre-check source for the single tools/agents screen
+// (#44). It returns the broad "installed tools" default — every adapter, with
+// PreChecked mirroring DetectInstalled() (its config/parent dir is present at
+// all) via WizardChoices(nil). It is a distinct, testable seam precisely
+// because the precheck source is load-bearing: this ONE screen now scaffolds
+// BOTH rules files AND MCP, so the precheck must be the broad installed set,
+// NOT the mcptools B+C narrowing (config-modified-≤30d OR has-grafel-entry),
+// which would silently leave an installed-but-stale tool unchecked and skip its
+// scaffolding entirely.
+func wizardToolChoices() []tooladapter.WizardChoice {
+	return tooladapter.WizardChoices(nil)
 }
 
 // promptTools runs the per-tool enablement picker (#5701), mirroring
 // runToolWizard: every supported adapter is offered as a checkbox, pre-checked
-// when DetectInstalled() flagged it, and the toggled set is normalized to
-// registry-order adapter IDs. Returning an empty slice (the user unchecked
-// everything) is treated as "no explicit choice" — so the empty-means-all
-// contract at the Apply boundary is preserved rather than scaffolding nothing.
+// when DetectInstalled() flagged it (its config/parent dir is present at all),
+// and the toggled set is normalized to registry-order adapter IDs. Returning an
+// empty slice (the user unchecked everything) is treated as "no explicit
+// choice" — so the empty-means-all contract at the Apply boundary is preserved
+// rather than scaffolding nothing.
+//
+// This screen now drives BOTH rules-file scaffolding AND MCP registration
+// (#44 — ask once; MCP follows this selection with no second prompt). The
+// precheck is DELIBERATELY the broad "installed tools" default via
+// WizardChoices(nil)/DetectInstalled — NOT the mcptools B+C narrowing
+// (config-modified-≤30d OR has-grafel-entry). Narrowing here would silently
+// leave a tool the user actually has installed (config present but old / no
+// grafel entry yet) unchecked, skipping BOTH its rules files and its MCP wiring.
+// The MCP-specific heuristic only ever made sense when MCP was a separate,
+// second question; merged into the one enablement screen, "which installed
+// tools to scaffold + wire" is the correct default.
 //
 // It is a package var so both the huh (non-TTY) fallback AND the alt-screen TUI
 // (which invokes it just before entering the full-screen program) drive the
 // SAME picker, and so tests can inject a selection without a real terminal.
 var promptTools = func() ([]string, error) {
-	choices := tooladapter.WizardChoices(nil)
+	choices := wizardToolChoices()
 	opts := make([]huh.Option[string], 0, len(choices))
 	var preselected []string
 	for _, c := range choices {
@@ -479,6 +474,13 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 	// Remember the chosen MCP tools so a later wizard run defaults to them (C,
 	// #5344). Only persist when a concrete selection was made (non-nil); a nil
 	// selection means "no explicit choice" and must not clobber a prior one.
+	//
+	// Since #44 (ask once) this write path fires RARELY: both wizard paths now
+	// leave MCPTools nil (MCP follows the single tools selection), so ga.MCPTools
+	// is non-nil essentially only when --mcp-tools was passed explicitly. The
+	// last-choice memory is therefore now advisory — it is no longer read back to
+	// pre-check a dedicated MCP screen (that screen is gone) — and this persist is
+	// kept only to honour an explicit flag selection. No behaviour change.
 	if ga.MCPTools != nil {
 		if perr := mcptools.SaveLastChoice(*ga.MCPTools); perr != nil {
 			fmt.Fprintf(out, "warning: could not remember MCP tool choice: %v\n", perr)

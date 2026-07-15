@@ -9,6 +9,10 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
+	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestWizardUseTUI_NonTTYFallsBack: a non-*os.File writer (e.g. a bytes.Buffer
@@ -73,5 +77,63 @@ func TestReposForResult_Monorepo(t *testing.T) {
 	sort.Strings(gotModules)
 	if !reflect.DeepEqual(gotModules, wantModules) {
 		t.Errorf("modules = %v, want %v", gotModules, wantModules)
+	}
+}
+
+// TestMCPRegistrationReusesToolsSelection is the regression test for #44 (ask
+// AI-tools once): the wizard used to ask about AI tools/agents TWICE — once
+// for rules-scaffolding (promptTools, captured into toolIDs/cfg.Tools) and
+// again on a separate in-TUI "Configure MCP for which tools?" screen (scrMCP)
+// that set wiztui.Result.MCPTools and could only ever NARROW the first
+// choice. That screen is gone; makeIndexFunc must no longer read
+// r.MCPTools at all — MCP registration reuses the SAME single toolIDs
+// selection instead. This test drives makeIndexFunc directly with a stray,
+// narrower r.MCPTools value (exactly what the old scrMCP picker would have
+// produced) to prove it is now ignored: with toolIDs = {claude, cursor} but
+// r.MCPTools = {claude} only, the grafel MCP server must still be registered
+// in BOTH tools' config files, not just the one the (now-removed) second
+// screen would have picked.
+func TestMCPRegistrationReusesToolsSelection(t *testing.T) {
+	dir := testsupport.IsolateHome(t)
+	repo := t.TempDir()
+
+	var out, errOut bytes.Buffer
+	class, _ := detect.ClassifyPath(repo)
+	opts := wizardOptions{NoIndex: true, RunInstall: true}
+	toolIDs := []string{"claude", "cursor"}
+	idxFn := makeIndexFunc(&out, &errOut, class, opts, toolIDs)
+
+	staleMCPSelection := []string{"claude"} // what a stray scrMCP screen would have narrowed to
+	res := wiztui.Result{
+		Action:    wiztui.ActionSingle,
+		Repos:     []string{repo},
+		GroupName: "mcp-once-test-group-" + filepath.Base(dir),
+		MCPTools:  &staleMCPSelection,
+	}
+
+	evCh, outCh := idxFn(res)
+	for range evCh {
+	}
+	outcome := <-outCh
+	if outcome.Err != nil {
+		t.Fatalf("IndexFunc returned error: %v", outcome.Err)
+	}
+
+	wantPaths := map[string]bool{}
+	for _, id := range toolIDs {
+		a, ok := tooladapter.Lookup(id)
+		if !ok || !a.SupportsMCP() {
+			t.Fatalf("tool %q unexpectedly has no MCP support in this test", id)
+		}
+		p, err := mcpreg.SettingsPath(a.MCPTool())
+		if err != nil {
+			t.Fatalf("SettingsPath(%s): %v", id, err)
+		}
+		wantPaths[p] = true
+	}
+
+	if outcome.Install.MCP != len(wantPaths) {
+		t.Errorf("Install.MCP = %d, want %d (claude+cursor both registered; a stray Result.MCPTools must no longer narrow the selection)",
+			outcome.Install.MCP, len(wantPaths))
 	}
 }

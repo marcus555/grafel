@@ -28,27 +28,10 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
-	"github.com/cajasmota/grafel/internal/install/mcptools"
 	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/registry"
 )
-
-// mcpToolOptions builds the wiztui MCP-tools picker options from the detector
-// (#5344), carrying the B+C computed default into the screen.
-func mcpToolOptions() []wiztui.MCPToolOption {
-	tools := mcptools.Detect()
-	out := make([]wiztui.MCPToolOption, 0, len(tools))
-	for _, t := range tools {
-		out = append(out, wiztui.MCPToolOption{
-			ID:              t.ID,
-			DisplayName:     t.DisplayName,
-			HasGrafel:       t.HasGrafel,
-			DefaultSelected: t.DefaultSelected,
-		})
-	}
-	return out
-}
 
 // wizardUseTUI reports whether the full-screen Bubble Tea TUI should drive the
 // interactive wizard. It requires BOTH stdin and the wizard's stdout to be real
@@ -170,27 +153,21 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 	class, _ := detect.ClassifyPath(cwd)
 	drv := wizardDriver{class: class}
 
-	// Per-tool ENABLEMENT capture (#5701). The alt-screen TUI has an MCP-tools
-	// picker but no native enablement screen, so we capture the enablement set
-	// with the shared huh picker (promptTools) BEFORE entering the full-screen
-	// program — unless --tools already preset it. This makes the ordinary
-	// interactive `grafel wizard` scaffold only the tools the human checks
-	// (deselecting kiro/codium excludes them), no flag required.
+	// Single per-tool ENABLEMENT capture, asked ONCE (#44, was #5701). The
+	// alt-screen TUI has no native enablement screen, so we capture the
+	// enablement set with the shared huh picker (promptTools) BEFORE entering
+	// the full-screen program — unless --tools already preset it. This same
+	// selection also drives MCP registration (see makeIndexFunc's mcpSel):
+	// there is no separate "Configure MCP for which tools?" screen anymore —
+	// asking that as a second question was redundant with this one, since it
+	// could only ever narrow this selection, never widen it.
 	toolIDs, err := resolveInteractiveTools(out, opts)
 	if err != nil {
 		return wiztui.Result{}, err
 	}
 
 	idxFn := makeIndexFunc(out, errOut, class, opts, toolIDs)
-	// Build the MCP-tools picker options (#5344) unless a flag already preset
-	// the selection (--mcp-tools / --no-mcp) — in which case the screen is
-	// skipped (empty options) and the flag selection is honoured by the
-	// IndexFunc.
-	var mcpOpts []wiztui.MCPToolOption
-	if opts.MCPTools == nil {
-		mcpOpts = mcpToolOptions()
-	}
-	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks, mcpOpts, wizardMetricsFunc())
+	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks, wizardMetricsFunc())
 
 	// Switch the console to UTF-8 (Windows) before the alt-screen starts so the
 	// wizard's glyphs render instead of mojibake; restore on exit (#5340).
@@ -296,13 +273,15 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 				}
 			}
 
-			// Resolve the MCP-tools selection (#5344): the picker screen sets
-			// r.MCPTools; when a flag preset the choice the screen was skipped
-			// and r.MCPTools is nil, so fall back to opts.MCPTools.
-			mcpSel := r.MCPTools
-			if mcpSel == nil {
-				mcpSel = opts.MCPTools
-			}
+			// Resolve the MCP-tools selection (#44 — ask once): there is no
+			// separate in-TUI MCP picker anymore, so r.MCPTools is always nil.
+			// An explicit --mcp-tools/--no-mcp flag (opts.MCPTools) still wins
+			// when present; otherwise nil flows into applyGroupConfig, which
+			// (via install.Options.MCPTools == nil) reuses exactly the tools
+			// enabled by cfg.Tools/toolIDs — the SAME single selection that
+			// drove rules-scaffolding — so MCP registration is never asked
+			// for a second time.
+			mcpSel := opts.MCPTools
 
 			// In the TUI, applyGroupConfig's stdout must NOT leak onto the
 			// alt-screen (fix C, #5340). Capture it into a sink buffer and feed

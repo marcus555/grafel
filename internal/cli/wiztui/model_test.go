@@ -49,14 +49,7 @@ func send(m tea.Model, msg tea.Msg) tea.Model {
 }
 
 func newTestModel(d Driver, idx IndexFunc) Model {
-	m := New(d, idx, true, true, nil, nil)
-	return m.update(tea.WindowSizeMsg{Width: 100, Height: 40})
-}
-
-// newTestModelMCP builds a model WITH detected MCP tools so the
-// "Configure MCP for which tools?" screen is exercised (#5344).
-func newTestModelMCP(d Driver, idx IndexFunc, mcp []MCPToolOption) Model {
-	m := New(d, idx, true, true, mcp, nil)
+	m := New(d, idx, true, true, nil)
 	return m.update(tea.WindowSizeMsg{Width: 100, Height: 40})
 }
 
@@ -216,55 +209,41 @@ func TestAddGroupFlow(t *testing.T) {
 	}
 }
 
-// TestMCPScreenShownWhenMultipleTools: with >1 detected tool, the docs step
-// advances to the MCP picker (not straight to index), and confirming the
-// picker carries the selection into Result.MCPTools (#5344).
-func TestMCPScreenShownWhenMultipleTools(t *testing.T) {
+// TestDocsAdvancesDirectlyToIndex_NoMCPScreen is the regression test for
+// #44 (ask AI-tools once): the wizard used to ask about AI tools/agents
+// TWICE — once via the shared promptTools picker (run by the cli package
+// BEFORE the alt-screen program starts, captured into toolIDs/cfg.Tools) and
+// again on a separate in-TUI "Configure MCP for which tools?" screen (scrMCP)
+// that could only ever narrow the first choice. That second screen is gone:
+// confirming the docs screen must advance DIRECTLY to scrIndex, never to any
+// intermediate MCP picker, and Result.MCPTools must stay nil (the apply path
+// reuses toolIDs/cfg.Tools for MCP registration instead — see
+// makeIndexFunc's mcpSel in the cli package).
+func TestDocsAdvancesDirectlyToIndex_NoMCPScreen(t *testing.T) {
 	d := fakeDriver{suggested: ActionSingle, cands: []Candidate{
 		{Label: "/repo", Value: "/repo", Selected: true},
 	}}
-	mcp := []MCPToolOption{
-		{ID: "claude", DisplayName: "Claude Code", DefaultSelected: true},
-		{ID: "cursor", DisplayName: "Cursor", DefaultSelected: false},
-	}
-	m := newTestModelMCP(d, nilIndex, mcp)
+	m := newTestModel(d, nilIndex)
 	m = m.update(key("enter")) // action → select
 	m = m.update(key("enter")) // select → name
 	m = m.update(key("enter")) // name → docs
-	m = m.update(key("enter")) // docs → MCP (not index, because 2 tools)
-	if m.scr != scrMCP {
-		t.Fatalf("after docs enter, scr = %v, want scrMCP", m.scr)
-	}
-	// claude is default-checked; confirm as-is.
-	m = m.update(key("enter")) // confirm MCP → index
+	m = m.update(key("enter")) // docs → index (no MCP screen in between)
 	if m.scr != scrIndex {
-		t.Fatalf("after MCP enter, scr = %v, want scrIndex", m.scr)
+		t.Fatalf("after docs enter, scr = %v, want scrIndex (no separate MCP screen)", m.scr)
 	}
-	if m.res.MCPTools == nil {
-		t.Fatal("MCPTools not set after the picker")
-	}
-	if got := *m.res.MCPTools; len(got) != 1 || got[0] != "claude" {
-		t.Errorf("MCPTools = %v, want [claude]", got)
+	if m.res.MCPTools != nil {
+		t.Errorf("Result.MCPTools = %v, want nil (no in-TUI MCP picker sets it; the apply path reuses the tools selection)", *m.res.MCPTools)
 	}
 }
 
-// TestMCPScreenSkippedWhenSingleTool: with exactly 1 detected tool, the picker
-// is skipped and that tool is auto-selected (#5344).
-func TestMCPScreenSkippedWhenSingleTool(t *testing.T) {
-	d := fakeDriver{suggested: ActionSingle, cands: []Candidate{
-		{Label: "/repo", Value: "/repo", Selected: true},
-	}}
-	mcp := []MCPToolOption{{ID: "claude", DisplayName: "Claude Code", DefaultSelected: true}}
-	m := newTestModelMCP(d, nilIndex, mcp)
-	m = m.update(key("enter")) // action → select
-	m = m.update(key("enter")) // select → name
-	m = m.update(key("enter")) // name → docs
-	m = m.update(key("enter")) // docs → index (MCP skipped: only 1 tool)
-	if m.scr != scrIndex {
-		t.Fatalf("after docs enter, scr = %v, want scrIndex (single tool auto-used)", m.scr)
-	}
-	if m.res.MCPTools == nil || len(*m.res.MCPTools) != 1 || (*m.res.MCPTools)[0] != "claude" {
-		t.Errorf("MCPTools = %v, want [claude] auto-selected", m.res.MCPTools)
+// TestScreenEnumHasNoSeparateMCPStep is the enum/step-count regression guard
+// for #44: the wizard used to have a dedicated scrMCP screen between scrDocs
+// and scrIndex. It no longer exists — the screen enum now has exactly 7
+// members (scrAction, scrSelect, scrGroupPick, scrName, scrDocs, scrIndex,
+// scrDone), with scrDone landing at position 6, not 7.
+func TestScreenEnumHasNoSeparateMCPStep(t *testing.T) {
+	if got, want := int(scrDone), 6; got != want {
+		t.Errorf("scrDone = %d, want %d (a value of 7 means a stray screen — e.g. scrMCP — still sits between scrDocs and scrIndex)", got, want)
 	}
 }
 
