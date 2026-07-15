@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -43,6 +44,22 @@ func newLinksCmd() *cobra.Command {
 // Returns nil when the group has no per-repo graph.json files yet
 // (links are a no-op until the indexer has run at least once).
 func RunLinksForGroup(group string) error {
+	return RunLinksForGroupCtx(context.Background(), group)
+}
+
+// RunLinksForGroupCtx is the context-aware form of RunLinksForGroup. It checks
+// ctx.Err() at each heavy pass boundary (stage → link passes → phantom-edge
+// promotion → sidecar writes) so a cancellation — notably a `grafel delete
+// <group>` landing mid-rebuild (v0.1.8 leak fix) — stops the sequence within one
+// sub-pass instead of running the full multi-minute link/phantom recompute to
+// completion for a group that no longer exists. Cancellation between passes is
+// reported as ctx.Err() so the caller can distinguish it from a real failure;
+// the partial work already written to disk is harmless (the group is being torn
+// down anyway).
+func RunLinksForGroupCtx(ctx context.Context, group string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	groups, err := registry.Groups()
 	if err != nil {
 		return err
@@ -66,6 +83,9 @@ func RunLinksForGroup(group string) error {
 		return err
 	}
 	defer cleanup()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// #2761 substrate Phase 0: register each repo's source path so the
 	// constant propagation pass can read .ts / .py / .java / .go files
 	// from the actual repo working tree (graphsDir contains symlinked
@@ -81,6 +101,9 @@ func RunLinksForGroup(group string) error {
 	linkStart := time.Now()
 	res, err := links.RunAllPasses(group, graphsDir, "")
 	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	// P5 — phantom-edge promotion (#769).

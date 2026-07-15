@@ -1036,6 +1036,35 @@ func (s *Service) RemoveRepo(args *proto.RemoveRepoArgs, reply *proto.RemoveRepo
 	return nil
 }
 
+// cancelGroupWork signals cancellation of a group's in-flight background work
+// (scheduler enrichment passes + an in-flight group rebuild) so a delete stops
+// the CPU burn promptly instead of letting an 11-minute pass run to completion.
+// Best-effort and non-blocking — it never awaits the cancelled work, so
+// DeleteGroup cannot deadlock behind it.
+func (s *Service) cancelGroupWork(group string) {
+	// In-process path (monolith / engine): cancel directly. Both are no-ops when
+	// nothing is in flight for the group.
+	if s.scheduler != nil {
+		s.scheduler.CancelGroup(group)
+	}
+	CancelGroupRebuild(group)
+
+	// Split-mode path: the enrichment/rebuild goroutines live in the engine
+	// process, unreachable from this serve process. Drop a KindCancelGroup
+	// request the engine's drain loop applies (Scheduler.CancelGroup +
+	// CancelGroupRebuild on the engine side). The group name travels in RepoPath
+	// (see requests.KindCancelGroup). Best-effort: a write failure is logged but
+	// never fails the delete.
+	if SplitModeEnabled() {
+		if _, err := requests.Write(requestsDirForGroup(group), requests.Record{
+			Kind:     requests.KindCancelGroup,
+			RepoPath: group,
+		}); err != nil && s.logger != nil {
+			s.logger.Warn("delete-group: queue cancel request failed", "group", group, "err", err)
+		}
+	}
+}
+
 // DeleteGroup tears down every repo in a group and removes the group from
 // the registry. Mirrors RemoveRepo for each member repo, then deletes the
 // fleet config file and per-group state directory.
@@ -1058,6 +1087,25 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 	if ref == nil {
 		return fmt.Errorf("unknown group: %s", args.Group)
 	}
+
+	// Cancel the group's IN-FLIGHT background work BEFORE tearing down its state
+	// (v0.1.8 leak fix): a delete removed the group from the registry but left
+	// its in-flight (re)index + enrichment goroutines — betweenness, phantom-edge
+	// / link passes, and the multi-minute group rebuild — burning CPU to
+	// completion after the group was gone. Cancellation is scoped to THIS group
+	// (the scheduler leaves a shared repo's reindex running if a surviving group
+	// still references it; other groups' passes use different map keys), and it
+	// never blocks: it signals cancel funcs and returns.
+	//
+	//   - In-process (monolith / engine-in-same-process): the scheduler is
+	//     attached to this Service, so cancel its group-algo/link/reindex passes
+	//     directly, plus any in-process group rebuild via the package registry.
+	//   - Split mode: this RPC runs in the SERVE process, but the enrichment /
+	//     rebuild goroutines live in the ENGINE process, so serve cannot reach
+	//     them in-process (s.scheduler is nil there). Drop a KindCancelGroup
+	//     request; the engine's drain loop invokes the same two cancels.
+	s.cancelGroupWork(args.Group)
+
 	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err

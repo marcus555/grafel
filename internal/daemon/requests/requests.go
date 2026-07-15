@@ -73,6 +73,17 @@ const (
 	// Service.Rebuild ran a full group rebuild IN THE SERVE PROCESS even in
 	// split mode.
 	KindRebuild Kind = "rebuild"
+	// KindCancelGroup asks the engine to cancel ALL in-flight background work for
+	// a group — the scheduler's group-algo/link/reindex passes AND an in-flight
+	// group REBUILD — because the group was just deleted. In split mode the
+	// DeleteGroup RPC is answered by the SERVE process, but the enrichment /
+	// rebuild goroutines burning CPU live in the ENGINE process, so serve cannot
+	// cancel them in-process; it drops this request instead and the engine's
+	// drain loop invokes Scheduler.CancelGroup + daemon.CancelGroupRebuild. The
+	// target group travels in RepoPath (reused as the group key — a cancel needs
+	// no payload). Fire-and-forget: cancellation is best-effort and idempotent,
+	// so no ack-completion contract is required.
+	KindCancelGroup Kind = "cancel_group"
 )
 
 // Status is the terminal state an Ack records for a drained request.

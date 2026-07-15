@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"runtime"
 	"sync/atomic"
@@ -73,7 +74,7 @@ func TestDaemonRebuildParallel(t *testing.T) {
 		time.Sleep(perRepoSleep)
 		return nil
 	}
-	mockLinksFn := func(_ string) error { return nil }
+	mockLinksFn := func(_ context.Context, _ string) error { return nil }
 
 	// --- Serial run (concurrency=1) ---
 	t0 := time.Now()
@@ -173,7 +174,7 @@ func TestDaemonRebuildSerial(t *testing.T) {
 	}
 
 	mockIndexFn := func(_, _, _ string, _ []string, _, _ bool, _ ...IndexOption) error { return nil }
-	mockLinksFn := func(_ string) error { return nil }
+	mockLinksFn := func(_ context.Context, _ string) error { return nil }
 
 	rebuilt, warning, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: "serial-group"}, mockIndexFn, mockLinksFn)
 	if err != nil {
@@ -217,7 +218,7 @@ func TestDaemonRebuildFailureIsolation(t *testing.T) {
 		}
 		return nil
 	}
-	mockLinksFn := func(_ string) error { return nil }
+	mockLinksFn := func(_ context.Context, _ string) error { return nil }
 
 	// Both serial and parallel should return partial results + an error.
 	for _, conc := range []int{1, 2} {

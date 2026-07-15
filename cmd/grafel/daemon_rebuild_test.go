@@ -10,6 +10,7 @@ package main
 //     (the per-group mutex added in #2097 prevents them from racing).
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -75,7 +76,7 @@ func setupTestGroup(t *testing.T, groupName string, slugs []string) string {
 }
 
 // noopLinksFn is a stub links hook used across tests.
-var noopLinksFn = func(_ string) error { return nil }
+var noopLinksFn = func(_ context.Context, _ string) error { return nil }
 
 // TestRebuildPanicRecoveryReleasesSemaphore verifies that a panic inside
 // the index function does not leak the semaphore slot. With concurrency=1 and

@@ -490,6 +490,19 @@ func applyRequest(scheduler *sched.Scheduler, rebuildFn RebuildFunc, rec request
 		// engine restarts, then dead-lettered — never an unbounded redrain loop.
 		_, _, err := rebuildFn(args)
 		return err
+	case requests.KindCancelGroup:
+		// A group was deleted; cancel its in-flight enrichment + rebuild in THIS
+		// (engine) process. Both are best-effort and idempotent: the scheduler
+		// cancels its group-algo/link/reindex passes for the group, and the
+		// package-level registry cancels an in-flight group rebuild. The group
+		// key travels in RepoPath (see requests.KindCancelGroup). Never errors —
+		// a cancel for a group with nothing in flight is a no-op.
+		group := rec.RepoPath
+		if scheduler != nil {
+			scheduler.CancelGroup(group)
+		}
+		CancelGroupRebuild(group)
+		return nil
 	default:
 		return fmt.Errorf("requests: unsupported kind %q", rec.Kind)
 	}
