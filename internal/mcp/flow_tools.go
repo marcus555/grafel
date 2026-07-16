@@ -1302,14 +1302,28 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		return results[i].Name < results[j].Name
 	})
 
-	// Bound the payload for pathological high-degree nodes. We keep the
-	// top-ranked slice (highest risk first) and emit an honest truncation
-	// marker rather than returning an unbounded result (#3925).
+	// #5793: compact-by-default + token_budget hard cap.
+	//
+	// The old default dumped every affected entity (up to the 500-cap), each
+	// carrying name/kind/repo/hop_count/risk_score/risk_reason. On a high-degree
+	// node that overflowed the MCP token cap and spilled to disk — unusable
+	// inline exactly when blast-radius analysis matters most. The default is now
+	// an AGGREGATE summary (total_affected + per-kind breakdown + hop
+	// distribution) plus a SMALL top-N of the highest-risk entities; the full
+	// per-entity list is opt-in via detail=full. token_budget is a genuine hard
+	// cap, measured against the FINAL serialized wire body (finalizeDeferred),
+	// NOT an intermediate json.Marshal — the same lesson #5783 hammered home for
+	// grafel_orient (the delivered body is ~15% larger than the eager marshal).
 	totalAffected := len(results)
-	truncated := false
-	if len(results) > impactRadiusMaxResults {
-		results = results[:impactRadiusMaxResults]
-		truncated = true
+
+	// Aggregate summary — computed over ALL affected entities. Bounded by the
+	// number of distinct kinds (small) and hops (<=6), so it stays inline
+	// regardless of node degree.
+	breakdown := map[string]int{}
+	hopDist := map[string]int{}
+	for i := range results {
+		breakdown[results[i].Kind]++
+		hopDist[strconv.Itoa(results[i].HopCount)]++
 	}
 
 	root := byID[target]
@@ -1317,25 +1331,119 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	if root != nil {
 		rootName = root.Name
 	}
-	out := map[string]any{
-		"entity_id":   prefixedID(r.Repo, target),
-		"entity_name": rootName,
-		"repo":        r.Repo,
-		"hops":        hops,
-		"resolved":    true,
-		"affected":    results,
-		"count":       len(results),
-		"tip":         "risk_score 0.0–1.0: higher means the affected entity is more sensitive to breakage from changes in the root entity.",
+
+	full := impactDetailIsFull(argString(req, "detail", ""))
+	tokenBudget := argInt(req, "token_budget", impactDefaultBudget(full))
+	if tokenBudget < 0 {
+		tokenBudget = 0
 	}
-	if truncated {
-		out["truncated"] = true
-		out["total_affected"] = totalAffected
-		out["truncation_note"] = fmt.Sprintf(
-			"high-degree node: %d entities are affected; returning the top %d by risk_score. "+
-				"Narrow with a smaller `hops` or inspect specific neighbors.",
-			totalAffected, impactRadiusMaxResults)
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > impactMaxBudgetBytes {
+		budgetBytes = impactMaxBudgetBytes
 	}
-	return jsonResult(out), nil
+
+	// Base cap on the entity list: a small top-N in compact mode, the historical
+	// 500-cap in full mode. The token_budget shrink below may lower it further.
+	baseCap := impactCompactTopN
+	if full {
+		baseCap = impactRadiusMaxResults
+	}
+	if baseCap > totalAffected {
+		baseCap = totalAffected
+	}
+
+	// buildImpactOut renders the response showing the first n affected entities.
+	// The aggregate fields are ALWAYS present (they never shrink away), so even
+	// at n=0 the caller still gets total_affected + breakdown + hop_distribution.
+	buildImpactOut := func(n int) map[string]any {
+		m := map[string]any{
+			"entity_id":        prefixedID(r.Repo, target),
+			"entity_name":      rootName,
+			"repo":             r.Repo,
+			"hops":             hops,
+			"resolved":         true,
+			"total_affected":   totalAffected,
+			"breakdown":        breakdown,
+			"hop_distribution": hopDist,
+			"affected":         results[:n],
+			"count":            n,
+			"tip":              "risk_score 0.0–1.0: higher means the affected entity is more sensitive to breakage from changes in the root entity.",
+		}
+		if n < totalAffected {
+			m["truncated"] = true
+			hint := "raise token_budget, narrow `hops`, or inspect specific neighbors"
+			if !full {
+				hint = "pass detail=full (and/or a larger token_budget) for the complete per-entity list, or narrow `hops`"
+			}
+			m["truncation_note"] = fmt.Sprintf(
+				"blast radius of %d entities; showing the top %d by risk_score — %s.",
+				totalAffected, n, hint)
+		}
+		return m
+	}
+
+	// Hard-cap against the REAL wire body: binary-search the largest n<=baseCap
+	// whose FINAL serialized response fits the budget. finalImpactBodyLen is
+	// monotonic in n (more entries ⇒ larger body), so the search is well-defined.
+	bestN := 0
+	lo, hi := 0, baseCap
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		if finalImpactBodyLen(buildImpactOut(mid)) <= budgetBytes {
+			bestN = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	return jsonResult(buildImpactOut(bestN)), nil
+}
+
+// impactCompactTopN is the number of highest-risk affected entities the DEFAULT
+// (compact) impact_radius response surfaces individually. Small so the default
+// stays comfortably inline on any node regardless of degree (#5793); the full
+// per-entity list is opt-in via detail=full.
+const impactCompactTopN = 15
+
+// impactMaxBudgetBytes clamps the token_budget→bytes conversion so an absurd
+// token_budget cannot request a body larger than the MCP wire ceiling. Sized so
+// detail=full can still deliver the full impactRadiusMaxResults (500-cap) list
+// inline while staying well under the ~150k-char client limit (#5783/#5793).
+const impactMaxBudgetBytes = 128 * 1024
+
+// impactDefaultBudget is the default token_budget (in tokens) for impact_radius.
+// Compact mode is conservative so the default response is comfortably inline;
+// full mode gets more headroom since the caller explicitly asked for detail.
+func impactDefaultBudget(full bool) int {
+	if full {
+		return 12000
+	}
+	return 2000
+}
+
+// impactDetailIsFull reports whether the detail= argument opts into the verbose
+// per-entity dump (detail=full|verbose|all) (#5793).
+func impactDetailIsFull(detail string) bool {
+	switch strings.ToLower(strings.TrimSpace(detail)) {
+	case "full", "verbose", "all":
+		return true
+	}
+	return false
+}
+
+// finalImpactBodyLen renders the impact_radius response map through the SAME
+// path the client receives (finalizeDeferred → {…,elapsed_ms} envelope) and
+// returns the real wire body byte length. #5793: capping json.Marshal(out)
+// measured the wrong layer for #5783/grafel_orient; measuring the finalize path
+// keeps token_budget a genuine hard cap on the DELIVERED body. On the
+// (unexpected) marshal failure we return a very large length so the binary
+// search shrinks rather than overshoots.
+func finalImpactBodyLen(out map[string]any) int {
+	text, err := finalizeDeferred(out, 0, nil)
+	if err != nil {
+		return 1 << 30
+	}
+	return len(text)
 }
 
 // buildRiskReason produces a short human-readable reason string for the risk score.

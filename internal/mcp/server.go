@@ -1473,6 +1473,13 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("refs"),       // scope=changeset (conflicts mode)
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2),
 			mcpapi.Description("Per-scope default: scope=entity default 2; scope=changeset default 3.")),
+		// #5793: scope=entity is compact by default (aggregate blast-radius
+		// summary + a small top-N by risk_score). detail=full opts into the full
+		// per-entity list; token_budget hard-caps the delivered wire body.
+		mcpapi.WithString("detail",
+			mcpapi.Description("scope=entity: compact(def,aggregate+top-N)|full(complete per-entity list).")),
+		mcpapi.WithNumber("token_budget",
+			mcpapi.Description("scope=entity: hard cap on the delivered response (tokens; ~4 bytes/token). Default 2000 compact / 12000 detail=full.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref

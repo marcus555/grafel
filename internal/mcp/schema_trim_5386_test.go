@@ -140,7 +140,7 @@ var wantToolParams = map[string]string{
 	"grafel_flows":                       "action,cwd,group,process_id,repo_filter|req:action",
 	"grafel_get_source":                  "context_lines,cwd,entity_id,from_line,group,max_lines,to_line|req:entity_id",
 	"grafel_graph_patterns":              "action,confidence_min,cwd,group,limit,needs_attention,pattern_id,repo_filter,status|req:action",
-	"grafel_impact_radius":               "base,cwd,entity_id,group,head,hops,ref,refs,repo,scope|req:",
+	"grafel_impact_radius":               "base,cwd,detail,entity_id,group,head,hops,ref,refs,repo,scope,token_budget|req:",
 	"grafel_import_cycles":               "cwd,group,limit,min_size,repo_filter|req:",
 	"grafel_inspect":                     "cwd,entity_id,fields,group,include,include_unresolved,min_confidence,ref,repo_filter|req:entity_id",
 	"grafel_license_audit":               "cwd,group|req:",
