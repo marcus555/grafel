@@ -1,10 +1,43 @@
 # ADR-0026: fbwriter sharding — remove the 2 GiB serialization cliff
 
-- **Status**: Proposed
+- **Status**: **Deferred** (2026-07-17 — measured premise not met; see Outcome). Was: Proposed.
 - **Date**: 2026-07-17
 - **Deciders**: Jorge Cajas
 - **Related**: ADR-0016 (binary graph format), ADR-0017 (single-binary daemon architecture), ADR-0024 (decouple MCP serving from the engine — this is its Phase 1b), ADR-0025 (ChannelBinding)
-- **Refs**: #5726 (Fix #2 — remove the cliff; Fix #1 = fail-soft, already merged in Phase 0); convergence #5720 (enrichment / property-vector bloat); read-compat #5775 (kinds serialize by string, not ordinal). Unblocks the monorepo-corpus EDA research (the corpus graph exceeds 2 GiB and currently serializes INCOMPLETE).
+- **Refs**: #5726 (Fix #2 — remove the cliff; Fix #1 = fail-soft, already merged in Phase 0); convergence #5720 (enrichment / property-vector bloat); read-compat #5775 (kinds serialize by string, not ordinal).
+
+## Outcome — DEFERRED (2026-07-17)
+
+**The motivating premise was measured and does not hold.** This ADR assumed the
+monorepo corpus graph "exceeds 2 GiB and currently serializes INCOMPLETE." A
+fresh full re-index of the corpus (curantis-monorepos-main: **287,091 entities ·
+1,335,957 relationships · 2,001 endpoints**, ~2.1M LOC / ~4.1M raw lines) produced
+a **complete** `graph.fb` of **0.404 GiB (434,021,312 bytes) — 20.2 % of the 2 GiB
+cliff, ~4.95× headroom.** The write succeeded cleanly (fresh mtime matching the
+index; no `cannot grow buffer beyond 2 gigabytes` panic and no fail-soft fallback
+in the engine logs). Density is ~325 bytes/relationship, so reaching 2 GiB would
+take **~6.6M relationships / ~1.42M entities (~5× the current corpus)** — the ADR's
+original "0.5–1M relationships → >2 GiB" estimate over-counted per-record cost
+~5–13×, most likely because it predated the relationship-dedup (2.5M→1.4M) and
+the #5720 property-vector-bloat convergence.
+
+**Consequences:**
+1. **Sharding is deferred.** Building a multi-shard writer/reader/swap/version
+   pipeline now would pre-pay for ~5× growth no real corpus has. The single-buffer
+   design stands.
+2. **The catastrophic failure mode is already handled** by the Phase 0 fail-soft
+   guard (`d4c0197e4`, #5726 Fix #1, shipped): an over-cap marshal aborts cleanly
+   and preserves the last-good `graph.fb` instead of crashing the daemon.
+3. **The EDA research (#20) is NOT blocked by this cliff** — the corpus serializes
+   completely, so research can run against the real graph. (Correcting this ADR's
+   original "unblocks research" framing: there was nothing to unblock.)
+4. **Follow-up instead of sharding:** add a `doctor`/status warning when
+   `graph.fb` crosses ~1.5 GiB (75 % of the cap), turning the surprise ceiling
+   into a monitored threshold that gives runway to build sharding only if a real
+   corpus ever trends toward it. (Filed separately.)
+
+Revisit this ADR only if a real corpus's `graph.fb` approaches ~1.5 GiB. The design
+options below are preserved as-is for that eventuality.
 
 ## Context
 
