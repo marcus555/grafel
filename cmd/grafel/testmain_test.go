@@ -2,14 +2,29 @@ package main
 
 // testmain_test.go — TestMain with a defensive leak detector for #2083.
 //
-// Before all tests run: snapshot the entry-names in ~/.grafel/store/.
-// After all tests complete: assert no new entries were created.
+// Before all tests run: snapshot the entry-names in this package's OWN
+// isolated store (see below). After all tests complete: assert no new
+// entries were created.
 //
-// This guard catches tests that write per-repo state to the real store
-// (i.e. tests that call code touching daemon.StateDirForRepo / StoreDir
-// without first pinning GRAFEL_DAEMON_ROOT or GRAFEL_HOME to a
-// temp dir).
-
+// This guard catches tests that write per-repo state to the store (i.e.
+// tests that call code touching daemon.StateDirForRepo / StoreDir without
+// first pinning GRAFEL_DAEMON_ROOT or GRAFEL_HOME to a temp dir) — but it
+// must watch a store that belongs ONLY to this package's test binary.
+//
+// Historical bug (v0.1.7.4 green -> v0.1.8 red): this used to watch the
+// REAL ~/.grafel/store. Under parallel `go test ./...`, a concurrent
+// package's test could leak a write into the real store (because it hit
+// daemon.StateDirForRepo/StoreDir without setting GRAFEL_HOME) inside this
+// package's before/after window, false-failing cmd/grafel for a leak that
+// happened in a completely different package. Detection was racy even
+// though the underlying leaking write was deterministic.
+//
+// Fix: before snapshotting, redirect HOME/USERPROFILE/GRAFEL_HOME/
+// GRAFEL_DAEMON_ROOT to a private temp dir for the lifetime of this test
+// binary. realStoreDir() then resolves to a store that ONLY this test
+// binary's own code can write to, so the detector is immune to other
+// packages entirely while still catching cmd/grafel's own leaks (its
+// actual purpose).
 import (
 	"fmt"
 	"os"
@@ -19,6 +34,19 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	tmpHome, err := os.MkdirTemp("", "grafel-cmd-grafel-testmain-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[#2083 leak-detector] failed to create isolated home: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpHome)
+
+	isolatedGrafelHome := filepath.Join(tmpHome, ".grafel")
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+	os.Setenv("GRAFEL_HOME", isolatedGrafelHome)
+	os.Setenv("GRAFEL_DAEMON_ROOT", isolatedGrafelHome)
+
 	storeDir := realStoreDir()
 	before := snapshotStore(storeDir)
 
@@ -28,7 +56,7 @@ func TestMain(m *testing.M) {
 	leaked := diffSets(before, after)
 	if len(leaked) > 0 {
 		fmt.Fprintf(os.Stderr,
-			"\n[#2083 leak-detector] %d new entr%s in real store %s after test run:\n",
+			"\n[#2083 leak-detector] %d new entr%s in isolated store %s after test run:\n",
 			len(leaked), pluralY(len(leaked)), storeDir)
 		for _, e := range leaked {
 			fmt.Fprintf(os.Stderr, "  %s\n", e)
@@ -43,12 +71,14 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	os.RemoveAll(tmpHome)
 	os.Exit(code)
 }
 
-// realStoreDir returns the store path the daemon would use when no env
-// overrides are set — i.e. the real ~/.grafel/store/ on this host.
-// We read it without setting any env vars so we get the user's real path.
+// realStoreDir returns the store path the daemon would resolve given the
+// current HOME/USERPROFILE. TestMain pins those to an isolated temp dir
+// before calling this, so in practice this returns THIS test binary's own
+// private store, not the developer's real ~/.grafel/store/.
 func realStoreDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
