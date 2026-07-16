@@ -222,6 +222,37 @@ func topicReposTouched(groups ...[]topicNeighbor) []string {
 	return out
 }
 
+// tryMessagingNeighbors implements the #5782 ask #3 default-direction fix: when
+// grafel_related is called with direction=neighbors/both (or no direction at
+// all — the tool's own default), an agent has no reason to know about the
+// messaging discriminator value. If entity_id resolves to a SCOPE.MessageTopic
+// or SCOPE.ChannelBinding, return the messaging-aware view instead of letting
+// the generic CALLS-only neighbors handler return an empty result. Returns nil
+// (meaning: fall through to the generic handler) when entity_id is missing,
+// the group can't be resolved, or the entity is neither kind — callers of this
+// function must NOT surface resolveAndGroup errors themselves, since a nil
+// return here is expected to be silently followed by the normal neighbors
+// path, which will produce its own, better-contextualized error.
+func (s *Server) tryMessagingNeighbors(req mcpapi.CallToolRequest) *mcpapi.CallToolResult {
+	entityID := argString(req, "entity_id", "")
+	if entityID == "" {
+		return nil
+	}
+	_, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil || lg == nil {
+		return nil
+	}
+	if seed := resolveTopicSeed(lg, entityID); seed != nil {
+		out := messagingRelatedStructured(lg, entityID)
+		out["direction"] = "neighbors"
+		return jsonResult(out)
+	}
+	if seed := resolveChannelBindingSeed(lg, entityID); seed != nil {
+		return jsonResult(channelBindingNeighborsStructured(seed))
+	}
+	return nil
+}
+
 // handleMessagingRelated implements grafel_related direction=messaging (#5782):
 // a topic's producers / consumers / delivery handlers across the whole group.
 func (s *Server) handleMessagingRelated(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -233,10 +264,19 @@ func (s *Server) handleMessagingRelated(_ context.Context, req mcpapi.CallToolRe
 	if errRes != nil {
 		return errRes, nil
 	}
+	return jsonResult(messagingRelatedStructured(lg, entityID)), nil
+}
 
+// messagingRelatedStructured is the non-wire variant of handleMessagingRelated
+// (mirrors findCallersStructured, #2325 pattern). Factored out so the
+// direction=neighbors default path (handleCoreRelated, #5782 ask #3) can reuse
+// the identical topic traversal without round-tripping through wire bytes, and
+// so it can override the `direction` field on the way out (the caller asked
+// for neighbors, not explicitly for messaging).
+func messagingRelatedStructured(lg *LoadedGroup, entityID string) map[string]any {
 	seed := resolveTopicSeed(lg, entityID)
 	if seed == nil {
-		return jsonResult(map[string]any{
+		return map[string]any{
 			"entity_id": entityID,
 			"direction": "messaging",
 			"resolved":  false,
@@ -247,11 +287,11 @@ func (s *Server) handleMessagingRelated(_ context.Context, req mcpapi.CallToolRe
 			"reason": fmt.Sprintf("no SCOPE.MessageTopic matched %q by id or name. "+
 				"direction=messaging expects a message-topic entity; "+
 				"use grafel_orient view=topology to list the group's topics.", entityID),
-		}), nil
+		}
 	}
 
 	producers, consumers, handlers := collectTopicNeighbors(lg, seed.name, seed.repo.Repo)
-	return jsonResult(map[string]any{
+	return map[string]any{
 		"entity_id": prefixedID(seed.repo.Repo, seed.id),
 		"topic":     seed.name,
 		"kind":      "message_topic",
@@ -265,7 +305,113 @@ func (s *Server) handleMessagingRelated(_ context.Context, req mcpapi.CallToolRe
 		"repos":     topicReposTouched(producers, consumers, handlers),
 		"tip": "producers PUBLISH_TO the topic; consumers SUBSCRIBE_TO it; handlers receive DELIVERS_TO. " +
 			"cross_repo=true marks a counterpart in a sibling repo.",
-	}), nil
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ChannelBinding neighbors (#5782 ask #3 / #5) — grafel_related
+// direction=neighbors on a SCOPE.ChannelBinding.
+// ---------------------------------------------------------------------------
+
+// isChannelBindingEntity reports whether e is a config-side channel-binding
+// node (#5782/ADR-0025).
+func isChannelBindingEntity(e *graph.Entity) bool {
+	return e != nil && e.Kind == string(types.EntityKindChannelBinding)
+}
+
+// channelBindingSeed is a resolved SCOPE.ChannelBinding entity.
+type channelBindingSeed struct {
+	repo *LoadedRepo
+	id   string
+	name string
+}
+
+// resolveChannelBindingSeed resolves entity_id to a SCOPE.ChannelBinding,
+// mirroring resolveTopicSeed's id-then-name resolution. ChannelBinding edges
+// (BINDS_CHANNEL / BINDS_TOPIC) are intra-repo, so unlike topics there is no
+// cross-repo Name union to perform here.
+func resolveChannelBindingSeed(lg *LoadedGroup, entityID string) *channelBindingSeed {
+	repoHint, local := splitPrefixed(entityID)
+	probe := local
+	if probe == "" {
+		probe = entityID
+	}
+	repos := reposToConsider(lg, nil)
+
+	for _, r := range repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		if repoHint != "" && r.Repo != repoHint {
+			continue
+		}
+		if e := r.getByID()[probe]; isChannelBindingEntity(e) {
+			return &channelBindingSeed{repo: r, id: e.ID, name: e.Name}
+		}
+	}
+	for _, r := range repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if isChannelBindingEntity(e) && (e.Name == probe || e.QualifiedName == probe || e.Name == entityID) {
+				return &channelBindingSeed{repo: r, id: e.ID, name: e.Name}
+			}
+		}
+	}
+	return nil
+}
+
+// channelBindingNeighborsStructured walks seed's outbound BINDS_CHANNEL /
+// BINDS_TOPIC edges and returns its bound operation(s) and topic(s). Both
+// edges are intra-repo (the ChannelBinding config row lives in the same repo
+// as the SCOPE.Operation / SCOPE.MessageTopic it binds), so a single
+// per-repo adjacency walk is sufficient — no lg.Links join needed.
+func channelBindingNeighborsStructured(seed *channelBindingSeed) map[string]any {
+	r := seed.repo
+	channels, topics := []topicNeighbor{}, []topicNeighbor{}
+	for _, out := range r.getAdjacency().Outgoing(seed.id) {
+		var list *[]topicNeighbor
+		var edgeKind string
+		switch strings.ToUpper(out.kind) {
+		case string(types.RelationshipKindBindsChannel):
+			list, edgeKind = &channels, "BINDS_CHANNEL"
+		case string(types.RelationshipKindBindsTopic):
+			list, edgeKind = &topics, "BINDS_TOPIC"
+		default:
+			continue
+		}
+		e := r.getByID()[out.target]
+		if e == nil {
+			continue
+		}
+		*list = append(*list, topicNeighbor{
+			EntityID: prefixedID(r.Repo, e.ID),
+			Name:     e.Name,
+			Kind:     stripScopePrefix(e.Kind),
+			Repo:     r.Repo,
+			File:     e.SourceFile,
+			Line:     e.StartLine,
+			EdgeKind: edgeKind,
+		})
+	}
+	sortTopicNeighbors(channels)
+	sortTopicNeighbors(topics)
+
+	return map[string]any{
+		"entity_id": prefixedID(r.Repo, seed.id),
+		"name":      seed.name,
+		"kind":      "channel_binding",
+		"direction": "neighbors",
+		"resolved":  true,
+		"repo":      r.Repo,
+		"channels":  channels,
+		"topics":    topics,
+		"count":     len(channels) + len(topics),
+		"tip": "channels are the bound SCOPE.Operation (BINDS_CHANNEL); topics are the bound " +
+			"SCOPE.MessageTopic (BINDS_TOPIC).",
+	}
 }
 
 // ---------------------------------------------------------------------------

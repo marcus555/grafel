@@ -1366,10 +1366,13 @@ func (s *Server) registerTools() {
 	// direction= routes over callers/callees/neighbours/navigation. Default
 	// callers — the hot "who calls this?" case.
 	s.addTool(mcpapi.NewTool("grafel_related",
-		mcpapi.WithDescription("Entities related to X. direction=callers(def)|callees|neighbors|uses|used_by."),
+		mcpapi.WithDescription("Entities related to X. direction=callers(def)|callees|neighbors|uses|used_by|msg"),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithString("direction", mcpapi.DefaultString("callers"),
-			mcpapi.Description("callers=who calls it; callees=what it calls; neighbors=both dirs; uses=NAVIGATES_TO out; used_by=NAVIGATES_TO in.")),
+			mcpapi.Description("callers=who calls it; callees=what it calls; neighbors=both dirs (also messaging-aware: "+
+				"a SCOPE.MessageTopic or SCOPE.ChannelBinding auto-resolves to its messaging/binding neighbors); "+
+				"uses=NAVIGATES_TO out; used_by=NAVIGATES_TO in; messaging=a SCOPE.MessageTopic's producers/consumers/"+
+				"handlers across every repo that touches it (cross-repo pub/sub).")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithArray("fields"),

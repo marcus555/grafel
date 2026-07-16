@@ -1307,7 +1307,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				// #3897: full semantic, non-structural edge set (JOINS_COLLECTION,
 				// GRAPH_RELATES, DEPENDS_ON_SERVICE, THROWS/CATCHES, DATA_FLOWS_TO,
 				// …). Generalizes the DI-only #3870 projection; omitted when empty.
-				if sem := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind); len(sem) > 0 {
+				if sem := inspectSemanticEdgesFull(lg, r, e, scopeIsOne); len(sem) > 0 {
 					out["semantic_edges"] = sem
 				}
 				// #2642: metadata block with index provenance.
@@ -1387,7 +1387,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// #3897: full semantic, non-structural edge set (JOINS_COLLECTION,
 	// GRAPH_RELATES, DEPENDS_ON_SERVICE, THROWS/CATCHES, DATA_FLOWS_TO, …).
 	// Generalizes the DI-only #3870 projection; omitted when empty.
-	if sem := inspectSemanticEdges(m.repo, m.ent, scopeIsOne, isSemanticEdgeKind); len(sem) > 0 {
+	if sem := inspectSemanticEdgesFull(lg, m.repo, m.ent, scopeIsOne); len(sem) > 0 {
 		out["semantic_edges"] = sem
 	}
 	// #2642: metadata block with index provenance.
@@ -1824,6 +1824,17 @@ var semanticEdgeKinds = map[string]struct{}{
 	// any isSemanticEdgeKind). The outbound walk (Section → code) already
 	// traversed every out-edge, so this makes the edge_kind label symmetric.
 	string(types.RelationshipKindMentions): {},
+	// #5782 (ADR-0025) ask #5: BINDS_CHANNEL / BINDS_TOPIC are the config↔code
+	// and config↔topic join edges emitted by the ChannelBinding recognizer.
+	// They were left out of this set at #5782's initial cut even though they
+	// are intra-repo edges inspectSemanticEdges already walks — inspecting a
+	// SCOPE.ChannelBinding returned NO semantic_edges at all, though the edges
+	// exist on the graph (confirmed via cypher export). Adding them here is
+	// sufficient; no cross-repo handling is needed (unlike PUBLISHES_TO/
+	// SUBSCRIBES_TO/DELIVERS_TO below), because a ChannelBinding's bound
+	// operation/topic always live in the SAME repo as the binding row.
+	string(types.RelationshipKindBindsChannel): {},
+	string(types.RelationshipKindBindsTopic):   {},
 }
 
 // isSemanticEdgeKind reports whether k is one of the projected semantic edge
@@ -1898,6 +1909,76 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+// inspectSemanticEdgesFull wraps inspectSemanticEdges and, for a
+// SCOPE.MessageTopic entity, folds in the cross-repo PUBLISHES_TO/
+// SUBSCRIBES_TO/DELIVERS_TO counterparts (#5782 ask #5).
+//
+// inspectSemanticEdges walks only lr's OWN Doc.Relationships. A MessageTopic
+// is a PER-REPO entity keyed by a broker-prefixed Name (the same Name appears
+// as a separate node in every repo that touches the topic, per
+// messaging_related_5782.go); the cross-repo publisher<->subscriber join lives
+// in lg.Links, not in any single repo's adjacency. So inspecting the topic
+// from the producer repo showed only its local PUBLISHES_TO edge and never the
+// sibling repo's SUBSCRIBES_TO/DELIVERS_TO — even though grafel_related
+// direction=messaging (collectTopicNeighbors) already unions all of it. This
+// reuses that same traversal rather than re-walking lg.Links here.
+func inspectSemanticEdgesFull(lg *LoadedGroup, r *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	out := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind)
+	if lg == nil || r == nil || !isMessageTopicEntity(e) {
+		return out
+	}
+
+	seen := map[string]bool{}
+	key := func(kind, direction, other string) string { return kind + "|" + direction + "|" + other }
+	for _, row := range out {
+		k, _ := row["kind"].(string)
+		d, _ := row["direction"].(string)
+		o, _ := row["other"].(string)
+		seen[key(strings.ToUpper(k), d, o)] = true
+	}
+
+	// otherFor normalizes a topicNeighbor's always-prefixed EntityID to match
+	// inspectSemanticEdges's convention: unprefixed when scopeIsOne AND the
+	// neighbor is in r's own repo, else repo-prefixed.
+	otherFor := func(n topicNeighbor) string {
+		if scopeIsOne {
+			if rp, local := splitPrefixed(n.EntityID); rp == r.Repo {
+				return local
+			}
+		}
+		return n.EntityID
+	}
+	addRow := func(n topicNeighbor, kind, direction string) {
+		other := otherFor(n)
+		k := key(kind, direction, other)
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		if out == nil {
+			out = []map[string]any{}
+		}
+		out = append(out, map[string]any{
+			"kind":      kind,
+			"direction": direction,
+			"other":     other,
+			"line":      0,
+		})
+	}
+
+	producers, consumers, handlers := collectTopicNeighbors(lg, e.Name, r.Repo)
+	for _, n := range producers {
+		addRow(n, string(types.RelationshipKindPublishesTo), "inbound")
+	}
+	for _, n := range consumers {
+		addRow(n, string(types.RelationshipKindSubscribesTo), "inbound")
+	}
+	for _, n := range handlers {
+		addRow(n, string(types.RelationshipKindDeliversTo), "outbound")
 	}
 	return out
 }

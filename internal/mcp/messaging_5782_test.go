@@ -46,9 +46,15 @@ func newMessagingTestServer(t *testing.T) *Server {
 		[]graph.Entity{
 			{ID: "op:placeOrder", Name: "OrderService.placeOrder", Kind: "SCOPE.Operation", SourceFile: "order_service.go", StartLine: 12, QualifiedName: "OrderService.placeOrder"},
 			{ID: "topic:orders", Name: topicName, Kind: "SCOPE.MessageTopic", SourceFile: ""},
+			{
+				ID: "cb:orders-out", Name: "orders-out", Kind: "SCOPE.ChannelBinding", SourceFile: "application.properties", StartLine: 1,
+				Properties: map[string]string{"channel": "orders-out", "direction": "outgoing", "connector": "smallrye-kafka", "topic": topicName},
+			},
 		},
 		[]graph.Relationship{
 			{ID: "pub:1", FromID: "op:placeOrder", ToID: "topic:orders", Kind: "PUBLISHES_TO"},
+			{ID: "bindch:1", FromID: "cb:orders-out", ToID: "op:placeOrder", Kind: "BINDS_CHANNEL"},
+			{ID: "bindtop:1", FromID: "cb:orders-out", ToID: "topic:orders", Kind: "BINDS_TOPIC"},
 		},
 	)
 	producerDoc.Repo = "producer"
@@ -170,6 +176,175 @@ func TestCoreRelated_ExistingDirectionsUnchanged(t *testing.T) {
 	callers, _ := out["callers"].([]any)
 	if len(callers) == 0 {
 		t.Fatalf("callers direction regressed: expected FuncA, got %+v", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #5782 (issue #5782 asks #3 / #5) — agent-facing query-surface gaps.
+// ---------------------------------------------------------------------------
+
+// TestRelated_NeighborsDefaultResolvesMessageTopic is fix A: an agent that
+// calls grafel_related with NO direction (or direction=neighbors) on a
+// SCOPE.MessageTopic must not see the empty {callers:[],callees:[]} the
+// generic CALLS-only neighbors handler returns for a topic — it should get
+// the same cross-repo producers/consumers/handlers view as direction=messaging.
+func TestRelated_NeighborsDefaultResolvesMessageTopic(t *testing.T) {
+	srv := newMessagingTestServer(t)
+
+	// direction=neighbors — an agent's natural "what's connected to this?"
+	// call, previously an empty {callers:[],callees:[]} for a topic.
+	out := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "neighbors",
+		"entity_id": "kafka:orders.placed",
+	})
+	if got, _ := out["direction"].(string); got != "neighbors" {
+		t.Errorf("expected direction=neighbors echoed back (not messaging), got %q: %+v", got, out)
+	}
+	producers := collectNames(out["producers"])
+	consumers := collectNames(out["consumers"])
+	if repo := producers["OrderService.placeOrder"]; repo != "producer" {
+		t.Errorf("direction=neighbors on a MessageTopic must surface producers, got %+v", out)
+	}
+	if repo := consumers["InventoryConsumer.onOrder"]; repo != "consumer" {
+		t.Errorf("direction=neighbors on a MessageTopic must surface cross-repo consumers, got %+v", out)
+	}
+	if n, _ := out["count"].(float64); n <= 0 {
+		t.Errorf("direction=neighbors on a MessageTopic must not return an empty result, got %+v", out)
+	}
+
+	// direction=both takes the same path (the two discriminator values are
+	// synonyms upstream of the messaging-aware resolution).
+	out2 := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "both",
+		"entity_id": "kafka:orders.placed",
+	})
+	if n, _ := out2["count"].(float64); n <= 0 {
+		t.Errorf("direction=both on a MessageTopic must not return an empty result, got %+v", out2)
+	}
+}
+
+// TestRelated_NeighborsDefaultResolvesChannelBinding is fix A's ChannelBinding
+// case: direction=neighbors on a SCOPE.ChannelBinding surfaces its bound
+// channel (BINDS_CHANNEL) and topic (BINDS_TOPIC).
+func TestRelated_NeighborsDefaultResolvesChannelBinding(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "neighbors",
+		"entity_id": "producer::cb:orders-out",
+	})
+	if got, _ := out["kind"].(string); got != "channel_binding" {
+		t.Fatalf("expected kind=channel_binding, got %+v", out)
+	}
+	channels := collectNames(out["channels"])
+	topics := collectNames(out["topics"])
+	if _, ok := channels["OrderService.placeOrder"]; !ok {
+		t.Errorf("expected bound channel OrderService.placeOrder, got channels=%+v", channels)
+	}
+	if _, ok := topics["kafka:orders.placed"]; !ok {
+		t.Errorf("expected bound topic kafka:orders.placed, got topics=%+v", topics)
+	}
+}
+
+// TestRelated_MessagingDirectionStillDocumentedAndWorks guards that adding
+// the neighbors auto-resolution did not regress the explicit
+// direction=messaging path.
+func TestRelated_MessagingDirectionStillDocumentedAndWorks(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "messaging",
+		"entity_id": "kafka:orders.placed",
+	})
+	if got, _ := out["direction"].(string); got != "messaging" {
+		t.Errorf("explicit direction=messaging must echo back direction=messaging, got %q", got)
+	}
+}
+
+// TestInspect_MessageTopic_IncludesCrossRepoSemanticEdges is fix B's topic
+// case: inspecting the topic from the PRODUCER repo must include the
+// consumer repo's SUBSCRIBES_TO/DELIVERS_TO, not just the local PUBLISHES_TO.
+func TestInspect_MessageTopic_IncludesCrossRepoSemanticEdges(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleGetNode, map[string]any{
+		"entity_id": "producer::topic:orders",
+	})
+	sem, _ := out["semantic_edges"].([]any)
+	if len(sem) == 0 {
+		t.Fatalf("expected semantic_edges on the topic, got none: %+v", out)
+	}
+	var haveSub, haveDeliver, havePub bool
+	for _, row := range sem {
+		m, _ := row.(map[string]any)
+		kind, _ := m["kind"].(string)
+		switch kind {
+		case "SUBSCRIBES_TO":
+			haveSub = true
+		case "DELIVERS_TO":
+			haveDeliver = true
+		case "PUBLISHES_TO":
+			havePub = true
+		}
+	}
+	if !havePub {
+		t.Errorf("expected local PUBLISHES_TO edge, semantic_edges=%v", sem)
+	}
+	if !haveSub {
+		t.Errorf("expected cross-repo SUBSCRIBES_TO edge folded in, semantic_edges=%v", sem)
+	}
+	if !haveDeliver {
+		t.Errorf("expected cross-repo DELIVERS_TO edge folded in, semantic_edges=%v", sem)
+	}
+}
+
+// TestInspect_ChannelBinding_HasSemanticEdges is fix B's ChannelBinding case:
+// inspecting a ChannelBinding must include its BINDS_CHANNEL/BINDS_TOPIC edges.
+func TestInspect_ChannelBinding_HasSemanticEdges(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleGetNode, map[string]any{
+		"entity_id": "producer::cb:orders-out",
+	})
+	sem, _ := out["semantic_edges"].([]any)
+	if len(sem) == 0 {
+		t.Fatalf("expected semantic_edges on the ChannelBinding, got none: %+v", out)
+	}
+	var haveChannel, haveTopic bool
+	for _, row := range sem {
+		m, _ := row.(map[string]any)
+		switch m["kind"] {
+		case "BINDS_CHANNEL":
+			haveChannel = true
+		case "BINDS_TOPIC":
+			haveTopic = true
+		}
+	}
+	if !haveChannel {
+		t.Errorf("expected BINDS_CHANNEL edge, semantic_edges=%v", sem)
+	}
+	if !haveTopic {
+		t.Errorf("expected BINDS_TOPIC edge, semantic_edges=%v", sem)
+	}
+}
+
+// TestBM25_FindsChannelBindingByNaturalLanguage is fix C: a natural-language
+// query mentioning the binding's direction/connector/topic (not just the bare
+// channel name) must rank the ChannelBinding entity via BM25 — previously
+// only search=substring + kind_filter=SCOPE.ChannelBinding could find it.
+func TestBM25_FindsChannelBindingByNaturalLanguage(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	r := srv.State.groups["test"].Repos["producer"]
+	idx := r.getBM25()
+	if idx == nil {
+		t.Fatal("nil BM25 index")
+	}
+	hits := idx.Search("smallrye kafka outgoing channel binding", 10)
+	found := false
+	for _, h := range hits {
+		if h.Entity != nil && h.Entity.Kind == "SCOPE.ChannelBinding" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected the ChannelBinding entity to be found via bm25 natural-language search, hits=%+v", hits)
 	}
 }
 

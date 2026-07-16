@@ -107,7 +107,7 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 //
 //	callers (default) → handleFindCallers   (inbound callers)
 //	callees           → handleFindCallees   (outbound callees)
-//	neighbors         → handleNeighbors(direction=both)
+//	neighbors         → handleNeighbors(direction=both), messaging-aware
 //	uses              → handleNavigates(direction=outgoing)  (NAVIGATES_TO out)
 //	used_by           → handleNavigates(direction=incoming)  (NAVIGATES_TO in)
 //	messaging         → handleMessagingRelated (topic pub/sub/delivery, cross-repo)
@@ -118,6 +118,17 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 // dead-end on the first repo holding the resolved entity, so a topic whose
 // counterparts live in sibling repos surfaced nothing; the messaging case folds
 // both the per-repo adjacency and the cross-repo lg.Links topic joins.
+//
+// #5782 ask #3 (agent-facing gap): direction=messaging is the DISCOVERABLE
+// value now (documented in the tool schema), but an agent asking the generic
+// "what's connected to this?" question naturally omits direction and gets the
+// default neighbors/both — which, for a SCOPE.MessageTopic or
+// SCOPE.ChannelBinding, used to return an empty {callees:[],callers:[]} because
+// those kinds have no CALLS edges. neighbors now resolves the entity first: a
+// MessageTopic routes to the same cross-repo messaging traversal as
+// direction=messaging, and a ChannelBinding routes to its bound
+// channel/topic (BINDS_CHANNEL/BINDS_TOPIC). Anything else falls through to
+// the unchanged generic neighbors handler.
 func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("direction", argString(req, "direction", ""),
 		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by", "messaging", "topic", "pubsub"},
@@ -130,6 +141,9 @@ func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolReque
 	case "messaging", "topic", "pubsub":
 		return s.handleMessagingRelated(ctx, req)
 	case "neighbors", "both":
+		if res := s.tryMessagingNeighbors(req); res != nil {
+			return res, nil
+		}
 		// handleNeighbors reads its OWN `direction` (in|out|both); the outer
 		// discriminator value "neighbors" is not a valid inner value, so rewrite.
 		return s.handleNeighbors(ctx, reqWithArgs(req, map[string]any{"direction": "both"}))

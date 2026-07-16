@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // BM25 standard parameters.
@@ -189,6 +190,22 @@ func buildDocTerms(e *graph.Entity) docTerms {
 				}
 			}
 		}
+	}
+	// #5782 (ADR-0025) ask #5: a SCOPE.ChannelBinding's Name is just the bare
+	// channel value (e.g. "orders-out") — nothing in the indexed text says
+	// "channel", "binding", "topic", or names its direction/bound topic, so a
+	// natural-language bm25 query ("what channel bindings connect config to
+	// kafka topics") never surfaces it even though the entity exists (it was
+	// only reachable via search=substring + kind_filter=SCOPE.ChannelBinding).
+	// Fold the channel/direction/topic/connector properties in as additional
+	// searchable text (docstring-weighted: author-adjacent metadata, not an
+	// identifier), plus the literal words "channel"/"binding" so the kind
+	// itself is a matchable term.
+	if e.Kind == string(types.EntityKindChannelBinding) {
+		add("channel binding", weightDocstring, false)
+		add(e.Properties["direction"], weightDocstring, false)
+		add(e.Properties["topic"], weightDocstring, false)
+		add(e.Properties["connector"], weightDocstring, false)
 	}
 	return d
 }
