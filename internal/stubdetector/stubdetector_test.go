@@ -62,6 +62,25 @@ func TestScore_BothHaveEffects_Implemented(t *testing.T) {
 	}
 }
 
+// ADR-0025 §2 / #5782 audit: a message_publish-only effect set (e.g. an
+// @Outgoing/Emitter.send method) must be classified as implemented/impure —
+// not mistaken for a pure stub — and treated as a strong ("high confidence")
+// signal on par with db_write/http_out, since it is an externally observable
+// side effect.
+func TestScore_MessagePublishOnly_ImplementedNotStub(t *testing.T) {
+	r := Score(Input{
+		Endpoint:      "OUTGOING orders-out",
+		V3Effects:     eff(true, "message_publish"),
+		OracleEffects: eff(true, "message_publish"),
+	})
+	if r.Verdict != VerdictImplemented {
+		t.Fatalf("verdict = %q, want implemented (message_publish is a real effect, not pure)", r.Verdict)
+	}
+	if r.Confidence < 0.9 {
+		t.Errorf("message_publish should be high-confidence implemented like db_write/http_out, got %.2f", r.Confidence)
+	}
+}
+
 // v3 has effects even though oracle is pure → still implemented (v3 does work).
 func TestScore_V3HasEffectsOraclePure_Implemented(t *testing.T) {
 	r := Score(Input{

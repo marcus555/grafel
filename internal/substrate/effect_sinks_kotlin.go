@@ -24,6 +24,9 @@
 //     / writeString / newOutputStream / createFile /
 //     createDirectories / delete / move / copy
 //   - mutation  : `this.<field> = ...` assignment inside a method
+//   - message_publish : SmallRye reactive-messaging publish sites —
+//     `Emitter.send(...)` / `MutinyEmitter.send(...)` / `.sendMessage(...)`,
+//     and any `@Outgoing("...")`-annotated function (ADR-0025 §2).
 //
 // Function attribution uses the nearest preceding `fun name(` header
 // (with optional visibility, suspend, inline, infix, operator, override,
@@ -97,6 +100,24 @@ var kotlinMutationRe = regexp.MustCompile(
 	`\bthis\s*\.\s*[A-Za-z_][\w]*\s*=(?:[^=])`,
 )
 
+// kotlinMsgPublishRe matches SmallRye reactive-messaging publish sites
+// (ADR-0025 §2), mirroring javaMsgPublishRe: Emitter.send(...) /
+// Emitter.sendMessage(...) via the "emitter"-scoped receiver-identifier
+// shape (covers MutinyEmitter), and an @Outgoing("channel")-annotated
+// function (the annotated `fun` is itself a publisher via its return
+// value even without an explicit .send call). kotlinFuncHeaderRe's
+// modifier group likewise absorbs a leading annotation into the `fun`
+// header it attributes, so nearestHeader binds the annotation match to
+// the annotated function.
+//
+// The receiver is scoped to "emitter"-named identifiers on purpose — an
+// unscoped `.sendMessage(` also matches Android Handler.sendMessage and
+// chat-SDK publishers that are not SmallRye reactive messaging.
+var kotlinMsgPublishRe = regexp.MustCompile(
+	`\b\w*[Ee]mitter\w*\s*\.\s*send(?:Message)?\s*\(` +
+		`|@Outgoing\s*\(\s*"[^"]*"\s*\)`,
+)
+
 func sniffEffectsKotlin(content string) []EffectMatch {
 	if content == "" {
 		return nil
@@ -110,6 +131,7 @@ func sniffEffectsKotlin(content string) []EffectMatch {
 	out = appendKotlinMatches(out, content, headers, kotlinFSWriteRe, EffectFSWrite, "File.write/Files.write", 1.0)
 	out = appendKotlinMatches(out, content, headers, kotlinProcessRe, EffectFSWrite, "ProcessBuilder", 0.9)
 	out = appendKotlinMatches(out, content, headers, kotlinMutationRe, EffectMutation, "this.field=", 0.7)
+	out = appendKotlinMatches(out, content, headers, kotlinMsgPublishRe, EffectMessagePublish, "smallrye.Emitter.send/@Outgoing", 0.9)
 	return out
 }
 

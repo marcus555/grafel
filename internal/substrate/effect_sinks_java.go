@@ -19,6 +19,11 @@
 //     / createDirectories / delete / move / copy,
 //     FileOutputStream(<...>), FileWriter(<...>)
 //   - mutation  : `this.<field> = ...` assignment inside a method body
+//   - message_publish : SmallRye reactive-messaging publish sites —
+//     `Emitter.send(...)` / `MutinyEmitter.send(...)` / `.sendMessage(...)`,
+//     and any `@Outgoing("...")`-annotated method (the method itself is a
+//     publisher via its return value, even with no explicit `.send` call).
+//     ADR-0025 §2.
 //
 // Function attribution uses the same nearest-header heuristic as the
 // other T1 sniffers.
@@ -89,6 +94,33 @@ var javaMutationRe = regexp.MustCompile(
 	`\bthis\s*\.\s*[A-Za-z_$][\w$]*\s*=(?:[^=])`,
 )
 
+// javaMsgPublishRe matches SmallRye reactive-messaging publish sites
+// (ADR-0025 §2):
+//
+//   - Emitter.send(...) / Emitter.sendMessage(...) — matched via the
+//     receiver-identifier shape (any identifier containing "emitter",
+//     case-insensitive on the leading letter, mirroring the other T1
+//     sniffers' receiver-name heuristic since there is no type table).
+//     This covers MutinyEmitter too (name contains "Emitter").
+//   - @Outgoing("channel") — the annotated method is itself a publisher
+//     via its return value, even with no explicit .send call in the
+//     body. javaMethodHeaderRe's modifier group already treats a leading
+//     annotation as part of the method header (its \s+ absorbs the
+//     newline to "public ... name("), so the header's attributed Line is
+//     the annotation's line — nearestHeader therefore binds this match to
+//     the annotated method itself, not the preceding one.
+//
+// The receiver is deliberately scoped to "emitter"-named identifiers: an
+// unscoped `.sendMessage(` also matches Android Handler.sendMessage,
+// JavaMail transport.sendMessage, and chat-SDK publishers, none of which
+// are SmallRye reactive messaging. Missing a non-"emitter"-named channel
+// field is an accepted precision trade for the reference slice — better a
+// precise miss than a confident false hit (ADR-0025 §2 is SmallRye-scoped).
+var javaMsgPublishRe = regexp.MustCompile(
+	`\b\w*[Ee]mitter\w*\s*\.\s*send(?:Message)?\s*\(` +
+		`|@Outgoing\s*\(\s*"[^"]*"\s*\)`,
+)
+
 func sniffEffectsJava(content string) []EffectMatch {
 	if content == "" {
 		return nil
@@ -101,6 +133,7 @@ func sniffEffectsJava(content string) []EffectMatch {
 	out = appendJavaMatches(out, content, headers, javaFSReadRe, EffectFSRead, "Files.read/FileInputStream", 1.0)
 	out = appendJavaMatches(out, content, headers, javaFSWriteRe, EffectFSWrite, "Files.write/FileOutputStream", 1.0)
 	out = appendJavaMatches(out, content, headers, javaMutationRe, EffectMutation, "this.field=", 0.7)
+	out = appendJavaMatches(out, content, headers, javaMsgPublishRe, EffectMessagePublish, "smallrye.Emitter.send/@Outgoing", 0.9)
 	return out
 }
 

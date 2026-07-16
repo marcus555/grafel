@@ -817,9 +817,10 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_orient", s.handleCoreOrient))
 
 	// #2764 — Phase 1A effect classification. Returns the union of
-	// db/http/fs/mutation effects for the named entity, plus per-effect
-	// confidence (0..1) and sink primitive tags. Pure functions report
-	// effects=[] with effect_source="pure" and a low confidence floor.
+	// db/http/fs/mutation/message_publish effects for the named entity,
+	// plus per-effect confidence (0..1) and sink primitive tags. Pure
+	// functions report effects=[] with effect_source="pure" and a low
+	// confidence floor.
 	s.addTool(mcpapi.NewTool("grafel_effects",
 		mcpapi.WithDescription("Effects + sinks; include=branches|effect_contexts (cond/loop+complexity)"),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
