@@ -175,16 +175,29 @@ const statusSubdir = "status"
 // disk I/O — see readFileWithRetry.
 var readFile = os.ReadFile
 
-// isRetryableSharingViolationFn defaults to the platform-specific
-// isRetryableSharingViolation (see sharing_violation_windows.go /
-// sharing_violation_other.go) but is a var so a darwin/linux test can inject
-// a fake classifier and exercise readFileWithRetry's retry control flow
-// without needing a real Windows syscall error.
-var isRetryableSharingViolationFn = isRetryableSharingViolation
+// isRetryableReplaceErrorFn defaults to the platform-specific
+// isRetryableReplaceError (see sharing_violation_windows.go /
+// sharing_violation_other.go) but is a var so a darwin/linux test can inject a
+// fake classifier and exercise both readFileWithRetry's and renameWithRetry's
+// retry control flow without needing a real Windows syscall error. Both the
+// read side (a concurrent os.Open racing a rename's replace) and the write
+// side (os.Rename replacing a file a reader holds open) share this one
+// classifier: on Windows both surface the same transient "replace an open
+// file" errors, and on POSIX it is a no-op so neither path retries.
+var isRetryableReplaceErrorFn = isRetryableReplaceError
+
+// renameFn is os.Rename, indirected so a test can inject a transient failure
+// (e.g. a simulated Windows ERROR_ACCESS_DENIED) without needing a real
+// syscall error — see renameWithRetry.
+var renameFn = os.Rename
+
+// renameRetrySleep is time.Sleep, indirected so a test can make the backoff a
+// no-op and exercise renameWithRetry's control flow without wall-clock delay.
+var renameRetrySleep = time.Sleep
 
 // readRetryAttempts/readRetryBackoff bound the retry Read performs when the
 // underlying read hits a transient sharing violation (Windows only — see
-// isRetryableSharingViolation). 5 attempts with a few-ms backoff is enough to
+// isRetryableReplaceError). 5 attempts with a few-ms backoff is enough to
 // ride out the brief window a concurrent Write's tmp+rename holds the file
 // handle on NTFS, without meaningfully delaying a genuinely failed read.
 const (
@@ -192,21 +205,51 @@ const (
 	readRetryBackoff  = 4 * time.Millisecond
 )
 
+// renameRetryAttempts/renameRetryBackoff bound the retry Write performs when
+// its atomic-publish os.Rename hits a transient replace-open-file error
+// (Windows only — see isRetryableReplaceError). These are DELIBERATELY DECOUPLED
+// from the read-side readRetry* budget and are much larger: the read path is a
+// single microsecond-scale ReadFile, but the write-side rename must OUTLAST a
+// concurrent reader that reopens the target in a tight loop (exactly what
+// TestWrite_ConcurrentSameRepo_NoTornRead does: 8 writers + a looping reader on
+// windows-latest). The rename can only land in the gap between the reader's
+// close and its next open, so we must stay patient long enough to catch one of
+// those gaps. 20 attempts × a small 10ms fixed backoff (no single sleep large)
+// gives a worst-case total blocking time of 19 sleeps × 10ms = 190ms before a
+// persistently failing rename returns the last error — patient enough to
+// reliably span a reopen loop's gaps on NTFS, yet firmly BOUNDED so the
+// daemon's single serialized statusWriter goroutine (the only caller of Write)
+// can never stall by more than ~190ms. On POSIX the classifier is a no-op and
+// the loop makes exactly one os.Rename call (unchanged behavior).
+const (
+	renameRetryAttempts = 20
+	renameRetryBackoff  = 10 * time.Millisecond
+)
+
 // readFileWithRetry wraps readFile with a short bounded retry when the error
-// is a transient sharing violation. On POSIX (darwin/linux) Write's
+// is a transient replace-open-file error. On POSIX (darwin/linux) Write's
 // tmp+rename is atomic at the filesystem level and a concurrent Read never
-// observes a sharing conflict, so isRetryableSharingViolation always returns
+// observes a sharing conflict, so isRetryableReplaceError always returns
 // false there and this degenerates to a single readFile call — identical
 // behavior to before this change. On Windows/NTFS, os.Rename's replace can
 // transiently deny a concurrent os.Open with ERROR_SHARING_VIOLATION; retrying
 // a few times with a short backoff lets the real status-plane poller ride out
 // that window instead of surfacing a spurious failure.
+//
+// NOTE: the shared isRetryableReplaceError classifier was broadened for the
+// write path to also match ERROR_ACCESS_DENIED, so Read INTENTIONALLY inherits
+// it too (previously Read retried only on ERROR_SHARING_VIOLATION). This is
+// deliberate and benign: a transient ACCESS_DENIED on a concurrent os.Open of a
+// same-user 0o600 status file is the same "reader raced the rename's replace"
+// window, so retrying it is strictly an improvement — never a way to mask a
+// genuine permission error, which would persist past the bounded retry and
+// still surface to the caller.
 func readFileWithRetry(path string) ([]byte, error) {
 	var data []byte
 	var err error
 	for attempt := 0; attempt < readRetryAttempts; attempt++ {
 		data, err = readFile(path)
-		if err == nil || !isRetryableSharingViolationFn(err) {
+		if err == nil || !isRetryableReplaceErrorFn(err) {
 			return data, err
 		}
 		if attempt < readRetryAttempts-1 {
@@ -214,6 +257,32 @@ func readFileWithRetry(path string) ([]byte, error) {
 		}
 	}
 	return data, err
+}
+
+// renameWithRetry is the write-side counterpart of readFileWithRetry (with its
+// own, larger renameRetry* budget — see above): it wraps the atomic-publish
+// rename with a bounded retry when the error is a transient replace-open-file
+// error. On POSIX os.Rename replaces the destination even while a reader holds
+// it open, so isRetryableReplaceError always returns false and this makes
+// exactly one renameFn call — identical behavior to a bare os.Rename. On
+// Windows/NTFS, renaming over a file a concurrent reader holds open can fail
+// with ERROR_ACCESS_DENIED (or ERROR_SHARING_VIOLATION); retrying with a small
+// backoff lets the publish land in a gap of the reader's reopen loop instead of
+// surfacing a spurious hard error. A non-retryable error (e.g. a cross-device
+// rename) returns immediately, and the loop is bounded (worst case ~190ms — see
+// renameRetryAttempts) so a writer can never hang.
+func renameWithRetry(from, to string) error {
+	var err error
+	for attempt := 0; attempt < renameRetryAttempts; attempt++ {
+		err = renameFn(from, to)
+		if err == nil || !isRetryableReplaceErrorFn(err) {
+			return err
+		}
+		if attempt < renameRetryAttempts-1 {
+			renameRetrySleep(renameRetryBackoff)
+		}
+	}
+	return err
 }
 
 // PathFor returns the deterministic on-disk path for repoPath's status file.
@@ -290,7 +359,7 @@ func Write(repoPath string, f *File) error {
 		cleanup()
 		return fmt.Errorf("statusfile: close tmp: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameWithRetry(tmp, path); err != nil {
 		cleanup()
 		return fmt.Errorf("statusfile: rename: %w", err)
 	}

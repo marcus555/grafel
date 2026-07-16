@@ -10,7 +10,7 @@ import (
 // violation (#5729-W1 follow-up: a concurrent os.Open during Write's
 // tmp+rename can hit ERROR_SHARING_VIOLATION on NTFS, and Read had no
 // retry). It cannot exercise the real Windows syscall error on this
-// platform, so it fakes isRetryableSharingViolation's "yes, retry" branch by
+// platform, so it fakes isRetryableReplaceError's "yes, retry" branch by
 // injecting a sentinel error through readFile and monkey-patching the
 // classifier for the duration of the test — proving readFileWithRetry's
 // control flow (retry N times, then return the last error) independent of
@@ -19,12 +19,12 @@ func TestReadFileWithRetry_RetriesOnSharingViolation(t *testing.T) {
 	sentinel := errors.New("simulated ERROR_SHARING_VIOLATION")
 
 	origReadFile := readFile
-	origClassifier := isRetryableSharingViolationFn
+	origClassifier := isRetryableReplaceErrorFn
 	t.Cleanup(func() {
 		readFile = origReadFile
-		isRetryableSharingViolationFn = origClassifier
+		isRetryableReplaceErrorFn = origClassifier
 	})
-	isRetryableSharingViolationFn = func(err error) bool {
+	isRetryableReplaceErrorFn = func(err error) bool {
 		return errors.Is(err, sentinel)
 	}
 
@@ -58,12 +58,12 @@ func TestReadFileWithRetry_ExhaustsAndReturnsLastError(t *testing.T) {
 	sentinel := errors.New("simulated persistent ERROR_SHARING_VIOLATION")
 
 	origReadFile := readFile
-	origClassifier := isRetryableSharingViolationFn
+	origClassifier := isRetryableReplaceErrorFn
 	t.Cleanup(func() {
 		readFile = origReadFile
-		isRetryableSharingViolationFn = origClassifier
+		isRetryableReplaceErrorFn = origClassifier
 	})
-	isRetryableSharingViolationFn = func(err error) bool {
+	isRetryableReplaceErrorFn = func(err error) bool {
 		return errors.Is(err, sentinel)
 	}
 
