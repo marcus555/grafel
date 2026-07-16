@@ -15,6 +15,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/client"
+	"github.com/cajasmota/grafel/internal/daemon/service"
 	"github.com/cajasmota/grafel/internal/process"
 )
 
@@ -97,6 +98,19 @@ daemon is currently up or down.`,
 // "the old daemon is gone and its on-disk artifacts are clean" as an explicit
 // precondition of start.
 func runDaemonRestart(out io.Writer) error {
+	// #5789: if an OS service (launchd/systemd/schtasks) is registered for
+	// THIS root, route straight through the service-manager-aware restart
+	// instead of the stop→wait→clear-pidfile→blind-fork sequence below. That
+	// sequence forks a manual, service-manager-blind daemon; during an
+	// update/restart window the OS service's own KeepAlive/Restart respawn
+	// races it over the pidfile+socket, and AcquirePIDFile's wedged-daemon
+	// reclaim can then SIGKILL one of the two mid-startup. service.Restart
+	// owns the correct unload→load→wait-ready dance internally, so none of
+	// the pidfile bookkeeping below is needed (or safe) on this path.
+	if serviceInstalledForThisRoot() {
+		return serviceRestartForThisRoot(out)
+	}
+
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return err
@@ -228,6 +242,31 @@ func runDaemonStartOpts(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool)
 		fmt.Fprintln(out, "daemon already running")
 		return nil
 	}
+
+	// #5789: before forking a manual, service-manager-blind daemon, check
+	// whether an OS service (launchd/systemd/schtasks) is registered for
+	// THIS root — i.e. whether `grafel install`/`update` already owns
+	// lifecycle management here. If so, route through the OS-service-aware
+	// restart instead: a manual fork here would go unregistered with the
+	// service manager, which then races it over the pidfile/socket via its
+	// own KeepAlive/Restart respawn. Only fall back to the manual fork when
+	// no OS service is registered (the dev/foreground case).
+	if serviceInstalledForThisRoot() {
+		return serviceRestartForThisRoot(out)
+	}
+
+	return manualForkStart(out, layout, maxRSSBudgetMB, noAutoCleanup)
+}
+
+// manualForkStart forks the current binary in daemon mode, detaches it, and
+// polls for socket readiness. This is the launchd/systemd/schtasks-BLIND
+// path: it must only run when no OS service is registered for this root
+// (issue #5789) — otherwise the forked child races the service manager's own
+// respawn over the pidfile/socket. Overridable for tests; production default
+// is defaultManualForkStart, invoked via the manualForkStart var below.
+var manualForkStart = defaultManualForkStart
+
+func defaultManualForkStart(out io.Writer, layout daemon.Layout, maxRSSBudgetMB int64, noAutoCleanup bool) error {
 	bin, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve own binary: %w", err)
@@ -291,6 +330,113 @@ func runDaemonStartOpts(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool)
 		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("daemon failed to become ready within %s (check %s)", budget, layout.LogPath)
+}
+
+// serviceInstalledForThisRoot reports whether an OS service (launchd on
+// macOS, systemd on Linux, Task Scheduler on Windows) is registered for THIS
+// daemon root — i.e. whether `grafel install`/`update` already owns
+// lifecycle management here. Overridable for tests; production default is
+// defaultServiceInstalledForThisRoot.
+var serviceInstalledForThisRoot = defaultServiceInstalledForThisRoot
+
+func defaultServiceInstalledForThisRoot() bool {
+	root, found, err := service.RegisteredRoot()
+	if err != nil {
+		// Reading the recorded root FAILED (parse/IO) — fail closed and fall
+		// back to the manual path rather than routing to a service we can't
+		// confirm.
+		return false
+	}
+
+	// Ownership guard (issue #5277 dimension). service.RegisteredRoot() returns
+	// the HOME baked into the unit — the darwin plist <key>HOME</key> and the
+	// systemd Environment=HOME= are BOTH os.UserHomeDir() (e.g. /Users/foo,
+	// /home/foo), NOT ~/.grafel. So the comparison MUST be on the HOME
+	// dimension, exactly like the uninstall guard
+	// (internal/install/daemon_guard.go uninstallTargetRoot), whose docstring
+	// notes the target must be resolved on the SAME dimension the unit files
+	// record: HOME. Comparing against layout.Root (~/.grafel) would never match
+	// and the gate would be a permanent no-op (the #5789 regression).
+	//
+	// When found==true but root=="" (a legacy unit with no baked HOME) OR
+	// found==false (Windows, whose registeredRoot is a stub, or no unit on
+	// disk) we CANNOT disprove ownership on the HOME dimension, so we do not
+	// bail here — we let service.Status() below be the authority on whether a
+	// service is actually installed for this user.
+	if found && root != "" {
+		if canonicalRoot(root) != canonicalRoot(targetHomeRoot()) {
+			// A service IS installed, but for a different HOME/user — not ours
+			// to route through.
+			return false
+		}
+	}
+
+	// service.Status() is the authoritative "is a service installed" check: on
+	// darwin/linux it stats the plist/unit; on Windows it stats the task XML
+	// and falls back to querying the scheduler. This is what makes the gate
+	// fire for a real Windows schtasks service despite registeredRoot being a
+	// stub there (found==false above).
+	st, err := service.Status(service.Options{})
+	if err != nil {
+		return false
+	}
+	return st.Installed
+}
+
+// targetHomeRoot resolves THIS process's HOME — the dimension
+// service.RegisteredRoot() records in the unit files. It mirrors
+// internal/install/daemon_guard.go uninstallTargetRoot: prefer the HOME env
+// var (so an isolated sandbox home is honoured) and fall back to
+// os.UserHomeDir(). Kept local to avoid importing the install package (and any
+// cycle) purely for one helper.
+func targetHomeRoot() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		return h
+	}
+	return ""
+}
+
+// canonicalRoot normalises a root path for comparison: trimmed, cleaned, and
+// lower-cased so the match is robust to spelling variants and case-insensitive
+// filesystems. Mirrors internal/install/daemon_guard.go canonicalRoot. An
+// empty input stays empty ("unknown").
+func canonicalRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	return strings.ToLower(filepath.Clean(root))
+}
+
+// serviceRestartForThisRoot performs the OS-service-aware restart (launchd
+// bootout→bootstrap / systemctl disable→enable / schtasks /end→/run) via
+// service.Restart, instead of forking a manual daemon that the service
+// manager doesn't know about. Overridable for tests; production default is
+// defaultServiceRestartForThisRoot.
+var serviceRestartForThisRoot = defaultServiceRestartForThisRoot
+
+func defaultServiceRestartForThisRoot(out io.Writer) error {
+	bin, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve own binary: %w", err)
+	}
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "OS service detected for this daemon; restarting via the OS service manager")
+	if _, err := service.Restart(service.Options{
+		BinPath:    bin,
+		SocketPath: layout.SocketPath,
+		LogDir:     layout.LogDir,
+	}); err != nil {
+		return fmt.Errorf("service restart: %w", err)
+	}
+	fmt.Fprintln(out, "daemon started")
+	return nil
 }
 
 // startupReadinessDefault is the time `grafel start` waits for the daemon
