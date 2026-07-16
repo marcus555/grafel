@@ -12,7 +12,7 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [0.1.8.1] — 2026-07-16
 
-**Patch: dashboard graph perf, Kafka topology/`kind_filter` fixes, a messaging config→code→topic foundation, and Windows/CI test hardening.**
+**Patch: dashboard graph perf, Kafka topology/`kind_filter` fixes, a messaging config→code→topic foundation, an MCP tool-accuracy sweep, and Windows/CI test hardening.**
 
 ### Added
 
@@ -26,10 +26,13 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 - **Capped level-of-detail graph responses project through compact integer adjacency before allocating edges** (#5779, thanks @marcus555) — ≈2× faster and ≈3.2× less memory on large graphs; the full/unlimited path is unchanged. Closes #5778.
 - **`grafel_orient view=topology` now defaults to a channel listing** (topics with publisher/consumer counts) instead of the orphan-publisher scan (#5781).
+- **MCP tool schema & description accuracy sweep (#5784):** an audit of all 22 consolidated tools found that the tool-consolidation had left per-`kind`/`action` parameters undeclared in the schemas — so ~30 params an absorbed handler actually reads were invisible to agents (e.g. `grafel_security only_missing`, `grafel_docgen_apply resolution`, `grafel_cross_links candidate_id`, `grafel_trace token_budget`, `min_confidence` default 0.7). Those are now declared (with conditionally-required ones flagged), all accepted enum values are advertised (e.g. `grafel_debt find_dead_code`/`import_cycles`), and inaccurate descriptions are corrected (`grafel_find_paths` no longer claims a confidence it doesn't return; `grafel_trace kind=effects` documents the method-vs-class caveat). A strengthened arg-coverage test guards against regressions.
 
 ### Fixed
 
 - **Topology & cross-repo topic queries recognize Kafka `MessageTopic` (#5781):** `isTopic` now matches `SCOPE.MessageTopic`, so `grafel_orient view=topology` and the orphan/topic-detail scans surface Kafka topics; the bm25 `grafel_find` path now *enforces* `kind_filter` (it was silently ignored); `cross_repo` returns per-repo topic nodes; and the `channels` consumer count now counts `DELIVERS_TO` from the topic end with handler de-duplication.
+- **MCP consolidated-tool functional bugs (#5784):** `grafel_patterns kind=template` and `grafel_docgen_apply kind=enrichments` no longer silently return empty — the umbrella `kind` discriminator collided with an absorbed handler's own `kind` filter (fixed by rewriting the inner filter param); `grafel_diff` now stamps the `aspect` key on all five aspects (it was dropped for four that route through the deferred-marshal path); and `grafel_subgraph mode` now validates its discriminator instead of silently falling back to the default on a typo.
+- **`grafel_orient view=overview` no longer overflows the response limit (#5783):** the overview is now bounded against the real serialized wire body (it previously capped an intermediate array that under-counted the TOON-encoded response, so the default still shipped ~74 KB), scaling per-repo detail so every repo still appears; the `token_budget` param (default 12000) is a hard cap on the delivered body, with a bounded truncation marker as the last resort.
 - **Windows status-file read reliability:** `statusfile.Read` retries on the transient `ERROR_SHARING_VIOLATION` that can occur during the tmp+rename publish window on NTFS; POSIX behavior is unchanged.
 - **CI/test hardening:** restored the `gofmt` gate; fixed four Windows-only test bugs (home isolation, JSON fixture path escaping, mmap handle release before temp-dir cleanup, POSIX-only `chmod` assumption); hardened three timing-fragile tests (volatile-timestamp comparison, a too-tight per-repo rebuild timeout, and a channel-length completion race); and self-scoped the `cmd/grafel` `#2083` leak-detector to an isolated home so a concurrent package's store write can no longer false-fail it under parallel `go test ./...`.
 
