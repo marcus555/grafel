@@ -817,13 +817,13 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("top_entities", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("top_edges", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("max_questions", mcpapi.DefaultNumber(12)),
-		// #5783: group-level byte budget on the overview payload. top_entities/
-		// top_edges/max_questions bound each repo block, but a group with many
-		// repos still multiplied those per-repo caps unboundedly. The budget is
-		// divided across repos so EVERY repo appears with proportionally less
-		// detail as the group grows (default ~64KB = the hard ceiling, so typical
-		// groups render in full); a truncated:true marker is a last-resort net.
-		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(16000)),
+		// #5783: hard cap on the FINAL serialized response (token_budget*4 bytes,
+		// clamped ≤64KB). Overview shrinks every repo's ranked lists to a shared
+		// per-list cap measured against the real TOON-encoded wire body so EVERY
+		// repo appears with proportionally less detail as the group grows; a
+		// truncated:true marker is a last-resort net. Default 12000 keeps the
+		// delivered body ≲48KB — comfortably under the client's tool-result limit.
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(12000)),
 		mcpapi.WithAny("topic_id"), // topology view
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),

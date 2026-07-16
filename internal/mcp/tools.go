@@ -2626,19 +2626,26 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 	}
 	// #5783: top_entities/top_edges/max_questions bound EACH repo block, but
 	// nothing bounded the OVERALL overview payload — a group with many repos
-	// multiplies those per-repo caps unboundedly (a 9-repo group at the
-	// default caps produced an 82KB single-line result that overflowed the MCP
-	// token limit even though every block individually honored its cap).
+	// multiplies those per-repo caps unboundedly (a 9-repo group produced an
+	// 82KB single-line result that overflowed the MCP token limit even though
+	// every block individually honored its cap).
 	//
 	// Overview must give a bird's-eye view of the WHOLE group, so instead of
-	// dropping whole repos we SCALE DETAIL: divide the group byte budget into a
-	// per-repo sub-budget (total/N) and shrink each repo's ranked lists to fit
-	// it, so EVERY repo appears with proportionally less detail as the group
-	// grows. Dropping repos behind a truncation marker becomes a last-resort
-	// safety net (capByRenderedBytes below) that should not fire for normal
-	// groups. Default budget sits at the 64KB hard ceiling so typical groups
-	// (≤ ~10 repos) render comfortably.
-	tokenBudget := argInt(req, "token_budget", 16000)
+	// dropping whole repos we SCALE DETAIL: shrink every repo's ranked lists to
+	// a shared per-list cap K so EVERY repo appears with proportionally less
+	// detail as the group grows. Dropping whole repos behind a truncation
+	// marker is a last-resort net for pathological groups only.
+	//
+	// CRITICAL (#5783 v0.1.8.1): the budget MUST be measured against the FINAL
+	// serialized response the client receives, not an intermediate array.
+	// jsonResult → finalizeDeferred TOON-encodes the `items` array and then
+	// JSON-escapes that whole schema-string into the {count,elapsed_ms,items}
+	// envelope; the nested key_entities/cross_cutting_edges quotes and braces
+	// get double-escaped, inflating the real body ~15% above json.Marshal(out).
+	// Capping json.Marshal(out) (the old capByRenderedBytes proxy) therefore
+	// let a 64KB "budget" ship a ~74KB body that still overflowed the client.
+	// We binary-search K against finalOrientBodyLen — the real wire size.
+	tokenBudget := argInt(req, "token_budget", 12000)
 	budgetBytes := tokenBudget * 4
 	if budgetBytes > 64*1024 {
 		budgetBytes = 64 * 1024
@@ -2646,6 +2653,7 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 
 	analyzed := make([]*graph.OrientationResult, 0, len(repos))
 	names := make([]string, 0, len(repos))
+	maxLen := 0
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
@@ -2653,77 +2661,105 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 		res := graph.AnalyzeOrientation(r.Doc.Entities, r.Doc.Relationships, opts)
 		analyzed = append(analyzed, &res)
 		names = append(names, r.Repo)
+		for _, n := range []int{len(res.KeyEntities), len(res.CrossCutEdges), len(res.Questions)} {
+			if n > maxLen {
+				maxLen = n
+			}
+		}
 	}
 
-	// Per-repo sub-budget: an even share of the total, so all repos fit.
-	perRepoBytes := budgetBytes
-	if len(analyzed) > 0 {
-		perRepoBytes = budgetBytes / len(analyzed)
+	// Binary-search the largest uniform per-list cap K whose FINAL wire body
+	// fits the budget. finalOrientBodyLen is monotonic in K (more entries ⇒
+	// larger body), so the search is well-defined. best>=0 means every repo
+	// appears (all lists capped to K); best<0 means even bare name-only blocks
+	// (K=0) overflow — a pathological group that falls to the drop path below.
+	best := -1
+	lo, hi := 0, maxLen
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		if finalOrientBodyLen(buildOrientBlocks(names, analyzed, mid)) <= budgetBytes {
+			best = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
 	}
 
-	out := make([]map[string]any, 0, len(analyzed)+1)
-	for i, res := range analyzed {
-		block := shrinkOrientBlock(names[i], res, perRepoBytes)
-		out = append(out, block)
-	}
-
-	// Last-resort safety net: even after per-repo shrink the assembled array
-	// (plus JSON overhead) must never exceed the hard ceiling. For pathological
-	// groups (hundreds of repos) where the minimal per-repo block still won't
-	// all fit, drop the tail behind a BOUNDED truncation marker — the marker's
-	// omitted_repos list is itself capped so it cannot blow the budget, and the
-	// whole result is re-checked after the marker is appended ([no-silent-caps]).
-	capped := capByRenderedBytes(out, budgetBytes, false)
-	if len(capped) < len(out) {
-		// Re-cap leaving headroom for the marker so appending it cannot push
-		// the total back over the ceiling — the marker is bounded below
-		// markerReserve by construction (capped omitted_repos + fixed text).
-		const markerReserve = 1024
-		capped = capByRenderedBytes(out, budgetBytes-markerReserve, false)
-		out = appendOrientTruncationMarker(capped, names[len(capped):], len(analyzed), tokenBudget, budgetBytes)
+	var out []map[string]any
+	if best >= 0 {
+		out = buildOrientBlocks(names, analyzed, best)
 	} else {
-		out = capped
+		// Last-resort: even minimal (name-only) blocks won't all fit. Drop the
+		// tail behind a BOUNDED marker, binary-searching the largest repo prefix
+		// whose final body — MARKER INCLUDED — fits the budget. The marker is
+		// re-measured on every probe, so appending it can never push the result
+		// back over the ceiling ([no-silent-caps]).
+		zero := buildOrientBlocks(names, analyzed, 0)
+		buildWithMarker := func(r int) []map[string]any {
+			included := append([]map[string]any(nil), zero[:r]...)
+			return appendOrientTruncationMarker(included, names[r:], len(analyzed), tokenBudget, budgetBytes)
+		}
+		bestR := 0
+		lo, hi := 0, len(zero)-1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if finalOrientBodyLen(buildWithMarker(mid)) <= budgetBytes {
+				bestR = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+		out = buildWithMarker(bestR)
 	}
 
 	return jsonResult(out), nil
 }
 
-// shrinkOrientBlock renders one repo's orientation result as a JSON block whose
-// marshalled size fits maxBytes, trimming the lowest-ranked tail entries from
-// whichever of the three ranked lists is currently longest until it fits. The
-// repo name always survives (a repo with zero detail still appears in the
-// overview), so the group-level view lists every repo. #5783.
-func shrinkOrientBlock(repo string, res *graph.OrientationResult, maxBytes int) map[string]any {
-	keys := res.KeyEntities
-	edges := res.CrossCutEdges
-	qs := res.Questions
-	build := func() map[string]any {
-		return map[string]any{
-			"repo":                  repo,
-			"key_entities":          keys,
-			"cross_cutting_edges":   edges,
-			"orientation_questions": qs,
+// buildOrientBlocks renders each repo's orientation result as a JSON block with
+// its three ranked lists capped to the first k entries (highest-ranked). k<=0
+// yields name-only blocks so every repo still appears in the overview. #5783.
+func buildOrientBlocks(names []string, analyzed []*graph.OrientationResult, k int) []map[string]any {
+	out := make([]map[string]any, len(analyzed))
+	for i, res := range analyzed {
+		out[i] = map[string]any{
+			"repo":                  names[i],
+			"key_entities":          headSlice(res.KeyEntities, k),
+			"cross_cutting_edges":   headSlice(res.CrossCutEdges, k),
+			"orientation_questions": headSlice(res.Questions, k),
 		}
 	}
-	for {
-		blk := build()
-		data, err := json.Marshal(blk)
-		if err != nil || len(data) <= maxBytes {
-			return blk
-		}
-		// Drop one entry from the longest remaining list (lowest-ranked tail).
-		switch {
-		case len(keys) >= len(edges) && len(keys) >= len(qs) && len(keys) > 0:
-			keys = keys[:len(keys)-1]
-		case len(edges) >= len(qs) && len(edges) > 0:
-			edges = edges[:len(edges)-1]
-		case len(qs) > 0:
-			qs = qs[:len(qs)-1]
-		default:
-			// All lists empty; the bare block is the floor we can offer.
-			return blk
-		}
+	return out
+}
+
+// headSlice returns the first n elements of s (all of s when n>=len; empty when
+// n<=0). Always returns a non-nil slice so the JSON field renders as [].
+func headSlice[T any](s []T, n int) []T {
+	if n <= 0 {
+		return []T{}
 	}
+	if n >= len(s) {
+		return s
+	}
+	return s[:n]
+}
+
+// finalOrientBodyLen renders the repo-block array through the SAME path the
+// client receives (finalizeDeferred → TOON `items` schema-string →
+// JSON-escaped {count,elapsed_ms,items} envelope) and returns the real wire
+// body byte length. #5783: capping json.Marshal(out) measured the wrong layer
+// — TOON-encoding the nested lists and JSON-escaping the resulting string
+// inflates the real body well above the raw array, so the cap MUST measure
+// this. elapsed_ms/interning applied later in wrap() only shrink the body
+// (interning) or add a fixed-width int (elapsed_ms), so this is a safe upper
+// bound on the delivered size.
+func finalOrientBodyLen(out []map[string]any) int {
+	text, err := finalizeDeferred(out, 0, nil)
+	if err != nil {
+		data, _ := json.Marshal(out)
+		return len(data)
+	}
+	return len(text)
 }
 
 // appendOrientTruncationMarker appends a single bounded marker block naming the
