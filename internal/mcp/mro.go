@@ -172,53 +172,54 @@ func resolveMember(lr *LoadedRepo, e *graph.Entity) memberResolution {
 	// BFS over EXTENDS edges in declared order. The first defining match wins
 	// (left-to-right, good enough for the flat framework-mixin case; full C3 is
 	// a documented non-goal for v1 per the plan's risk notes).
-	visited := map[string]bool{owning.ID: true}
-	frontier := extendsBases(lr, owning)
+	//
+	// #5791 — the frontier expansion (which bases are visited, in what order) is
+	// MEMBER-INDEPENDENT: it depends only on the owning class's EXTENDS/IMPLEMENTS
+	// hierarchy. buildMROInbound calls this once per MEMBER, so re-walking the
+	// hierarchy per member was O(members × walk) — the p50=88s outlier. We now
+	// compute the flattened BFS order ONCE per owning class (memoized on lr,
+	// keyed by contentHash) and iterate it here. The per-member checks (a)/(b)
+	// and the unknown-base accounting are unchanged and applied in the SAME
+	// order, so the first-match result — and the note — are byte-identical to the
+	// pre-fix nested-BFS loop.
 	var unknownBases []string
-
-	for len(frontier) > 0 {
-		var next []baseRef
-		for _, b := range frontier {
-			// (a) in-repo base that declares the member with a body.
-			if b.entity != nil {
-				if def := classDeclaredMember(lr, b.entity, member); def != nil {
-					return memberResolution{
-						Provenance:     provInheritedInRepo,
-						Member:         member,
-						OwningClass:    owningName,
-						DefiningClass:  b.name,
-						DefiningEntity: def,
-					}
-				}
-			}
-			// (b) external library base known to the pack.
-			if m, ok := reg.Member(b.name, member); ok {
-				contract := m
-				defining := contract.DefiningClass
-				if defining == "" {
-					// The pack matched the base but didn't attribute a deeper
-					// defining class (member is owned by the base itself).
-					defining = canonicalBaseFQN(reg, b.name)
-				}
+	for _, b := range lr.baseChain(owning) {
+		// (a) in-repo base that declares the member with a body.
+		if b.entity != nil {
+			if def := classDeclaredMember(lr, b.entity, member); def != nil {
 				return memberResolution{
-					Provenance:    provInheritedExternal,
-					Member:        member,
-					OwningClass:   owningName,
-					DefiningClass: defining,
-					Contract:      &contract,
+					Provenance:     provInheritedInRepo,
+					Member:         member,
+					OwningClass:    owningName,
+					DefiningClass:  b.name,
+					DefiningEntity: def,
 				}
-			}
-			// Record an unknown base for the honest-partial note, then keep
-			// walking THROUGH in-repo bases (their own EXTENDS edges).
-			if _, known := reg.Lookup(b.name); !known && b.entity == nil {
-				unknownBases = append(unknownBases, b.name)
-			}
-			if b.entity != nil && !visited[b.entity.ID] {
-				visited[b.entity.ID] = true
-				next = append(next, extendsBases(lr, b.entity)...)
 			}
 		}
-		frontier = next
+		// (b) external library base known to the pack.
+		if m, ok := reg.Member(b.name, member); ok {
+			contract := m
+			defining := contract.DefiningClass
+			if defining == "" {
+				// The pack matched the base but didn't attribute a deeper
+				// defining class (member is owned by the base itself).
+				defining = canonicalBaseFQN(reg, b.name)
+			}
+			return memberResolution{
+				Provenance:    provInheritedExternal,
+				Member:        member,
+				OwningClass:   owningName,
+				DefiningClass: defining,
+				Contract:      &contract,
+			}
+		}
+		// Record an unknown base for the honest-partial note. The pre-fix loop
+		// recorded this for every frontier occurrence of an unknown external
+		// base; the memoized chain preserves those occurrences, and dedupe below
+		// collapses them identically.
+		if _, known := reg.Lookup(b.name); !known && b.entity == nil {
+			unknownBases = append(unknownBases, b.name)
+		}
 	}
 
 	note := "no defining class found via EXTENDS or knowledge pack"
@@ -455,6 +456,59 @@ func extendsBases(lr *LoadedRepo, c *graph.Entity) []baseRef {
 		out = append(out, baseRef{name: name, entity: target, viaImplements: ed.kind == "IMPLEMENTS"})
 	}
 	return out
+}
+
+// baseChain returns the flattened BFS visitation order of owning's
+// EXTENDS/IMPLEMENTS hierarchy — the exact sequence of baseRefs the original
+// nested resolveMember loop processed — memoized per owning class (#5791).
+//
+// The chain is MEMBER-INDEPENDENT, so all members of the same owning class
+// share one walk. The cache is keyed by lr.contentHash: an unchanged graph
+// reuses it, and a reparse (new contentHash) transparently rebuilds. This
+// collapses buildMROInbound's cost from O(members × walk) to
+// O(classes × walk + members).
+func (lr *LoadedRepo) baseChain(owning *graph.Entity) []baseRef {
+	if owning == nil {
+		return nil
+	}
+	lr.baseChainMu.Lock()
+	defer lr.baseChainMu.Unlock()
+	// Invalidate the whole cache when the graph content changed.
+	if lr.baseChainCache == nil || lr.baseChainHash != lr.contentHash {
+		lr.baseChainCache = map[string][]baseRef{}
+		lr.baseChainHash = lr.contentHash
+	}
+	if c, ok := lr.baseChainCache[owning.ID]; ok {
+		return c
+	}
+	c := computeBaseChain(lr, owning)
+	lr.baseChainCache[owning.ID] = c
+	return c
+}
+
+// computeBaseChain flattens the EXTENDS/IMPLEMENTS BFS from owning into the
+// exact order the pre-fix resolveMember loop processed each baseRef: level by
+// level, left to right, expanding each in-repo base entity exactly once
+// (guarded by a visited set seeded with owning). A base reached via multiple
+// paths appears once per frontier occurrence — identical to the original — so
+// first-match resolution over this slice is byte-identical to the nested loop.
+func computeBaseChain(lr *LoadedRepo, owning *graph.Entity) []baseRef {
+	baseChainComputeCount.Add(1)
+	visited := map[string]bool{owning.ID: true}
+	var chain []baseRef
+	frontier := extendsBases(lr, owning)
+	for len(frontier) > 0 {
+		var next []baseRef
+		for _, b := range frontier {
+			chain = append(chain, b)
+			if b.entity != nil && !visited[b.entity.ID] {
+				visited[b.entity.ID] = true
+				next = append(next, extendsBases(lr, b.entity)...)
+			}
+		}
+		frontier = next
+	}
+	return chain
 }
 
 // findClassEntity finds the class/component entity for the given (possibly

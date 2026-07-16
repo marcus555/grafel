@@ -300,7 +300,6 @@ type LoadedRepo struct {
 	byIDOnce     sync.Once
 	pagerankOnce sync.Once
 	bm25Once     sync.Once                // #3377: BM25 built lazily on first search
-	mroInOnce    sync.Once                // #3834: reverse-INHERITS map built lazily
 	suffixOnce   sync.Once                // #5682: source-file suffix index built lazily
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
 	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
@@ -312,7 +311,20 @@ type LoadedRepo struct {
 	// mroOutboundEdges, used by neighbors(in) so a base method surfaces the
 	// subclasses that inherit it. In-repo defining members only (external
 	// contract endpoints have no in-repo node to query callers of).
-	mroInbound map[string][]string
+	//
+	// #5791: the map is no longer guarded by a sync.Once (which resetIndexes
+	// re-armed on every reload epoch, forcing an O(members × walk) rebuild on
+	// every callers query with a live indexer). It is now keyed by contentHash
+	// via mroMu/mroInboundHash so an unchanged graph reuses it — mirroring the
+	// byte-identical-reload skip at reloadLocked. baseChainCache memoizes the
+	// EXTENDS/IMPLEMENTS frontier walk per owning class (also contentHash-keyed)
+	// so the per-member resolver reuses one walk across all of a class's members.
+	mroMu          sync.Mutex
+	mroInbound     map[string][]string
+	mroInboundHash uint64
+	baseChainMu    sync.Mutex
+	baseChainCache map[string][]baseRef
+	baseChainHash  uint64
 	// suffixIndex maps a file basename -> the repo-relative (slash) paths of
 	// every source file with that basename under lr.Path (#5682). Built once by
 	// a single filesystem walk (getSuffixIndex) and used to resolve a
@@ -354,10 +366,33 @@ type LoadedRepo struct {
 // resetIndexes re-arms every lazy-index sync.Once and clears the cached
 // derived indexes so the next getter call rebuilds against the current Doc.
 // MUST be called whenever lr.Doc is replaced during reload, while the caller
-// holds State.mu (which serialises reload against handler snapshots). It also
-// takes idxMu so a getter that raced in just before the swap cannot observe a
-// half-reset state.
+// holds State.mu (which serialises reload against handler snapshots).
+//
+// Locking: the idxMu-guarded indexes (BM25/adjacency/callsAdj/stepAdj/byID/
+// topKPageRank/suffix) are cleared under idxMu so a getter that raced in just
+// before the swap cannot observe a half-reset state. The #5791 MRO caches
+// (mroInbound, baseChainCache) are guarded by their OWN mutexes (mroMu /
+// baseChainMu), NOT idxMu, so they are cleared under those locks here — a
+// getter is mutually excluded from observing a half-cleared MRO map. Each MRO
+// mutex is taken and released independently (never nested with each other or
+// idxMu) so this cannot form a cycle against the read-path lock order
+// mroMu -> baseChainMu -> idxMu (getMROInbound holds mroMu across
+// buildMROInbound -> baseChain(baseChainMu) -> getAdjacency(idxMu)).
 func (lr *LoadedRepo) resetIndexes() {
+	// #5791: clear the reverse-INHERITS map and the per-class base-chain memo
+	// under their own mutexes so the next getMROInbound rebuilds against the
+	// fresh Doc. The contentHash guard would rebuild anyway (the caller sets the
+	// new contentHash before this reset), but clearing frees the old maps now.
+	lr.mroMu.Lock()
+	lr.mroInbound = nil
+	lr.mroInboundHash = 0
+	lr.mroMu.Unlock()
+
+	lr.baseChainMu.Lock()
+	lr.baseChainCache = nil
+	lr.baseChainHash = 0
+	lr.baseChainMu.Unlock()
+
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.adjOnce = sync.Once{}
@@ -366,7 +401,6 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.byIDOnce = sync.Once{}
 	lr.pagerankOnce = sync.Once{}
 	lr.bm25Once = sync.Once{}
-	lr.mroInOnce = sync.Once{}
 	lr.suffixOnce = sync.Once{}
 	lr.BM25 = nil
 	lr.adjacency = nil
@@ -374,7 +408,6 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.stepAdj = nil
 	lr.byID = nil
 	lr.topKPageRank = nil
-	lr.mroInbound = nil
 	lr.suffixIndex = nil
 	lr.suffixIndexPartial = false
 }
@@ -399,13 +432,25 @@ func (lr *LoadedRepo) getSuffixIndex() (map[string][]string, bool) {
 // defining member via the MRO walk, the defining member's id. Used by
 // neighbors(in) so a base method surfaces its inheriting subclasses as callers.
 func (lr *LoadedRepo) getMROInbound() map[string][]string {
-	// NOTE: deliberately NOT guarded by idxMu — buildMROInbound calls
-	// mroOutboundEdges -> resolveMember -> extendsBases -> getAdjacency, which
-	// itself takes idxMu (a non-reentrant Mutex). sync.Once.Do is independently
-	// safe for concurrent callers, so the Once alone gives build-at-most-once.
-	lr.mroInOnce.Do(func() {
-		lr.mroInbound = buildMROInbound(lr)
-	})
+	// #5791 — keyed by contentHash, not a sync.Once. reloadBeforeCall runs on
+	// every MCP call and resetIndexes re-armed the Once whenever graph.fb bytes
+	// changed, so a live indexer forced a full O(members × walk) rebuild on every
+	// callers query (p50=88s). Guarding by contentHash means an unchanged graph
+	// reuses the cached map even across reload epochs (the same freshness-safe
+	// principle as the byte-identical-reload skip in reloadLocked); a genuine
+	// content change (new contentHash) rebuilds exactly once.
+	//
+	// Guarded by mroMu (NOT idxMu): buildMROInbound -> resolveMember -> baseChain
+	// (baseChainMu) -> extendsBases -> getAdjacency (idxMu). Lock order is
+	// mroMu -> baseChainMu -> idxMu, so holding mroMu across the build cannot
+	// deadlock against those non-reentrant getters.
+	lr.mroMu.Lock()
+	defer lr.mroMu.Unlock()
+	if lr.mroInbound != nil && lr.mroInboundHash == lr.contentHash {
+		return lr.mroInbound
+	}
+	lr.mroInbound = buildMROInbound(lr)
+	lr.mroInboundHash = lr.contentHash
 	return lr.mroInbound
 }
 
