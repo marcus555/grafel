@@ -1183,6 +1183,19 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		}), nil
 	}
 
+	// #5782: a MessageTopic seed's blast radius is inherently cross-repo — its
+	// publishers/subscribers live in sibling repos, keyed by the same broker-
+	// prefixed topic Name (they are per-repo SCOPE.MessageTopic entities that
+	// resolveImpactTarget collapses to whichever repo won the ID/name race). The
+	// intra-repo walk below would only surface that ONE repo's publishers. Expand
+	// the seed to every same-Name topic in the group and fold the cross-repo topic
+	// joins (lg.Links, method="topic") so cross-repo publishers + subscribers
+	// appear with correct per-repo attribution. The non-topic (code entity) path
+	// below is entirely unchanged.
+	if e := resolution.repo.getByID()[resolution.localID]; isMessageTopicEntity(e) {
+		return s.impactRadiusForTopic(lg, &topicSeed{repo: resolution.repo, id: resolution.localID, name: e.Name}, hops), nil
+	}
+
 	type affected struct {
 		EntityID   string  `json:"entity_id"`
 		Name       string  `json:"name"`

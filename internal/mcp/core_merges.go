@@ -110,15 +110,25 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 //	neighbors         → handleNeighbors(direction=both)
 //	uses              → handleNavigates(direction=outgoing)  (NAVIGATES_TO out)
 //	used_by           → handleNavigates(direction=incoming)  (NAVIGATES_TO in)
+//	messaging         → handleMessagingRelated (topic pub/sub/delivery, cross-repo)
+//
+// #5782: direction=messaging surfaces a SCOPE.MessageTopic's producers
+// (PUBLISHES_TO), consumers (SUBSCRIBES_TO) and delivery handlers (DELIVERS_TO)
+// ACROSS every repo that touches the topic. The generic caller/callee handlers
+// dead-end on the first repo holding the resolved entity, so a topic whose
+// counterparts live in sibling repos surfaced nothing; the messaging case folds
+// both the per-repo adjacency and the cross-repo lg.Links topic joins.
 func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("direction", argString(req, "direction", ""),
-		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by"},
-		[]string{"callers", "callees", "neighbors", "uses", "used_by"}); e != nil {
+		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by", "messaging", "topic", "pubsub"},
+		[]string{"callers", "callees", "neighbors", "uses", "used_by", "messaging"}); e != nil {
 		return e, nil
 	}
 	switch argString(req, "direction", "callers") {
 	case "callees":
 		return s.handleFindCallees(ctx, req)
+	case "messaging", "topic", "pubsub":
+		return s.handleMessagingRelated(ctx, req)
 	case "neighbors", "both":
 		// handleNeighbors reads its OWN `direction` (in|out|both); the outer
 		// discriminator value "neighbors" is not a valid inner value, so rewrite.

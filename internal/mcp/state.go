@@ -195,6 +195,14 @@ type CrossRepoLink struct {
 	Confidence float64 `json:"confidence,omitempty"`
 	Channel    string  `json:"channel,omitempty"`
 	Method     string  `json:"method,omitempty"`
+	// Identifier is the canonical channel/topic name the links pass records for
+	// method="topic"/"http" entries (internal/links.Link.Identifier). For a
+	// message-topic join it is the broker-prefixed topic Name (e.g.
+	// "kafka:orders.placed"), letting the query layer (grafel_related
+	// direction=messaging, grafel_impact_radius) match a cross-repo topic join
+	// back to the specific SCOPE.MessageTopic being inspected (#5782). Absent for
+	// passes that do not stamp it.
+	Identifier string `json:"identifier,omitempty"`
 	// Properties carries the on-disk links-pass annotations (resolve_strategy,
 	// normalization, and — since #3628 — the categorical extraction-confidence
 	// honesty marker under the "confidence" key). Surfaced read-side via

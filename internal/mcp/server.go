@@ -1132,12 +1132,12 @@ func (s *Server) registerTools() {
 	s.addTool(mcpapi.NewTool("grafel_debt",
 		mcpapi.WithDescription("Code smells/dead code/cycles. kind=dead_code(def)|cycles|stubs|impure|license."),
 		mcpapi.WithString("kind", mcpapi.DefaultString("dead_code"),
-			mcpapi.Description("dead_code=unreached entities; cycles=import cycles; stubs=v3 fakes; impure=fns w/ effects-free; license=dep-license conflicts.")),
+			mcpapi.Description("dead_code=unreached entities; cycles=import cycles; stubs=v3 fakes (TWO-GROUP mode: requires group_v3+group_oracle); impure=fns w/ effects-free; license=dep-license conflicts.")),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("kind_filter"), // kind=dead_code
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
-		mcpapi.WithString("group_oracle"), // kind=stubs
-		mcpapi.WithString("group_v3"),     // kind=stubs
+		mcpapi.WithString("group_oracle", mcpapi.Description("kind=stubs (required): behavioural-oracle group to compare the v3 rewrite against.")),     // kind=stubs
+		mcpapi.WithString("group_v3", mcpapi.Description("kind=stubs (required): v3-rewrite group whose endpoints are checked for stubbed behaviour.")), // kind=stubs
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"),
