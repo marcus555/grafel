@@ -108,12 +108,18 @@ func TestRenameWithRetry_ExhaustsAndReturnsLastError(t *testing.T) {
 	if attempts != renameRetryAttempts {
 		t.Errorf("attempts = %d, want exactly renameRetryAttempts=%d", attempts, renameRetryAttempts)
 	}
-	// The write-side budget is intentionally DECOUPLED from (and larger than)
-	// the read-side budget: the rename must outlast a concurrent reader's
-	// reopen loop, whereas a read is a single ReadFile. Lock that in so the two
-	// can't silently be re-coupled.
-	if renameRetryAttempts <= readRetryAttempts {
-		t.Errorf("renameRetryAttempts=%d must exceed readRetryAttempts=%d (write path must be more patient)",
+	// Read and write keep SEPARATE named budget constants (they can be tuned
+	// independently), but both must be patient enough to outlast the same NTFS
+	// replace window under contention. Windows CI showed a short (~20ms) budget
+	// on either end surfaces spurious errors, so guard that BOTH stay
+	// substantially patient (well past the original 5-attempt budget) and
+	// bounded. They intentionally land on the same order of magnitude now.
+	if renameRetryAttempts < 10 || readRetryAttempts < 10 {
+		t.Errorf("retry budgets too short to outlast NTFS replace churn under contention: rename=%d read=%d (want >=10 each)",
+			renameRetryAttempts, readRetryAttempts)
+	}
+	if renameRetryAttempts > 100 || readRetryAttempts > 100 {
+		t.Errorf("retry budgets unbounded-ish: rename=%d read=%d (keep bounded so a writer/reader can never stall)",
 			renameRetryAttempts, readRetryAttempts)
 	}
 }

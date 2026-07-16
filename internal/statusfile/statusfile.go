@@ -195,14 +195,31 @@ var renameFn = os.Rename
 // no-op and exercise renameWithRetry's control flow without wall-clock delay.
 var renameRetrySleep = time.Sleep
 
-// readRetryAttempts/readRetryBackoff bound the retry Read performs when the
-// underlying read hits a transient sharing violation (Windows only — see
-// isRetryableReplaceError). 5 attempts with a few-ms backoff is enough to
-// ride out the brief window a concurrent Write's tmp+rename holds the file
-// handle on NTFS, without meaningfully delaying a genuinely failed read.
+// readRetryAttempts/readRetryBackoff bound the retry Read performs when its
+// os.Open hits a transient replace-open-file error (Windows only — see
+// isRetryableReplaceError). This budget is SYMMETRIC with the write side's
+// renameRetry* budget below because both race the SAME NTFS replace window from
+// opposite ends: while a writer's os.Rename replaces the target, a concurrent
+// reader's os.Open sees ERROR_SHARING_VIOLATION ("the process cannot access the
+// file because it is being used by another process"). Under contention (the
+// 8-writer + looping-reader stress in TestWrite_ConcurrentSameRepo_NoTornRead,
+// amplified now that writes themselves retry ~190ms and keep the target under
+// near-constant rename churn) a short 20ms budget occasionally exhausts and
+// surfaces a spurious error, so the reader must be as patient as the writer.
+//
+// 20 attempts × a small 10ms fixed backoff = 19 sleeps × 10ms = 190ms
+// worst-case total blocking before a persistent read error surfaces. This costs
+// NOTHING in the normal case: with no concurrent write the very first os.Open
+// succeeds and returns immediately (zero added latency on the statusline hot
+// path). The extended budget is only ever consumed while a write is actively
+// churning the target — a condition that resolves within that window — and a
+// genuine persistent error (e.g. a real permission failure) still surfaces
+// after the bounded budget rather than looping forever. Kept as SEPARATE named
+// constants from renameRetry* (not re-coupled) even though they land on the
+// same total, so the two budgets can be tuned independently.
 const (
-	readRetryAttempts = 5
-	readRetryBackoff  = 4 * time.Millisecond
+	readRetryAttempts = 20
+	readRetryBackoff  = 10 * time.Millisecond
 )
 
 // renameRetryAttempts/renameRetryBackoff bound the retry Write performs when
@@ -233,8 +250,9 @@ const (
 // false there and this degenerates to a single readFile call — identical
 // behavior to before this change. On Windows/NTFS, os.Rename's replace can
 // transiently deny a concurrent os.Open with ERROR_SHARING_VIOLATION; retrying
-// a few times with a short backoff lets the real status-plane poller ride out
-// that window instead of surfacing a spurious failure.
+// with a small backoff over a bounded budget (readRetryAttempts, ~190ms worst
+// case — symmetric with the write side) lets the real status-plane poller ride
+// out that window instead of surfacing a spurious failure.
 //
 // NOTE: the shared isRetryableReplaceError classifier was broadened for the
 // write path to also match ERROR_ACCESS_DENIED, so Read INTENTIONALLY inherits
