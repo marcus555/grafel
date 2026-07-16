@@ -10,6 +10,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.8.2] — 2026-07-17
+
+**Patch: large-repo MCP responsiveness (a `grafel_related` perf cliff and an `impact_radius` overflow), honest `group add --index` completion, an upgrade-path daemon race, and Windows status-file atomicity. All from real corpus-testing feedback.**
+
+### Fixed
+
+- **`grafel_related direction=callers` no longer rebuilds a repo-global inheritance index on every call (#5791):** the callers path recomputed the reverse-`INHERITS` map by resolving every member's full `EXTENDS`/`IMPLEMENTS` chain — O(members × walk) — and re-armed it on every graph change, so with a live indexer it paid the full cost *per call* (~88 s p50 on a ~296 K-entity graph). The base chain is now memoized per owning-class and the map is cached by content-hash, taking a 9-result callers query from ~88 s to sub-second with byte-identical output (proven against a pre-fix oracle on diamond/cycle/multi-base hierarchies).
+- **`grafel_impact_radius` no longer overflows the MCP token cap on high-degree nodes (#5793):** on a "god node" the per-entity dump exceeded the limit (~150 K chars) and spilled to disk, defeating the point of an inline tool call. The default is now a compact aggregate — `total_affected`, per-kind breakdown, hop distribution, and the top 15 affected by risk — that stays inline at any node degree; a new `token_budget` parameter is a hard cap measured against the *real* serialized wire body; `detail=full` opts into the historical per-entity list (with the existing 500-cap + truncation note). Same fix pattern as `grafel_orient view=overview` in 0.1.8.1.
+- **`grafel group add --index` reports honest completion (#5790):** with the serve/engine split (default-on since 0.1.8.1), split-mode `Rebuild` was fire-and-forget, so `--index` reported `"indexed": true` off the enqueue ack — before, or even without, the engine actually rebuilding. It now waits for the engine's terminal ack **and reads its status**: a failed or dead-lettered rebuild (e.g. an OOM-reaped large-monorepo rebuild) reports `indexed:false` + `index_pending` with a reason, never a false success. Fire-and-forget callers and monolith-mode behavior are unchanged. (Advances #5729.)
+- **Upgrade no longer spawns a second, service-blind daemon (#5789):** `grafel start`/`restart` forked a manual daemon without checking for an installed launchd/systemd/schtasks service for this root, so an upgrade could leave the OS-managed daemon and a manual one fighting over the pidfile — the service manager respawning its copy (~20 s throttle) while the wedged-daemon pidfile reclaim SIGKILL'd the other, tearing down in-flight rebuilds in a loop. `start`/`restart` now detect a service registered for this root (compared on the HOME dimension the unit files record) and route through the service manager's restart; the manual fork remains the fallback for dev/foreground use.
+- **Windows status-file writes are atomic under concurrency:** the tmp+rename publish now retries the *write-side* rename on the transient NTFS replace-open-file errors (`ERROR_ACCESS_DENIED` / `ERROR_SHARING_VIOLATION`) — matching the read-side retry — so a status write no longer hard-fails when a reader holds the file open during the replace. Verified green on the Windows CI matrix.
+
+### Internal
+
+- Relationship-count investigation (#5792, `question`): a reported ~44 % drop across the 0.1.7.4→0.1.8.1 upgrade was checked by re-indexing a public corpus with both versions and diffing per-edge-kind histograms — every structural edge kind (`CALLS`, `IMPORTS`, `REFERENCES`, `CONTAINS`, `EXTENDS`/`IMPLEMENTS`) is byte-identical or higher; only new messaging edge kinds were added. No structural edge-loss regression; the drop is content-specific dedup. Regression coverage added for the substring `grafel_find kind_filter` path (#5786).
+
+---
+
 ## [0.1.8.1] — 2026-07-16
 
 **Patch: dashboard graph perf, Kafka topology/`kind_filter` fixes, a messaging config→code→topic foundation, an MCP tool-accuracy sweep, and Windows/CI test hardening.**
