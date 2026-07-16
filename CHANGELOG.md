@@ -23,7 +23,7 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 - **Topology & cross-repo topic queries recognize Kafka `MessageTopic` (#5781):** `isTopic` now matches `SCOPE.MessageTopic`, so `grafel_orient view=topology` and the orphan/topic-detail scans surface Kafka topics; the bm25 `grafel_find` path now *enforces* `kind_filter` (it was silently ignored); `cross_repo` returns per-repo topic nodes; and the `channels` consumer count now counts `DELIVERS_TO` from the topic end with handler de-duplication.
 - **Windows status-file read reliability:** `statusfile.Read` retries on the transient `ERROR_SHARING_VIOLATION` that can occur during the tmp+rename publish window on NTFS; POSIX behavior is unchanged.
-- **CI/test hardening:** restored the `gofmt` gate; fixed four Windows-only test bugs (home isolation, JSON fixture path escaping, mmap handle release before temp-dir cleanup, POSIX-only `chmod` assumption); and hardened three timing-fragile tests (volatile-timestamp comparison, a too-tight per-repo rebuild timeout, and a channel-length completion race).
+- **CI/test hardening:** restored the `gofmt` gate; fixed four Windows-only test bugs (home isolation, JSON fixture path escaping, mmap handle release before temp-dir cleanup, POSIX-only `chmod` assumption); hardened three timing-fragile tests (volatile-timestamp comparison, a too-tight per-repo rebuild timeout, and a channel-length completion race); and self-scoped the `cmd/grafel` `#2083` leak-detector to an isolated home so a concurrent package's store write can no longer false-fail it under parallel `go test ./...`.
 
 ---
 
