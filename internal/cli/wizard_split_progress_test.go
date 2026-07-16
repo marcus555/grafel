@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -176,41 +175,40 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 	}
 	evCh := make(chan progress.Event, n)
 
-	// runSplitIndexCore's forwardSSEUntilCancel goroutine writes into forwardCh
-	// (not evCh directly). A monitor goroutine here drains forwardCh into evCh
-	// (so the final len(evCh)==n assertion still holds) while closing allForwarded
-	// exactly once, the instant the n-th event lands — an explicit, correctly-
-	// synchronized completion signal for the fake probe below.
+	// runSplitIndexCore's forwardSSEUntilCancel goroutine forwards the parsed SSE
+	// events onto the channel we pass in as evCh — here forwardCh. The probe below
+	// drains forwardCh SYNCHRONOUSLY, one BLOCKING receive per poll, into the real
+	// evCh the assertions read, and only reports the rebuild acked
+	// (RequestPending:false) once all n events are provably in evCh.
 	//
-	// The previous version had the probe poll `len(evCh) < n` directly: reading
-	// the length of a channel the forwarder concurrently writes into is not a
-	// reliable "all N delivered" signal — under load the forwarder goroutine can
-	// be starved of CPU while awaitSplitCompletion's poll loop (driven by a fake
-	// clock whose Sleep never actually blocks) busy-spins, advancing virtual
-	// time straight past cfg.timeout before len(evCh) ever reaches n, surfacing a
-	// spurious real "timed out" error instead of the intended completion.
+	// Why this is deterministic BY CONSTRUCTION (not merely "less flaky"):
+	// awaitSplitCompletion's poll loop advances VIRTUAL time via clk.Sleep, which
+	// on the fake clock never really blocks. The pollFn here BLOCKS on <-forwardCh
+	// until the forwarder actually delivers the next event, so the poll loop
+	// cannot iterate — and therefore virtual time cannot advance — until an event
+	// has been delivered. The number of Sleeps is thus bounded by n, so virtual
+	// elapsed (n*interval = 30ms) can never reach cfg.timeout (5m) regardless of
+	// how long the forwarder goroutine is starved.
+	//
+	// The previous version drained forwardCh in a SEPARATE monitor goroutine and
+	// gated completion on an allForwarded channel. That left the poll loop free to
+	// busy-spin the non-blocking fake Sleep and burn virtual time straight past
+	// cfg.timeout BEFORE the monitor goroutine was ever scheduled on a
+	// slow/contended (Windows) runner — surfacing a spurious real "timed out"
+	// error. Blocking the poll on delivery removes that scheduling race entirely:
+	// no monitor goroutine, no allForwarded, no reliance on goroutine scheduling
+	// racing the clock.
 	forwardCh := make(chan progress.Event, n)
-	var forwarded int32
-	allForwarded := make(chan struct{})
-	go func() {
-		for i := 0; i < n; i++ {
-			evCh <- <-forwardCh
-			if atomic.AddInt32(&forwarded, 1) == int32(n) {
-				close(allForwarded)
-			}
-		}
-	}()
-
-	// Ack (complete) only once all n events have been forwarded — signaled by
-	// allForwarded being closed, not by racily sampling evCh's length.
+	forwarded := 0
 	probe := &fakeProbe{
+		// pollFn is only ever called from awaitSplitCompletion's single poll
+		// goroutine, so blocking here (and the plain int counter) is safe.
 		pollFn: func(int) splitPoll {
-			select {
-			case <-allForwarded:
-				return splitPoll{RequestPending: false, EngineAlive: true}
-			default:
-				return splitPoll{RequestPending: true, EngineAlive: true}
+			if forwarded < n {
+				evCh <- <-forwardCh // block until the forwarder delivers the next event
+				forwarded++
 			}
+			return splitPoll{RequestPending: forwarded < n, EngineAlive: true}
 		},
 		classify: splitResult{Entities: 1, Rels: 1},
 	}
