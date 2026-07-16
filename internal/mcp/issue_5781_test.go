@@ -212,6 +212,88 @@ func TestFindSubstring_KindFilterMessageTopic_CrossRepo(t *testing.T) {
 	t.Run("qualified", func(t *testing.T) { check(t, "SCOPE.MessageTopic") })
 }
 
+// Substring path with kind_filter must ENUMERATE the kind (parity with bm25),
+// not require a name-substring match. This is the user's exact failing case:
+// query "kafka topic" is not a substring of "kafka:feedback-topic". (#5781)
+func TestFindSubstring_KindFilterEnumerates_NoNameMatch(t *testing.T) {
+	alpha := &graph.Document{Version: 1, Repo: "alpha", Entities: []graph.Entity{
+		{ID: "t1", Name: "kafka:feedback-topic", Kind: "SCOPE.MessageTopic"},
+		{ID: "c1", Name: "FeedbackService", Kind: "SCOPE.Service"},
+	}}
+	beta := &graph.Document{Version: 1, Repo: "beta", Entities: []graph.Entity{
+		{ID: "t2", Name: "kafka:orders-topic", Kind: "SCOPE.MessageTopic"},
+	}}
+	srv := newTestServer(t, alpha, beta)
+	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
+		"group":       "test",
+		"query":       "kafka topic", // matches NO topic name literally
+		"kind_filter": "MessageTopic",
+		"cross_repo":  true,
+	})
+	results, _ := out["results"].([]any)
+	names := map[string]bool{}
+	for _, r := range results {
+		names[r.(map[string]any)["name"].(string)] = true
+	}
+	if !names["kafka:feedback-topic"] || !names["kafka:orders-topic"] {
+		t.Fatalf("expected all in-scope MessageTopic nodes across repos, got %v", names)
+	}
+	if names["FeedbackService"] {
+		t.Errorf("non-topic FeedbackService should be excluded")
+	}
+}
+
+// Substring + kind_filter: name-substring matches rank FIRST, remaining kind
+// members folded in after (parity with bm25 enumerate). Deduped. (#5781)
+func TestFindSubstring_KindFilter_NameHitsRankFirst(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t1", Name: "orders.created", Kind: "SCOPE.MessageTopic"}, // name-matches "orders"
+		{ID: "t2", Name: "users.registered", Kind: "SCOPE.MessageTopic"},
+		{ID: "t3", Name: "payments.settled", Kind: "SCOPE.MessageTopic"},
+	}
+	srv := newTestServer(t, minDoc(entities, nil))
+	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
+		"group":       "test",
+		"query":       "orders",
+		"kind_filter": "MessageTopic",
+	})
+	results, _ := out["results"].([]any)
+	if len(results) != 3 {
+		t.Fatalf("expected all 3 topics enumerated (name-hit + folded), got %d", len(results))
+	}
+	// The single name-hit must sort first.
+	first := results[0].(map[string]any)["name"].(string)
+	if first != "orders.created" {
+		t.Errorf("name-hit should rank first, got %q", first)
+	}
+	// No duplicates.
+	seen := map[string]bool{}
+	for _, r := range results {
+		n := r.(map[string]any)["name"].(string)
+		if seen[n] {
+			t.Errorf("duplicate entity in results: %s", n)
+		}
+		seen[n] = true
+	}
+}
+
+// Regression guard: with NO kind_filter, substring search stays name-only.
+func TestFindSubstring_NoKindFilter_NameOnly(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t1", Name: "orders.created", Kind: "SCOPE.MessageTopic"},
+		{ID: "t2", Name: "users.registered", Kind: "SCOPE.MessageTopic"},
+	}
+	srv := newTestServer(t, minDoc(entities, nil))
+	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
+		"group": "test",
+		"query": "orders", // must NOT enumerate users.registered
+	})
+	count := int(out["count"].(float64))
+	if count != 1 {
+		t.Fatalf("no kind_filter: expected name-only match count=1, got %d", count)
+	}
+}
+
 // --- kind-normalization helper unit test ------------------------------------
 
 func TestMatchesKindFilter_ScopeNormalization(t *testing.T) {

@@ -856,7 +856,17 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 		QualifiedName string `json:"qualified_name,omitempty"`
 		SourceFile    string `json:"source_file,omitempty"`
 		StartLine     int    `json:"start_line,omitempty"`
+		nameHit       bool   // internal: entity name/qualified-name matched the query substring
 	}
+
+	// #5781: when kind_filter is set, this tool ENUMERATES the kind (parity with
+	// the bm25 find path's enumerateByKind) instead of requiring a name-substring
+	// match — a kind-only intent whose query doesn't literally appear in any name
+	// (e.g. "kafka topic" vs "kafka:feedback-topic") must still return the topics.
+	// Name/qualified-name substring matches are kept and ranked FIRST; the rest of
+	// the in-scope kind members are folded in after. With NO kind_filter the
+	// behaviour is unchanged: name-substring matching only.
+	enumerateKind := kindFilter != ""
 
 	var out []item
 	for _, r := range repos {
@@ -882,7 +892,10 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 			}
 			nameL := strings.ToLower(e.Name)
 			qnL := strings.ToLower(e.QualifiedName)
-			if !strings.Contains(nameL, ql) && !strings.Contains(qnL, ql) {
+			nameHit := strings.Contains(nameL, ql) || strings.Contains(qnL, ql)
+			// Without a kind_filter, keep name-only matching. With a kind_filter,
+			// fold in every in-scope kind member (nameHit just drives ranking).
+			if !nameHit && !enumerateKind {
 				continue
 			}
 			out = append(out, item{
@@ -893,11 +906,17 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 				QualifiedName: e.QualifiedName,
 				SourceFile:    e.SourceFile,
 				StartLine:     e.StartLine,
+				nameHit:       nameHit,
 			})
 		}
 	}
-	// Sort: exact-name matches first, then alphabetical.
+	// Sort: name-substring hits first (kind enumeration only), then exact-name
+	// matches, then alphabetical. When kind_filter is empty every row is a
+	// name-hit, so the nameHit tier is a no-op and ordering is unchanged.
 	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].nameHit != out[j].nameHit {
+			return out[i].nameHit
+		}
 		iExact := strings.EqualFold(out[i].EntityName, query)
 		jExact := strings.EqualFold(out[j].EntityName, query)
 		if iExact != jExact {
