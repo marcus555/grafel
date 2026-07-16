@@ -204,6 +204,7 @@ func sniffEffectsJava(content string) []EffectMatch {
 	if fieldRe := javaMsgPublishFieldRe(javaEmitterFieldNames(content)); fieldRe != nil {
 		out = appendJavaMatches(out, content, headers, fieldRe, EffectMessagePublish, "smallrye.@Channel-field.send", 0.9)
 	}
+	out = appendAWSJavaMatches(out, content, headers)
 	return out
 }
 
