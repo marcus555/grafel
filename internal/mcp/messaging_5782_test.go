@@ -468,6 +468,119 @@ func TestBM25_FindsChannelBindingByNaturalLanguage(t *testing.T) {
 	}
 }
 
+// TestChannelBinding_ProfileVariantNoCrossBind is the #5782 over-match guard:
+// two bindings that share the SAME (direction, channel) but live in DIFFERENT
+// config files (a Spring/SmallRye profile-variant pattern:
+// application.properties + application-prod.properties) must each resolve to
+// ONLY their own topic. Before the fix, when SourceFile was trimmed by fbwrite
+// the file disambiguator was skipped and binding A cross-bound BOTH topics.
+// Exercised in three storage modes: SourceFile present, SourceFile empty
+// (QN-only recovery), and — the RED case on the old code — the empty variant.
+func TestChannelBinding_ProfileVariantNoCrossBind(t *testing.T) {
+	const dirCh = "outgoing:completion-out"
+	synthA := "scope:channelbinding:spring_properties:application.properties:" + dirCh
+	synthB := "scope:channelbinding:spring_properties:application-prod.properties:" + dirCh
+
+	// build constructs a one-repo LoadedRepo with two same-(direction,channel)
+	// bindings in different files, each BINDS_TOPIC to its own topic via the
+	// dangling synthetic FromID. withFiles=false blanks SourceFile to force the
+	// QualifiedName recovery path (mirrors fbwrite trimming the field).
+	build := func(withFiles bool) *LoadedRepo {
+		fileA, fileB := "application.properties", "application-prod.properties"
+		srcA, srcB := fileA, fileB
+		if !withFiles {
+			srcA, srcB = "", ""
+		}
+		doc := minDoc(
+			[]graph.Entity{
+				{ID: "topic:A", Name: "kafka:completion.a", Kind: "SCOPE.MessageTopic"},
+				{ID: "topic:B", Name: "kafka:completion.b", Kind: "SCOPE.MessageTopic"},
+				{
+					ID: "cb:hashA", Name: "completion-out", Kind: "SCOPE.ChannelBinding", SourceFile: srcA, Subtype: "outgoing",
+					QualifiedName: "svc::" + fileA + "#" + dirCh,
+					Properties:    map[string]string{"channel": "completion-out", "direction": "outgoing", "topic": "completion.a"},
+				},
+				{
+					ID: "cb:hashB", Name: "completion-out", Kind: "SCOPE.ChannelBinding", SourceFile: srcB, Subtype: "outgoing",
+					QualifiedName: "svc::" + fileB + "#" + dirCh,
+					Properties:    map[string]string{"channel": "completion-out", "direction": "outgoing", "topic": "completion.b"},
+				},
+			},
+			[]graph.Relationship{
+				{ID: "btA", FromID: synthA, ToID: "topic:A", Kind: "BINDS_TOPIC", Properties: map[string]string{"topic": "completion.a"}},
+				{ID: "btB", FromID: synthB, ToID: "topic:B", Kind: "BINDS_TOPIC", Properties: map[string]string{"topic": "completion.b"}},
+			},
+		)
+		doc.Repo = "svc"
+		return &LoadedRepo{Repo: "svc", Doc: doc, LabelIndex: BuildLabelIndex(doc)}
+	}
+
+	check := func(t *testing.T, r *LoadedRepo, bindingID, wantTopic string) {
+		t.Helper()
+		_, topics := collectChannelBindingTargets(r, r.getByID()[bindingID])
+		if len(topics) != 1 {
+			t.Fatalf("%s: expected exactly ONE bound topic (no cross-bind), got %d: %+v", bindingID, len(topics), topics)
+		}
+		if topics[0].Name != wantTopic {
+			t.Errorf("%s: expected bound topic %q, got %q", bindingID, wantTopic, topics[0].Name)
+		}
+	}
+
+	t.Run("SourceFile present", func(t *testing.T) {
+		r := build(true)
+		check(t, r, "cb:hashA", "kafka:completion.a")
+		check(t, r, "cb:hashB", "kafka:completion.b")
+	})
+	// The RED case on the pre-fix code: SourceFile trimmed → old guard skipped
+	// the file check → binding A matched BOTH synthetic FromIDs → count==2.
+	t.Run("SourceFile empty (QN-only recovery)", func(t *testing.T) {
+		r := build(false)
+		check(t, r, "cb:hashA", "kafka:completion.a")
+		check(t, r, "cb:hashB", "kafka:completion.b")
+	})
+}
+
+// TestInspect_ChannelBinding_LegacyIDMode_NoDoubleRow guards the reviewer's
+// double-row concern: in the storage mode where the edge FromID EQUALS the
+// binding's entity id, inspectSemanticEdges's adjacency walk emits a BINDS_* row
+// AND foldTopicNeighborRows emits one — they must dedup to exactly one row (the
+// fold's normalized `other` resolves to the same id the walk used). Checked in
+// both scope modes.
+func TestInspect_ChannelBinding_LegacyIDMode_NoDoubleRow(t *testing.T) {
+	doc := minDoc(
+		[]graph.Entity{
+			{ID: "topic:X", Name: "kafka:x", Kind: "SCOPE.MessageTopic"},
+			{ID: "op:X", Name: "Svc.onX", Kind: "SCOPE.Operation", SourceFile: "svc.go"},
+			{
+				ID: "cb:legacy", Name: "x-out", Kind: "SCOPE.ChannelBinding", SourceFile: "application.properties", Subtype: "outgoing",
+				QualifiedName: "svc::application.properties#outgoing:x-out",
+				Properties:    map[string]string{"channel": "x-out", "direction": "outgoing"},
+			},
+		},
+		[]graph.Relationship{
+			// FromID == the binding's own entity id (legacy/naive storage mode).
+			{ID: "bc", FromID: "cb:legacy", ToID: "op:X", Kind: "BINDS_CHANNEL"},
+			{ID: "bt", FromID: "cb:legacy", ToID: "topic:X", Kind: "BINDS_TOPIC"},
+		},
+	)
+	doc.Repo = "svc"
+	r := &LoadedRepo{Repo: "svc", Doc: doc, LabelIndex: BuildLabelIndex(doc)}
+	binding := r.getByID()["cb:legacy"]
+
+	for _, scopeIsOne := range []bool{true, false} {
+		rows := inspectSemanticEdgesFull(nil, r, binding, scopeIsOne)
+		counts := map[string]int{}
+		for _, m := range rows {
+			if k, _ := m["kind"].(string); k == "BINDS_CHANNEL" || k == "BINDS_TOPIC" {
+				counts[k]++
+			}
+		}
+		if counts["BINDS_CHANNEL"] != 1 || counts["BINDS_TOPIC"] != 1 {
+			t.Errorf("scopeIsOne=%v: expected each BINDS_* exactly once (no double row), got %v (rows=%v)", scopeIsOne, counts, rows)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ITEM #2 — grafel_impact_radius on a topic
 // ---------------------------------------------------------------------------

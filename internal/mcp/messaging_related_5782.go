@@ -388,6 +388,13 @@ const channelBindingIDPrefix = "scope:channelbinding:"
 //     carries (SourceFile + Properties), so the tuple identifies the binding
 //     even though the ids differ. The sourcefile segment disambiguates two
 //     bindings that share a (direction, channel) across different config files.
+//
+// The file disambiguator is REQUIRED, not best-effort: Spring/SmallRye profile
+// variants (application.properties + application-prod.properties) can declare
+// the same channel in one repo, so matching on (direction, channel) alone
+// silently cross-binds A's edges onto B. A binding whose source file cannot be
+// determined therefore resolves EMPTY rather than over-matching — a wrong bind
+// is worse than a missing one for migration work.
 func bindingMatchesEdge(b *graph.Entity, fromID string) bool {
 	if b == nil {
 		return false
@@ -402,12 +409,34 @@ func bindingMatchesEdge(b *graph.Entity, fromID string) bool {
 	if suffix == "" || !strings.HasSuffix(fromID, ":"+suffix) {
 		return false
 	}
-	// Disambiguate same-(direction, channel) bindings declared in different
-	// config files; skip only when we have a SourceFile to check against.
-	if b.SourceFile != "" && !strings.Contains(fromID, ":"+b.SourceFile+":") {
+	// Require a file disambiguator UNCONDITIONALLY. SourceFile is preferred;
+	// when fbwrite trimmed it, recover `rel` from the QualifiedName, where
+	// discover.go embeds it between "::" and "#": repoTag::<rel>#<dir>:<channel>.
+	srcFile := bindingSourceFile(b)
+	if srcFile == "" || !strings.Contains(fromID, ":"+srcFile+":") {
 		return false
 	}
 	return true
+}
+
+// bindingSourceFile returns the binding's config-file path (the `rel` segment of
+// its synthetic id), from SourceFile when present, else recovered from the
+// QualifiedName ("<repoTag>::<rel>#<direction>:<channel>"). Returns "" when
+// neither is available — the caller then declines to match rather than
+// over-bind.
+func bindingSourceFile(b *graph.Entity) string {
+	if b.SourceFile != "" {
+		return b.SourceFile
+	}
+	h := strings.LastIndexByte(b.QualifiedName, '#')
+	if h <= 0 {
+		return ""
+	}
+	s := strings.Index(b.QualifiedName, "::")
+	if s < 0 || s+2 >= h {
+		return ""
+	}
+	return b.QualifiedName[s+2 : h]
 }
 
 // bindingDirChannelSuffix returns the "<direction>:<channel>" tail that the
