@@ -288,6 +288,16 @@ func Discover(ctx context.Context, repoRoot string, files []string) ([]types.Ent
 		seenConfigID[ent.ID] = true
 		entities = append(entities, ent)
 
+		// #5782 (ADR-0025) — ChannelBinding recognizer. Runs right after
+		// buildConfigEntity and before edge emission, gated to the
+		// messaging-capable config subtypes. Emits one SCOPE.ChannelBinding
+		// per mp.messaging.{incoming,outgoing}.<channel> group plus its
+		// unresolved BINDS / BINDS_TOPIC structural refs. Appended to the same
+		// slices so the deterministic sort below covers the new records.
+		cbEnts, cbRels := discoverChannelBindings(repoRoot, rel, spec, content)
+		entities = append(entities, cbEnts...)
+		rels = append(rels, cbRels...)
+
 		// Emit a DEPENDS_ON_CONFIG edge from the file's containing
 		// directory (treated as a Module structural reference) to the
 		// config entity. The intra-repo resolver will rebind to the
@@ -377,6 +387,176 @@ func buildConfigEntity(repoRoot, relPath string, spec configSpec, content []byte
 	// entity without relying on org/project hashing.
 	ent.ID = "scope:config:" + spec.subtype + ":" + rel
 	return ent
+}
+
+// channelBindingSubtypes gates the ChannelBinding recognizer (#5782,
+// ADR-0025) to the messaging-capable config subtypes: the Quarkus/SmallRye
+// reference slice (quarkus.properties + Spring-style application.properties)
+// plus the YAML variant (application.yml/.yaml), which SmallRye also accepts.
+// Extended per ADR §5's generalization backlog.
+var channelBindingSubtypes = map[string]bool{
+	"quarkus_properties": true,
+	"spring_properties":  true,
+	"spring_yaml":        true,
+}
+
+// channelBindingRE matches a single SmallRye reactive-messaging config row:
+//
+//	mp.messaging.<direction>.<channel>.<key> = <value>
+//
+// direction ∈ {incoming, outgoing}; key ∈ {connector, topic, value.serializer,
+// serializer}. The separator accepts both `=` (.properties) and `:` (flat
+// dotted YAML) so quarkus.properties, application.properties, and
+// flat-key application.yaml all match. NOTE (ADR inaccuracy, §1.2): the regex
+// operates on RAW content and only recognises the FLAT dotted-key form;
+// deeply-nested YAML (mp:\n  messaging:\n    incoming: …) is not matched by
+// the reference slice — its handling is left to the generalization backlog.
+//
+// VALUE CAPTURE is a DELIBERATE, documented exception (§1.2) to the
+// value-discard posture of parseProperties/parseEnv: connector/topic/
+// serializer are non-secret structural identifiers and capturing them is the
+// whole point of the join. The regex is scoped strictly to those three keys
+// and MUST NOT be widened to arbitrary values — secrets live in these files.
+var channelBindingRE = regexp.MustCompile(
+	`(?m)^\s*mp\.messaging\.(incoming|outgoing)\.([^.\s]+)\.(connector|topic|value\.serializer|serializer)\s*[=:]\s*(.+?)\s*$`)
+
+// channelBindingGroup accumulates the config rows for one (direction, channel)
+// pair before the single ChannelBinding entity is materialized.
+type channelBindingGroup struct {
+	direction  string
+	channel    string
+	connector  string
+	topic      string
+	serializer string
+}
+
+// stripConfigValue trims a captured config value: it removes a trailing inline
+// YAML comment (" # …") and strips a single pair of surrounding quotes. It is
+// intentionally conservative — connector/topic/serializer values are simple
+// tokens.
+func stripConfigValue(v string) string {
+	v = strings.TrimSpace(v)
+	// Trailing inline comment (YAML). Only when preceded by whitespace so a
+	// value like "a#b" is preserved.
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = strings.TrimSpace(v[:i])
+	}
+	if len(v) >= 2 {
+		if (v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'') {
+			v = v[1 : len(v)-1]
+		}
+	}
+	return v
+}
+
+// discoverChannelBindings extracts SCOPE.ChannelBinding entities (+ their
+// unresolved BINDS / BINDS_TOPIC structural refs) from a messaging config
+// file. Returns nil for non-messaging subtypes or empty content. See
+// ADR-0025 §1.2. Deterministic output (sorted by group key).
+func discoverChannelBindings(repoRoot, relPath string, spec configSpec, content []byte) ([]types.EntityRecord, []types.RelationshipRecord) {
+	if !channelBindingSubtypes[spec.subtype] || len(content) == 0 {
+		return nil, nil
+	}
+	rel := filepath.ToSlash(relPath)
+	repoTag := filepath.Base(repoRoot)
+	if repoTag == "" || repoTag == "." {
+		repoTag = "repo"
+	}
+
+	groups := map[string]*channelBindingGroup{}
+	for _, m := range channelBindingRE.FindAllStringSubmatch(string(content), -1) {
+		direction, channel, key := m[1], m[2], m[3]
+		val := stripConfigValue(m[4])
+		if val == "" {
+			continue
+		}
+		gkey := direction + "|" + channel
+		g := groups[gkey]
+		if g == nil {
+			g = &channelBindingGroup{direction: direction, channel: channel}
+			groups[gkey] = g
+		}
+		switch key {
+		case "connector":
+			g.connector = val
+		case "topic":
+			g.topic = val
+		case "value.serializer", "serializer":
+			if g.serializer == "" {
+				g.serializer = val
+			}
+		}
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+
+	keys := make([]string, 0, len(groups))
+	for k := range groups {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	for _, k := range keys {
+		g := groups[k]
+		// SmallRye default: an unset topic falls back to the channel name.
+		topic := g.topic
+		if topic == "" {
+			topic = g.channel
+		}
+		props := map[string]string{
+			"channel":       g.channel,
+			"direction":     g.direction,
+			"connector":     g.connector,
+			"topic":         topic,
+			"serializer":    g.serializer,
+			"source_config": rel,
+		}
+		// Stable synthetic ID mirroring the scope:config: scheme.
+		id := "scope:channelbinding:" + spec.subtype + ":" + rel + ":" + g.direction + ":" + g.channel
+		ent := types.EntityRecord{
+			Name:          g.channel,
+			QualifiedName: repoTag + "::" + rel + "#" + g.direction + ":" + g.channel,
+			Kind:          string(types.EntityKindChannelBinding),
+			Subtype:       g.direction,
+			Language:      languageForFormat(spec.format),
+			SourceFile:    rel,
+			StartLine:     1,
+			EndLine:       1,
+			Signature:     "mp.messaging." + g.direction + "." + g.channel,
+			Properties:    props,
+			ID:            id,
+		}
+		ents = append(ents, ent)
+
+		// BINDS_CHANNEL : ChannelBinding → SCOPE.Operation. Unresolved target
+		// ref is the channel value; the resolver rebinds by (channel,
+		// direction). A DISTINCT kind (not the Helm/DI "BINDS") so an
+		// unresolved channel ref is never swept by the generic bare-name
+		// resolver and never rendered as a dependency-injection edge.
+		rels = append(rels, types.RelationshipRecord{
+			FromID: id,
+			ToID:   g.channel,
+			Kind:   string(types.RelationshipKindBindsChannel),
+			Properties: map[string]string{
+				"channel":   g.channel,
+				"direction": g.direction,
+			},
+		})
+		// BINDS_TOPIC : ChannelBinding → SCOPE.MessageTopic. Unresolved
+		// target ref is the broker-prefixed topic name.
+		rels = append(rels, types.RelationshipRecord{
+			FromID: id,
+			ToID:   "kafka:" + topic,
+			Kind:   string(types.RelationshipKindBindsTopic),
+			Properties: map[string]string{
+				"topic": topic,
+			},
+		})
+	}
+	return ents, rels
 }
 
 // languageForFormat maps the parsed format to a sensible language tag for

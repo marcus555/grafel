@@ -4646,6 +4646,18 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	if kotlinCrossPkgCallRewrites > 0 {
 		fmt.Fprintf(os.Stderr, "resolver: kotlin-cross-package rewrote=%d CALLS targets\n", kotlinCrossPkgCallRewrites)
 	}
+	// #5782 (ADR-0025) — ChannelBinding late-binding. Rewrite the config-side
+	// BINDS / BINDS_TOPIC structural refs emitted by discoverChannelBindings
+	// to real entity IDs: BINDS joins by (channel, direction) against
+	// @Incoming/@Outgoing reactive-messaging Operations; BINDS_TOPIC joins by
+	// the "kafka:<topic>" MessageTopic Name. Runs after BuildIndex (needs the
+	// full entity set) and before ReferencesWithAllowlist so the rewritten hex
+	// IDs count as resolved; unmatched refs stay unresolved and feed the
+	// topology orphan scan.
+	channelBindingRewrites := resolve.ResolveChannelBindings(indexEntities, pass2Rels)
+	if channelBindingRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: channel-binding rewrote=%d BINDS/BINDS_TOPIC refs\n", channelBindingRewrites)
+	}
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)

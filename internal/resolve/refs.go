@@ -2644,6 +2644,17 @@ func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir str
 	if ref == "" || isHexID(ref) {
 		return ref, 0
 	}
+	// #5782 (ADR-0025) — BINDS_CHANNEL edges are resolved EXCLUSIVELY by the
+	// dedicated ResolveChannelBindings pass (join on the `channel` property +
+	// direction). They must never enter the generic bare-name resolver: the
+	// channel token is a bare name that the unique-byName fallback (or the
+	// hintKinds→componentKindFamily bias) would otherwise mis-bind to a
+	// coincidentally-named component, creating a phantom edge. Leaving an
+	// unmatched channel ref untouched keeps it available for orphan detection.
+	// Resolved refs are already hex and short-circuit above.
+	if strings.EqualFold(relKind, string(types.RelationshipKindBindsChannel)) {
+		return ref, statusUnmatched
+	}
 	id, st := idx.LookupStatusHint(ref, relKind)
 	if st == statusRewritten {
 		return id, st

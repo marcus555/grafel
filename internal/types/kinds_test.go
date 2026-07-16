@@ -114,3 +114,40 @@ func TestAllRelationshipKinds_NonEmpty(t *testing.T) {
 		t.Errorf("AllRelationshipKinds returned %d, want >= 15", len(AllRelationshipKinds()))
 	}
 }
+
+// TestChannelBindingKinds_Registered guards the #5782 (ADR-0025) additions:
+// the SCOPE.ChannelBinding entity kind and the BINDS / BINDS_TOPIC edge kinds
+// must be registered in the AllEntityKinds / AllRelationshipKinds allow-lists
+// (and therefore accepted by IsValid*Kind), so no producer leaks a free-form
+// kind string.
+func TestChannelBindingKinds_Registered(t *testing.T) {
+	if string(EntityKindChannelBinding) != "SCOPE.ChannelBinding" {
+		t.Errorf("EntityKindChannelBinding = %q, want SCOPE.ChannelBinding", EntityKindChannelBinding)
+	}
+	if !IsValidEntityKind("SCOPE.ChannelBinding") {
+		t.Error("SCOPE.ChannelBinding must be a valid entity kind (missing from AllEntityKinds)")
+	}
+	found := false
+	for _, k := range AllEntityKinds() {
+		if k == EntityKindChannelBinding {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("AllEntityKinds missing EntityKindChannelBinding")
+	}
+
+	if string(RelationshipKindBinds) != "BINDS" {
+		t.Errorf("RelationshipKindBinds = %q, want BINDS", RelationshipKindBinds)
+	}
+	if string(RelationshipKindBindsTopic) != "BINDS_TOPIC" {
+		t.Errorf("RelationshipKindBindsTopic = %q, want BINDS_TOPIC", RelationshipKindBindsTopic)
+	}
+	if !IsValidRelationshipKind("BINDS") {
+		t.Error("BINDS must be a valid relationship kind (missing from AllRelationshipKinds)")
+	}
+	if !IsValidRelationshipKind("BINDS_TOPIC") {
+		t.Error("BINDS_TOPIC must be a valid relationship kind (missing from AllRelationshipKinds)")
+	}
+}

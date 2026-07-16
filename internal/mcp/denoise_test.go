@@ -86,6 +86,22 @@ func TestClassifyNoise(t *testing.T) {
 			},
 			want: noiseNone,
 		},
+		// #5782 (ADR-0025): a SCOPE.ChannelBinding is a real, config-linked
+		// structural signal — explicitly NOT noise. It must not trip the
+		// SCOPE.Pattern rule, the schema-field rule, or the lineless-shadow
+		// rule (it carries StartLine=1 like every config entity).
+		{
+			name: "channel binding is a real structural signal (not noise)",
+			e: graph.Entity{
+				Kind: "SCOPE.ChannelBinding", Name: "orders-out", Subtype: "outgoing",
+				SourceFile: "src/main/resources/application.properties", StartLine: 1, EndLine: 1,
+				Properties: map[string]string{
+					"channel": "orders-out", "direction": "outgoing",
+					"connector": "smallrye-kafka", "topic": "orders.placed",
+				},
+			},
+			want: noiseNone,
+		},
 		// #1712: Schema field members are noise.
 		{
 			name: "schema field member (SCOPE.Schema subtype=field)",
