@@ -131,14 +131,18 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 // the unchanged generic neighbors handler.
 func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("direction", argString(req, "direction", ""),
-		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by", "messaging", "topic", "pubsub"},
+		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by", "messaging", "msg", "topic", "pubsub"},
 		[]string{"callers", "callees", "neighbors", "uses", "used_by", "messaging"}); e != nil {
 		return e, nil
 	}
 	switch argString(req, "direction", "callers") {
 	case "callees":
 		return s.handleFindCallees(ctx, req)
-	case "messaging", "topic", "pubsub":
+	case "messaging", "msg", "topic", "pubsub":
+		// "msg" is the abbreviation advertised in the tool's top-level
+		// description (server.go, trimmed to fit the 80-char budget); it must
+		// resolve identically to "messaging" so an agent copying the summary
+		// value does not hit a validation error (#5782 follow-up 1).
 		return s.handleMessagingRelated(ctx, req)
 	case "neighbors", "both":
 		if res := s.tryMessagingNeighbors(req); res != nil {

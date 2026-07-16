@@ -259,6 +259,94 @@ func TestRelated_MessagingDirectionStillDocumentedAndWorks(t *testing.T) {
 	}
 }
 
+// TestRelated_MsgAliasResolvesLikeMessaging is #5782 follow-up 1: the "msg"
+// abbreviation advertised in the tool's top-level description must resolve
+// identically to direction=messaging (an agent copying the summary value must
+// not hit a validation error).
+func TestRelated_MsgAliasResolvesLikeMessaging(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	msg := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "msg",
+		"entity_id": "kafka:orders.placed",
+	})
+	full := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "messaging",
+		"entity_id": "kafka:orders.placed",
+	})
+	if p1, p2 := collectNames(msg["producers"]), collectNames(full["producers"]); len(p1) == 0 || len(p1) != len(p2) {
+		t.Errorf("direction=msg must resolve like messaging: producers msg=%+v messaging=%+v", p1, p2)
+	}
+	if c1, c2 := collectNames(msg["consumers"]), collectNames(full["consumers"]); len(c1) == 0 || len(c1) != len(c2) {
+		t.Errorf("direction=msg must resolve like messaging: consumers msg=%+v messaging=%+v", c1, c2)
+	}
+}
+
+// TestRelated_NeighborsBothEchoesBoth is #5782 follow-up 2: the messaging-aware
+// neighbors path must echo the caller's original direction, not a hard-coded
+// "neighbors", when the caller passed "both".
+func TestRelated_NeighborsBothEchoesBoth(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "both",
+		"entity_id": "kafka:orders.placed",
+	})
+	if got, _ := out["direction"].(string); got != "both" {
+		t.Errorf("direction=both must echo back %q, got %q", "both", got)
+	}
+}
+
+// TestRelated_NeighborsNonTopicFallsThrough is #5782 follow-up 3(a), the
+// fall-through regression guard: a NON-topic entity that merely has a
+// PUBLISHES_TO edge (here the OrderService.placeOrder Operation) under
+// direction=neighbors must take the GENERIC neighbors path — returning the
+// {callers,callees} shape — and must NOT be served the messaging view
+// (producers/consumers/handlers). Guards against tryMessagingNeighbors
+// over-matching.
+func TestRelated_NeighborsNonTopicFallsThrough(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleCoreRelated, map[string]any{
+		"direction": "neighbors",
+		"entity_id": "producer::op:placeOrder",
+	})
+	if _, ok := out["producers"]; ok {
+		t.Errorf("a non-topic Operation must NOT get the messaging view, got %+v", out)
+	}
+	if _, ok := out["consumers"]; ok {
+		t.Errorf("a non-topic Operation must NOT get the messaging view, got %+v", out)
+	}
+	// The generic neighbors path returns callers and callees keys.
+	_, hasCallers := out["callers"]
+	_, hasCallees := out["callees"]
+	if !hasCallers && !hasCallees {
+		t.Errorf("expected the generic {callers,callees} neighbors shape, got keys %v", mapKeys(out))
+	}
+}
+
+// TestInspect_MessageTopic_FoldedEdgesDedupedExactlyOnce is #5782 follow-up
+// 3(b), the dedup regression guard: each folded semantic edge kind on a
+// MessageTopic must appear EXACTLY once (not double-counted between the local
+// adjacency walk and the cross-repo collectTopicNeighbors fold).
+func TestInspect_MessageTopic_FoldedEdgesDedupedExactlyOnce(t *testing.T) {
+	srv := newMessagingTestServer(t)
+	out := callFlowTool(t, srv.handleGetNode, map[string]any{
+		"entity_id": "producer::topic:orders",
+	})
+	sem, _ := out["semantic_edges"].([]any)
+	counts := map[string]int{}
+	for _, row := range sem {
+		if m, ok := row.(map[string]any); ok {
+			if k, _ := m["kind"].(string); k != "" {
+				counts[k]++
+			}
+		}
+	}
+	for _, kind := range []string{"PUBLISHES_TO", "SUBSCRIBES_TO", "DELIVERS_TO", "BINDS_TOPIC"} {
+		if counts[kind] != 1 {
+			t.Errorf("expected exactly ONE %s edge on the topic, got %d (semantic_edges=%v)", kind, counts[kind], sem)
+		}
+	}
+}
+
 // TestInspect_MessageTopic_IncludesCrossRepoSemanticEdges is fix B's topic
 // case: inspecting the topic from the PRODUCER repo must include the
 // consumer repo's SUBSCRIBES_TO/DELIVERS_TO, not just the local PUBLISHES_TO.

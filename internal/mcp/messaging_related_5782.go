@@ -244,7 +244,10 @@ func (s *Server) tryMessagingNeighbors(req mcpapi.CallToolRequest) *mcpapi.CallT
 	}
 	if seed := resolveTopicSeed(lg, entityID); seed != nil {
 		out := messagingRelatedStructured(lg, entityID)
-		out["direction"] = "neighbors"
+		// Echo back the direction the caller actually passed (neighbors|both),
+		// not a hard-coded "neighbors" — the messaging traversal is identical
+		// for both, so the label should reflect the request (#5782 follow-up 2).
+		out["direction"] = argString(req, "direction", "neighbors")
 		return jsonResult(out)
 	}
 	if seed := resolveChannelBindingSeed(lg, entityID); seed != nil {
