@@ -151,7 +151,7 @@ var wantToolParams = map[string]string{
 	"grafel_module_analysis":             "action,cwd,group,ref|req:",
 	"grafel_navigates":                   "cwd,direction,entity_id,group,limit,max_depth,mode,repo_filter,route,with_param|req:",
 	"grafel_neighbors":                   "cwd,depth,direction,entity_id,fields,group,ref,token_budget|req:entity_id",
-	"grafel_orient":                      "cwd,group,max_questions,ref,repo_filter,top_edges,top_entities,topic_id,view|req:",
+	"grafel_orient":                      "cwd,group,max_questions,ref,repo_filter,token_budget,top_edges,top_entities,topic_id,view|req:",
 	"grafel_related":                     "cwd,depth,direction,entity_id,fields,group,ref,repo_filter,token_budget|req:entity_id",
 	"grafel_patterns":                    "action,category,cwd,exemplars,group,kind,limit,repo_filter,steps,text|req:",
 	"grafel_payload_drift":               "cwd,drift_class,group|req:",

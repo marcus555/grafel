@@ -2637,6 +2637,45 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 			"orientation_questions": res.Questions,
 		})
 	}
+
+	// #5783: top_entities/top_edges/max_questions (above) bound EACH repo
+	// block, but nothing bounded the OVERALL overview payload — a group with
+	// many repos multiplies those per-repo caps unboundedly (a 9-repo group
+	// at the default caps produced an 82KB single-line result that overflowed
+	// the MCP token limit even though every block individually honored its
+	// cap). Apply a group-level byte budget on top of the per-repo caps,
+	// mirroring the token_budget idiom used by grafel_find/find_callers
+	// (endpoint_tools.go, flow_tools.go): binary-search the largest prefix of
+	// repo blocks that fits (capByRenderedBytes), then append one explicit
+	// truncation-marker block naming what was omitted — never silently drop
+	// data past the cap ([no-silent-caps]).
+	tokenBudget := argInt(req, "token_budget", 6000)
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+	capped := capByRenderedBytes(out, budgetBytes, false)
+	if len(capped) < len(out) {
+		omitted := make([]string, 0, len(out)-len(capped))
+		for _, blk := range out[len(capped):] {
+			if name, ok := blk["repo"].(string); ok {
+				omitted = append(omitted, name)
+			}
+		}
+		out = append(capped, map[string]any{
+			"truncated":      true,
+			"total_repos":    len(repos),
+			"included_repos": len(capped),
+			"omitted_repos":  omitted,
+			"note": fmt.Sprintf(
+				"response capped at token_budget=%d (~%d bytes); %d repo(s) omitted — pass repo_filter to focus on specific repos, or a larger token_budget",
+				tokenBudget, budgetBytes, len(omitted),
+			),
+		})
+	} else {
+		out = capped
+	}
+
 	return jsonResult(out), nil
 }
 
