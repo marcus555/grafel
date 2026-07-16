@@ -245,14 +245,15 @@ var intentionalGaps = []intentionalGap{
 	{"grafel_patterns", "needs_attention", "#5784 — handlePatternsListGraph via kind=graph; same gap as grafel_graph_patterns's own params, undeclared here"},
 	{"grafel_patterns", "status", "#5784 — handlePatternsListGraph via kind=graph; same gap as grafel_graph_patterns's own params, undeclared here"},
 	{"grafel_patterns", "confidence_min", "#5784 — handlePatternsListGraph via kind=graph; same gap as grafel_graph_patterns's own params, undeclared here"},
-	{"grafel_find", "limit", "#5784 — handleSearchEntities via search=substring; same gap as grafel_search_entities's own params, undeclared here"},
-	{"grafel_find", "format", "#5784 — handleSearchEntities via search=substring; same gap as grafel_search_entities's own params, undeclared here"},
+	// grafel_find limit + format were lifted into the schema (#5784 F2) —
+	// the agent-facing output-control knobs for search=substring.
 	{"grafel_related", "verbose", "#5784 — findCallersStructured/findCalleesStructured via direction=callers|callees; same #1639 pattern as grafel_find_callers/find_callees"},
 	{"grafel_related", "route", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
 	{"grafel_related", "with_param", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
-	{"grafel_related", "mode", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
-	{"grafel_related", "limit", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
-	{"grafel_related", "max_depth", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
+	{"grafel_related", "mode", "#5784 — handleNavigates via direction=uses|used_by; internal navigation mode (list|flow), not user-facing on grafel_related"},
+	// limit + max_depth were lifted into the grafel_related schema (#5784 F2)
+	// — they are the agent-facing output-control knobs for direction=uses|
+	// used_by, exactly what this audit exists to make discoverable.
 	{"grafel_debt", "include_transitive", "#5784 — handleLicenseAudit via kind=license; same gap as grafel_license_audit's own #2427 include_transitive"},
 	{"grafel_debt", "severity", "#5784 — handleLicenseAudit via kind=license; same gap as grafel_license_audit's own #2427 severity"},
 	{"grafel_debt", "endpoint", "#5784 — handleStubDetector via kind=stubs; same gap as grafel_stub_detector's own #4425 endpoint"},
@@ -260,10 +261,11 @@ var intentionalGaps = []intentionalGap{
 	{"grafel_docgen_apply", "include_stale", "#5784 — handleListResiduals via kind=repairs,action=list; same gap as grafel_repairs's own #1639 include_stale"},
 	{"grafel_trace", "cross_stack_only", "#5784 — handleTracesList via kind=process; same #1639 pattern as grafel_traces's own cross_stack_only"},
 	{"grafel_trace", "min_steps", "#5784 — handleTracesList via kind=process; same #1639 pattern as grafel_traces's own min_steps"},
-	{"grafel_trace", "token_budget", "#5784 — handleTracesList via kind=process; grafel_traces's own token_budget (declared there, undeclared on the umbrella)"},
 	{"grafel_trace", "verbose", "#5784 — handleTracesGet/handleTracesFollow via kind=process; same #1639 pattern as grafel_traces's own verbose"},
-	{"grafel_trace", "max_depth", "#5784 — handleTracesFollow via kind=process; grafel_traces's own max_depth (declared there, undeclared on the umbrella)"},
 	{"grafel_trace", "branching_factor", "#5784 — handleTracesFollow via kind=process; same #1639 pattern as grafel_traces's own branching_factor"},
+	// token_budget + max_depth were lifted into the grafel_trace schema
+	// (#5784 F2) — the agent-facing output-control knobs for kind=process,
+	// exactly what this audit exists to make discoverable.
 }
 
 // handlerToTool and dispatchTree have been REMOVED.

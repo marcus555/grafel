@@ -699,6 +699,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
+		mcpapi.WithNumber("limit", mcpapi.Description("search=substring: result limit.")),
+		mcpapi.WithString("format", mcpapi.Description("search=substring: terse=compact lines.")),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("cross_repo", mcpapi.DefaultBool(false)), // #2643: opt-in to search all repos
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
@@ -749,8 +751,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Trace flow. kind=path(def)|data|control|def_use|effects|flows|process."),
 		mcpapi.WithString("kind", mcpapi.DefaultString("path"),
 			mcpapi.Description("path=src→tgt route; data=input→sink; control=CFG; def_use=reaching defs; "+
-				"effects=db/http/fs (pass the METHOD entity_id, not its class — only its own body+callees "+
-				"are traced, so a class entity_id falsely reports pure); flows=dead-ends; process=process traces.")),
+				"effects=db/http/fs (pass the METHOD, not its class — a class falsely reports pure); "+
+				"flows=dead-ends; process=process traces.")),
 		mcpapi.WithString("source"),    // kind=path
 		mcpapi.WithString("target"),    // kind=path
 		mcpapi.WithString("entity_id"), // kind=control|effects|data|def_use
@@ -760,6 +762,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("action"),    // kind=flows|process
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithNumber("token_budget", mcpapi.Description("kind=process: output token cap.")),
+		mcpapi.WithNumber("max_depth", mcpapi.Description("kind=process,action=follow: max follow depth.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
@@ -1423,6 +1427,8 @@ func (s *Server) registerTools() {
 				"producers/consumers/handlers across every repo that touches it (cross-repo pub/sub).")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
+		mcpapi.WithNumber("limit", mcpapi.Description("direction=uses|used_by: result limit.")),
+		mcpapi.WithNumber("max_depth", mcpapi.Description("direction=uses|used_by: max navigation-chain depth.")),
 		mcpapi.WithArray("fields"),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),

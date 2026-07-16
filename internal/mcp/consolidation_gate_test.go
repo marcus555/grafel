@@ -46,8 +46,10 @@ const AdvertisedTokenCeiling = 5200
 // advertisedEnvelopeBytes mirrors the cmd/mcp-audit init-envelope estimate
 // (server name/version + JSON-RPC framing + the mcpInstructions orientation
 // map). Kept here so this gate measures the same per-connect cost the audit
-// reports, without importing the cmd package.
-const advertisedEnvelopeBytes = 2392
+// reports, without importing the cmd package. MUST stay in sync with
+// cmd/mcp-audit/main.go's initEnvelopeBytes (both recomputed as framing +
+// len(mcpInstructions) whenever the orientation map changes; #5784).
+const advertisedEnvelopeBytes = 2426
 
 // TestConsolidationAdvertisedTokenCeiling asserts the advertised handshake
 // stays under AdvertisedTokenCeiling. This is the #5556 anti-un-consolidation
