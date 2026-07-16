@@ -153,7 +153,7 @@ var wantToolParams = map[string]string{
 	"grafel_neighbors":                   "cwd,depth,direction,entity_id,fields,group,ref,token_budget|req:entity_id",
 	"grafel_orient":                      "cwd,group,max_questions,ref,repo_filter,top_edges,top_entities,topic_id,view|req:",
 	"grafel_related":                     "cwd,depth,direction,entity_id,fields,group,ref,repo_filter,token_budget|req:entity_id",
-	"grafel_patterns":                    "action,category,cwd,exemplars,group,kind,limit,repo_filter,steps,text|req:",
+	"grafel_patterns":                    "action,category,cwd,exemplars,group,kind,limit,literal_kind,repo_filter,steps,text|req:",
 	"grafel_payload_drift":               "cwd,drift_class,group|req:",
 	"grafel_persona_event":               "chain,depth,event_type,metadata,persona,target_persona|req:event_type,persona",
 	"grafel_pr_impact":                   "base,cwd,group,head,hops,refs,repo|req:repo",
@@ -184,6 +184,6 @@ var wantToolParams = map[string]string{
 	"grafel_diff":          "aspect,cwd,drift_class,group,group_oracle,group_v3,ref_a,ref_b,repo,set|req:",
 	// #5546/#5551 WORKFLOW/META-cluster canonical tools.
 	"grafel_docgen":       "action,cwd,force,group,no_git,resume,run_id|req:",
-	"grafel_docgen_apply": "action,candidate_id,confidence,cwd,dry_run,group,kind,limit,reason,repo_filter,value|req:",
+	"grafel_docgen_apply": "action,candidate_id,candidate_kind,confidence,cwd,dry_run,group,kind,limit,reason,repo_filter,value|req:",
 	"grafel_event":        "capability,chain,depth,event_type,group,kind,library,metadata,note,outcome,persona,phase,target_persona|req:",
 }

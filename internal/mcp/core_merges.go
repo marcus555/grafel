@@ -167,6 +167,11 @@ func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolReque
 //	hops (default) → handleSubgraph     (nodes+edges within N hops)
 //	expand         → handleGetNeighbors (immediate neighbours, both directions)
 func (s *Server) handleCoreSubgraph(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("mode", argString(req, "mode", ""),
+		[]string{"hops", "expand", "neighbors"},
+		[]string{"hops", "expand"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "mode", "hops") {
 	case "expand", "neighbors":
 		return s.handleGetNeighbors(ctx, req)

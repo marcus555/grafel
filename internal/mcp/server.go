@@ -1124,6 +1124,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("steps"),
 		mcpapi.WithArray("exemplars"),
 		mcpapi.WithArray("repo_filter"), // kind=graph|template
+		mcpapi.WithString("literal_kind",
+			mcpapi.Description("kind=template only: filter literal-pattern entries by their own kind (i18n|log_format|sql).")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_patterns", s.handleAnalysisPatterns))
@@ -1680,6 +1682,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("value"),
 		mcpapi.WithNumber("confidence", mcpapi.DefaultNumber(1)),
 		mcpapi.WithAny("reason"),
+		mcpapi.WithString("candidate_kind",
+			mcpapi.Description("kind=enrichments,action=list only: filter candidates by their own kind.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_apply", s.handleWorkflowDocgenApply))

@@ -1,7 +1,12 @@
 package mcp
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/daemon"
 )
 
 // meta_merges_test.go — dispatch tests for the WORKFLOW/META-cluster canonical
@@ -69,6 +74,54 @@ func TestWorkflowDocgenApplyDispatch(t *testing.T) {
 	enr := map[string]any{"group": "g", "action": "list"}
 	assertSameDispatch(t, "kind=enrichments", srv.handleWorkflowDocgenApply,
 		map[string]any{"group": "g", "kind": "enrichments", "action": "list"}, srv.handleEnrichments, enr)
+}
+
+// 2b. Regression for #5784 bug 2: grafel_docgen_apply kind=enrichments must
+// not clobber handleListEnrichmentCandidates's own `kind` candidate-kind
+// filter. The umbrella discriminator ("enrichments") and the inner filter
+// share the param name `kind`; passed straight through, the inner filter
+// reads back "enrichments" and never matches a real candidate kind, so a
+// caller can never narrow the enrichments list by kind through the
+// canonical tool. The canonical schema exposes this as `candidate_kind`.
+func TestWorkflowDocgenApplyEnrichmentsKindNotClobbered(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDoc("r1"))
+	cands := []EnrichmentCandidate{
+		{ID: "e1", NodeID: "a1", Kind: "purpose"},
+		{ID: "e2", NodeID: "a2", Kind: "risk"},
+	}
+	candPath := filepath.Join(daemon.StateDirForRepo(repo), "enrichment-candidates.json")
+	if err := os.MkdirAll(filepath.Dir(candPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	d, err := json.MarshalIndent(cands, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(candPath, d, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t.Cleanup(srv.Close)
+
+	out := callBare(t, srv.handleWorkflowDocgenApply, map[string]any{
+		"group": "g", "kind": "enrichments", "action": "list", "candidate_kind": "risk",
+	})
+	var arr []map[string]any
+	if err := json.Unmarshal([]byte(out), &arr); err != nil {
+		t.Fatalf("result not a JSON array: %v (%s)", err, out)
+	}
+	if len(arr) != 1 || arr[0]["id"] != "e2" {
+		t.Fatalf("candidate_kind=risk did not filter to just e2, got: %s", out)
+	}
 }
 
 // 3. grafel_event kind= → feedback/persona.
