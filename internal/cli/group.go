@@ -146,7 +146,16 @@ type groupAddResult struct {
 	ConfigPath string         `json:"config_path"`
 	Repos      []groupAddRepo `json:"repos"`
 	Installed  *installCounts `json:"installed,omitempty"`
-	Indexed    bool           `json:"indexed"`
+	// Indexed is true ONLY when the daemon confirmed the group rebuild actually
+	// finished (WaitForCompletion). It is never set off a bare enqueue-ack (#5790).
+	Indexed bool `json:"indexed"`
+	// IndexPending is true when --index was requested and the daemon accepted the
+	// rebuild but it did NOT confirm completion in time (still building in the
+	// engine, timed out, or the engine stopped responding). Indexed is false in
+	// that case and IndexNote carries the reason — an HONEST "enqueued, not yet
+	// done" state rather than a misleading "indexed": true.
+	IndexPending bool   `json:"index_pending,omitempty"`
+	IndexNote    string `json:"index_note,omitempty"`
 }
 
 type installCounts struct {
@@ -209,19 +218,30 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 	}
 
 	indexed := false
+	indexPending := false
+	indexNote := ""
 	if f.doIndex {
-		if err := indexGroup(group, socketPath); err != nil {
+		completed, note, err := indexGroup(group, socketPath)
+		if err != nil {
 			return fmt.Errorf("index group %q: %w", group, err)
 		}
-		indexed = true
+		indexed = completed
+		if !completed {
+			// Honest non-completed state: the group is registered and the
+			// rebuild was accepted, but the engine did not confirm completion.
+			indexPending = true
+			indexNote = note
+		}
 	}
 
 	cfgPath, _ := registry.ConfigPathFor(group)
 	result := groupAddResult{
-		Group:      group,
-		ConfigPath: cfgPath,
-		Repos:      repos,
-		Indexed:    indexed,
+		Group:        group,
+		ConfigPath:   cfgPath,
+		Repos:        repos,
+		Indexed:      indexed,
+		IndexPending: indexPending,
+		IndexNote:    indexNote,
 	}
 	if res != nil {
 		result.Installed = &installCounts{
@@ -239,8 +259,12 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 
 	fmt.Fprintf(out, "registered group %q (%d repos: %s)\n",
 		group, len(repos), strings.Join(repoSlugs(repos), ", "))
-	if indexed {
+	switch {
+	case indexed:
 		fmt.Fprintln(out, "indexed via daemon")
+	case indexPending:
+		fmt.Fprintf(out, "index enqueued; the rebuild did not confirm completion and may still be running in the engine (%s)\n", indexNote)
+		fmt.Fprintf(out, "check progress with `grafel status`, or re-run `grafel rebuild %s`\n", group)
 	}
 	return nil
 }
@@ -298,11 +322,25 @@ func repoSlugs(repos []groupAddRepo) []string {
 
 // indexGroup dials the daemon and rebuilds the whole group (all repos). An
 // empty socketPath uses the real client.Dial; tests inject a stub socket.
-func indexGroup(group, socketPath string) error {
-	var (
-		c   *client.Client
-		err error
-	)
+//
+// It sets WaitForCompletion so the daemon BLOCKS until the rebuild has actually
+// finished before replying (#5790): in split mode Service.Rebuild otherwise
+// enqueues the rebuild and returns immediately, which used to be misreported as
+// "indexed": true the instant the enqueue acked — before the engine had built
+// anything. In monolith mode the flag is a harmless no-op (Rebuild is already
+// synchronous), so the completion contract is IDENTICAL in both modes.
+//
+// Return contract:
+//   - (true, "", nil)  — the rebuild actually completed → caller may report indexed.
+//   - (false, note, nil) — the daemon accepted the rebuild but it did NOT confirm
+//     completion within the bound (engine still building, timed out, or the
+//     engine stopped responding). The group is registered and the rebuild may
+//     still be running in the engine; `note` explains it. The caller reports an
+//     HONEST non-indexed state rather than a false "indexed": true.
+//   - (false, "", err) — a hard failure BEFORE the rebuild could even be handed
+//     off (e.g. the daemon is not running), surfaced as a command error.
+func indexGroup(group, socketPath string) (completed bool, note string, err error) {
+	var c *client.Client
 	if socketPath != "" {
 		c, err = client.DialPath(socketPath)
 	} else {
@@ -310,13 +348,20 @@ func indexGroup(group, socketPath string) error {
 	}
 	if err != nil {
 		if errors.Is(err, client.ErrDaemonNotRunning) {
-			return errDaemonNotRunning
+			return false, "", errDaemonNotRunning
 		}
-		return err
+		return false, "", err
 	}
 	defer c.Close()
 
 	// #5328: an explicit CLI group rebuild is human-awaited → foreground.
-	_, err = c.Rebuild(proto.RebuildArgs{Group: group, Interactive: true})
-	return err
+	// #5790: WaitForCompletion → err==nil means the rebuild genuinely finished.
+	if _, rErr := c.Rebuild(proto.RebuildArgs{Group: group, Interactive: true, WaitForCompletion: true}); rErr != nil {
+		// The daemon accepted the request (it was enqueued/started) but did not
+		// confirm completion. Do NOT hard-fail the whole `group add` — the group
+		// IS registered and the rebuild may still be running in the engine —
+		// report the honest non-completed state instead.
+		return false, rErr.Error(), nil
+	}
+	return true, "", nil
 }

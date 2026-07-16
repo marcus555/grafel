@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/requests"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
@@ -564,27 +566,47 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	// construction: split mode NEVER reaches the s.rebuild(*args) call
 	// below, and monolith/engine mode NEVER writes a request file.
 	//
-	// Fire-and-forget, mirroring Index's async fast path: the reply carries
-	// no repo/stat/progress data because the rebuild hasn't happened yet by
-	// the time this RPC returns. In particular args.ProgressToken-based
+	// Fire-and-forget by default, mirroring Index's async fast path: the reply
+	// carries no repo/stat/progress data because the rebuild hasn't happened yet
+	// by the time this RPC returns. In particular args.ProgressToken-based
 	// polling (IndexProgress) is NOT bridged across the process boundary —
 	// s.progress lives in serve's memory, but the rebuild itself runs in the
 	// engine process, so nothing here would ever mark that session done.
-	// That is a known, documented limitation of this fire-and-forget queue
-	// hop (not one of the two PR6-prerequisite gaps this change closes) and
-	// is left for a follow-up if split-mode progress UX is needed.
+	//
+	// WaitForCompletion (#5790) opts INTO a synchronous wait for callers that
+	// treat err==nil as "the rebuild ran" (e.g. `grafel group add --index`,
+	// which reports "indexed": true). When set, we stamp a scoping token onto
+	// the request, enqueue it, then block on awaitRebuildCompletion until the
+	// engine drains+acks THAT request (the same request-ack signal the wizard
+	// polls via RebuildRequestPending), returning nil only on real completion
+	// and a clear error on engine-death / never-alive / timeout. Callers that
+	// leave it false keep the immediate fire-and-forget return.
 	if SplitModeEnabled() {
+		if args.WaitForCompletion && args.ProgressToken == "" {
+			// Scope the completion poll to OUR request so a concurrent rebuild
+			// of the same group (a different token) is never mistaken for ours.
+			args.ProgressToken = uuid.NewString()
+		}
 		payload, err := json.Marshal(*args)
 		if err != nil {
 			return fmt.Errorf("encode rebuild request: %w", err)
 		}
-		if _, err := requests.Write(requestsDirForGroup(args.Group), requests.Record{
+		dir := requestsDirForGroup(args.Group)
+		id, err := requests.Write(dir, requests.Record{
 			Kind:    requests.KindRebuild,
 			Payload: payload,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("queue rebuild request: %w", err)
 		}
-		return nil
+		if !args.WaitForCompletion {
+			return nil
+		}
+		// Block until the engine finishes OUR rebuild and read its terminal ack
+		// (bounded + failure-aware; see awaitRebuildCompletion). The request is
+		// already on disk, so the ack read is race-free, and the engine KEEPS the
+		// ack for a WaitForCompletion request so its OK/error outcome is readable.
+		return s.awaitRebuildCompletion(dir, id)
 	}
 
 	atomic.AddInt64(&s.inFlight, 1)

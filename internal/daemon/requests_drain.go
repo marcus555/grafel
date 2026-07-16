@@ -347,7 +347,12 @@ func (w *rebuildWorker) applyBucket(root, dir, group string, b rebuildBucket) {
 		// here. scheduler is irrelevant for KindRebuild.
 		return applyRequest(nil, w.rebuildFn, r)
 	}
-	outcome, applyErr := requests.ApplyAndAckBounded(dir, rec, maxRebuildAttempts, apply)
+	// keepAck (#5790): a WaitForCompletion rebuild's terminal ack is left on
+	// disk so the serve-side waiter (awaitRebuildCompletion) can read its real
+	// outcome — OK vs error/dead-letter — instead of misreading request-absence
+	// as success. Fire-and-forget rebuilds keep the leak-free GC path.
+	keepAck := rebuildWaitsForCompletion(rec)
+	outcome, applyErr := requests.ApplyAndAckBounded(dir, rec, maxRebuildAttempts, keepAck, apply)
 
 	switch {
 	case outcome == requests.OutcomeCrashed:
@@ -363,7 +368,8 @@ func (w *rebuildWorker) applyBucket(root, dir, group string, b rebuildBucket) {
 		}
 	case outcome == requests.OutcomeDeadLettered:
 		w.clearBackoff(group)
-		w.ackCoalesced(dir, b.duplicates)
+		w.ackCoalesced(dir, b.duplicates, requests.StatusError,
+			fmt.Sprintf("group rebuild dead-lettered after %d attempts without completing", maxRebuildAttempts))
 		if err := recordDeadLetter(root, deadLetterFromRec(group, rec)); err != nil && w.logger != nil {
 			w.logger.Warn("requests: surface dead-letter failed", "dir", dir, "id", rec.ID, "err", err)
 		}
@@ -372,7 +378,11 @@ func (w *rebuildWorker) applyBucket(root, dir, group string, b rebuildBucket) {
 		}
 	default:
 		w.clearBackoff(group)
-		w.ackCoalesced(dir, b.duplicates)
+		status, errMsg := requests.StatusOK, ""
+		if applyErr != nil {
+			status, errMsg = requests.StatusError, applyErr.Error()
+		}
+		w.ackCoalesced(dir, b.duplicates, status, errMsg)
 		if applyErr != nil && w.logger != nil {
 			w.logger.Warn("requests: rebuild apply/ack failed", "dir", dir, "id", rec.ID, "attempts", rec.Attempts, "err", applyErr)
 		}
@@ -380,15 +390,42 @@ func (w *rebuildWorker) applyBucket(root, dir, group string, b rebuildBucket) {
 }
 
 // ackCoalesced satisfies each coalesced-away duplicate's completion token AFTER
-// the survivor has really finished: a no-op ApplyAndAck writes an ok ack,
-// deletes the request, and GCs the ack — so RebuildRequestPending flips false
-// for every waiting token only now, never early (review finding #2).
-func (w *rebuildWorker) ackCoalesced(dir string, dups []requests.Record) {
+// the survivor has really finished, propagating the survivor's TERMINAL status
+// (ok / error / dead-letter) to every duplicate's ack — so a WaitForCompletion
+// waiter behind a coalesced-away duplicate learns the SAME real outcome as one
+// behind the survivor, never a false success (#5790). It writes each ack,
+// deletes the duplicate's request (so RebuildRequestPending flips false only
+// now, never early — review finding #2), and GCs the ack UNLESS that duplicate
+// was itself a WaitForCompletion request, in which case the ack is kept as the
+// durable outcome for its waiter to read+consume (mirrors ApplyAndAckBounded's
+// keepAck).
+func (w *rebuildWorker) ackCoalesced(dir string, dups []requests.Record, status requests.Status, errMsg string) {
 	for _, d := range dups {
-		if err := requests.ApplyAndAck(dir, d, func(requests.Record) error { return nil }); err != nil && w.logger != nil {
-			w.logger.Warn("requests: coalesce-ack of duplicate rebuild failed", "dir", dir, "id", d.ID, "err", err)
+		if err := requests.WriteAck(dir, d.ID, requests.Ack{Status: status, Err: errMsg}); err != nil {
+			if w.logger != nil {
+				w.logger.Warn("requests: coalesce-ack of duplicate rebuild failed", "dir", dir, "id", d.ID, "err", err)
+			}
+			continue
+		}
+		if err := requests.Delete(dir, d.ID); err != nil && w.logger != nil {
+			w.logger.Warn("requests: coalesce-delete of duplicate rebuild failed", "dir", dir, "id", d.ID, "err", err)
+		}
+		if !rebuildWaitsForCompletion(d) {
+			_ = requests.DeleteAck(dir, d.ID)
 		}
 	}
+}
+
+// rebuildWaitsForCompletion reports whether a KindRebuild record's payload asked
+// the producer to block for real completion (proto.RebuildArgs.WaitForCompletion,
+// #5790). Such a request's terminal ack must be KEPT so the serve-side waiter can
+// read the true outcome; an undecodable payload defaults to false (fire-and-forget).
+func rebuildWaitsForCompletion(rec requests.Record) bool {
+	var a proto.RebuildArgs
+	if err := json.Unmarshal(rec.Payload, &a); err != nil {
+		return false
+	}
+	return a.WaitForCompletion
 }
 
 // clearBackoff drops any crash-resume backoff scheduled for group (called once
