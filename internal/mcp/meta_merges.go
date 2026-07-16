@@ -62,6 +62,14 @@ func (s *Server) handleWorkflowDocgen(ctx context.Context, req mcpapi.CallToolRe
 //	                      repair queue list/submit) — keeps both surfaces reachable.
 //	enrichments         → handleEnrichments (enrichment-candidate queue;
 //	                      reads its own action=list|submit|reject)
+//
+// #5784 bug 2: handleListEnrichmentCandidates (reached via handleEnrichments
+// action=list) reads its own `kind` param as a candidate-kind filter, but the
+// outer discriminator shares that exact param name. Passed through
+// unmodified, `kind=enrichments` clobbers the inner filter — it reads back
+// "enrichments" and never matches a real candidate kind. Canonical callers
+// filter by candidate kind via `candidate_kind`; relocate it into the inner
+// `kind` slot (blanking the umbrella value) before dispatch.
 func (s *Server) handleWorkflowDocgenApply(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("kind", argString(req, "kind", ""),
 		[]string{"semantics", "repairs", "repair", "enrichments", "enrichment"},
@@ -78,7 +86,11 @@ func (s *Server) handleWorkflowDocgenApply(ctx context.Context, req mcpapi.CallT
 		}
 		return s.handleApplyDocgenRepairs(ctx, req)
 	case "enrichments", "enrichment":
-		return s.handleEnrichments(ctx, req)
+		var candidateKind any
+		if ck := argString(req, "candidate_kind", ""); ck != "" {
+			candidateKind = ck
+		}
+		return s.handleEnrichments(ctx, reqWithArgs(req, map[string]any{"kind": candidateKind}))
 	default: // "semantics"
 		return s.handleApplyDocSemantics(ctx, req)
 	}

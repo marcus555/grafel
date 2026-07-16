@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -202,6 +203,34 @@ func TestCoreSubgraphDispatch(t *testing.T) {
 	assertSameDispatch(t, "mode=hops", srv.handleCoreSubgraph, map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "hops"}, srv.handleSubgraph, ent)
 	assertSameDispatch(t, "mode=default", srv.handleCoreSubgraph, ent, srv.handleSubgraph, ent)
 	assertSameDispatch(t, "mode=expand", srv.handleCoreSubgraph, map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "expand"}, srv.handleGetNeighbors, ent)
+}
+
+// 4b. Regression for #5784 bug 4: unlike every other CORE canonical tool
+// (trace kind=, related direction=, impact_radius scope=, find search=),
+// handleCoreSubgraph's mode= switch has no validateDiscriminator call — a
+// bogus mode= silently falls through the switch's default branch (the hops
+// path) instead of erroring. mode=neighbors (the accepted alias for expand)
+// must keep working post-fix.
+func TestCoreSubgraphModeValidation(t *testing.T) {
+	srv := coreTestServer(t)
+	ent := map[string]any{"group": "g", "entity_id": "r1::a2"}
+
+	bogus := map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "bogus"}
+	res, err := srv.handleCoreSubgraph(context.Background(), mcpapi.CallToolRequest{Params: mcpapi.CallToolParams{Arguments: bogus}})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res == nil || !res.IsError {
+		t.Fatalf("mode=bogus should return a validation error, got: %v", res)
+	}
+	msg := resultText(res)
+	if !strings.Contains(msg, "hops") || !strings.Contains(msg, "expand") {
+		t.Errorf("mode=bogus error should name the valid modes (hops, expand), got: %s", msg)
+	}
+
+	// mode=neighbors (the expand alias) must still route to handleGetNeighbors.
+	assertSameDispatch(t, "mode=neighbors", srv.handleCoreSubgraph,
+		map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "neighbors"}, srv.handleGetNeighbors, ent)
 }
 
 // 5. grafel_trace kind= → path/data/control/def_use/effects/flows/process.

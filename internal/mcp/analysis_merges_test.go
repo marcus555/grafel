@@ -3,9 +3,15 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/links"
+	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -78,6 +84,59 @@ func TestAnalysisPatternsDispatch(t *testing.T) {
 	assertSameDispatch(t, "kind=template", srv.handleAnalysisPatterns,
 		map[string]any{"group": "g", "kind": "template"},
 		srv.handleTemplatePatterns, map[string]any{"group": "g"})
+}
+
+// 4b. Regression for #5784 bug 1: grafel_patterns kind=template must NOT
+// clobber handleTemplatePatterns's own `kind` literal-type filter (values
+// like log_format/sql). Before the fix, the umbrella discriminator value
+// "template" is passed straight through as the inner filter, so it never
+// matches any real entry and `patterns` comes back empty even though
+// `by_kind` shows real data — the exact live symptom from the issue.
+func TestAnalysisPatternsTemplateKindNotClobbered(t *testing.T) {
+	srv := coreTestServer(t)
+	writeTemplatePatternSidecar(t, "g", templatePatternSidecarDoc{
+		Version: 1,
+		Method:  "test",
+		Total:   2,
+		ByKind:  map[string]int{"log_format": 1, "sql": 1},
+		Entries: []templatePatternSidecarEntry{
+			{Repo: "r1", SourceFile: "a.go", Line: 10, Kind: "log_format", Tag: "info", Literal: "starting %s"},
+			{Repo: "r1", SourceFile: "b.go", Line: 20, Kind: "sql", Tag: "select", Literal: "SELECT * FROM x"},
+		},
+	})
+	out := callBare(t, srv.handleAnalysisPatterns, map[string]any{"group": "g", "kind": "template"})
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &obj); err != nil {
+		t.Fatalf("result not JSON object: %v (%s)", err, out)
+	}
+	var patterns []any
+	if err := json.Unmarshal(obj["patterns"], &patterns); err != nil {
+		t.Fatalf("patterns not an array: %v (%s)", err, out)
+	}
+	if len(patterns) == 0 {
+		t.Fatalf("kind=template returned empty patterns despite non-empty by_kind sidecar data: %s", out)
+	}
+}
+
+// writeTemplatePatternSidecar writes a <group>-links-template-patterns.json
+// sidecar under $HOME (via t.Setenv, matching sidecarPath's resolution) so
+// handleTemplatePatterns finds real data instead of the "missing" fallback.
+func writeTemplatePatternSidecar(t *testing.T, group string, doc templatePatternSidecarDoc) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".grafel", "groups")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir sidecar dir: %v", err)
+	}
+	buf, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal sidecar: %v", err)
+	}
+	path := filepath.Join(dir, group+"-links-template-patterns.json")
+	if err := os.WriteFile(path, buf, 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
 }
 
 // 5. grafel_findings action= → list / save.
@@ -179,6 +238,127 @@ func TestAnalysisDiffDispatch(t *testing.T) {
 	gotDefault := callBare(t, srv.handleAnalysisDiff, crossBare)
 	wantDefault := callBare(t, srv.handleResponseShapeDiff, crossBare)
 	assertDiffAspect(t, "response_shape", gotDefault, wantDefault)
+}
+
+// 6b. Regression for #5784 bug 3: stampAspect edits res.Content, but the
+// payload/response_shape/auth/literals handlers return via jsonResult, which
+// stashes the structured value on res.StructuredContent (the "deferred"
+// path). wrap() (server.go) re-marshals the FINAL wire bytes from that
+// deferred value, discarding the res.Content edit stampAspect made — so
+// going through the real registered tool (callTool, which invokes wrap())
+// the "aspect" key is silently dropped for every aspect except "refs" (which
+// uses mcpapi.NewToolResultText directly, no deferred value). callBare above
+// doesn't exercise this because it never calls wrap(). This test does.
+func TestAnalysisDiffAspectStampSurvivesWrap(t *testing.T) {
+	testsupport.IsolateHome(t)
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDoc("r1"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t.Cleanup(srv.Close)
+
+	// handleDiffRefs (aspect=refs) resolves the repo path via the
+	// internal/registry package directly (diffToolRepoPath), independent of
+	// the mcp.Registry loaded above — register "g" there too so the
+	// same-ref fast path in handleDiffRefs can find repo "r1".
+	cfgPath, err := registry.ConfigPathFor("g")
+	if err != nil {
+		t.Fatalf("registry.ConfigPathFor: %v", err)
+	}
+	cfg := &registry.GroupConfig{Name: "g", Repos: []registry.Repo{{Slug: "r1", Path: repo}}}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("registry.SaveGroupConfig: %v", err)
+	}
+	if err := registry.AddGroup("g", cfgPath); err != nil {
+		t.Fatalf("registry.AddGroup: %v", err)
+	}
+
+	writePayloadDriftSidecar(t, "g")
+
+	assertWrappedAspect := func(aspect string, args map[string]any) {
+		t.Helper()
+		res := callTool(t, srv, "grafel_diff", args)
+		text := resultText(res)
+		// Non-deferred results (aspect=refs, built via mcpapi.NewToolResultText)
+		// carry a trailing "\n# elapsed_ms=N\n" comment appended by
+		// appendElapsedTrailer; strip it before parsing. Deferred results
+		// (aspect=payload) fold elapsed_ms into the JSON object itself and have
+		// no trailer.
+		if i := strings.Index(text, "\n# elapsed_ms="); i >= 0 {
+			text = text[:i]
+		}
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(text), &obj); err != nil {
+			t.Fatalf("aspect=%s: result not a JSON object: %v (%s)", aspect, err, text)
+		}
+		a, ok := obj["aspect"]
+		if !ok {
+			t.Errorf("aspect=%s: wrapped result missing injected aspect key: %s", aspect, text)
+			return
+		}
+		if string(a) != `"`+aspect+`"` {
+			t.Errorf("aspect=%s: wrapped result aspect=%s, want %q", aspect, a, aspect)
+		}
+	}
+
+	// payload rides the deferred (StructuredContent) path — this is the RED
+	// case pre-fix.
+	assertWrappedAspect("payload", map[string]any{"group": "g", "aspect": "payload"})
+	// refs uses mcpapi.NewToolResultText directly (no deferred value) and must
+	// keep working post-fix.
+	assertWrappedAspect("refs", map[string]any{
+		"group": "g", "repo": "r1", "ref_a": "main", "ref_b": "main", "aspect": "refs",
+	})
+}
+
+// writePayloadDriftSidecar writes a minimal payload-drift findings sidecar
+// under the caller's already-isolated $HOME so handlePayloadDrift returns a
+// real JSON object instead of the "no sidecar" error result — the error path
+// short-circuits stampAspect (res.IsError) and would mask the #5784 bug 3
+// regression this test targets. Callers must isolate $HOME themselves (e.g.
+// via testsupport.IsolateHome) before calling this.
+func writePayloadDriftSidecar(t *testing.T, group string) {
+	t.Helper()
+	paths, err := links.PathsFor("", group)
+	if err != nil {
+		t.Fatalf("links.PathsFor: %v", err)
+	}
+	sidecarPath := links.DriftSidecarPath(paths)
+	if err := os.MkdirAll(filepath.Dir(sidecarPath), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar dir: %v", err)
+	}
+	doc := links.DriftDocument{
+		Version:     1,
+		Method:      "test",
+		Group:       group,
+		Total:       1,
+		SchemaCount: 1,
+		Findings: []links.SchemaDrift{
+			{
+				EndpointID:   "r1::e1",
+				EndpointName: "http:POST:/api/x",
+				Direction:    "request",
+				Severity:     "high",
+				DriftClass:   "schema",
+				Confidence:   0.9,
+				Explanation:  "test finding",
+			},
+		},
+	}
+	buf, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal sidecar: %v", err)
+	}
+	if err := os.WriteFile(sidecarPath, buf, 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
 }
 
 // assertDiffAspect verifies the canonical grafel_diff result equals the absorbed
