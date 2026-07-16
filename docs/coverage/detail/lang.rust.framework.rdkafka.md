@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🟢 `partial` | `2026-05-31` | 3558 | `internal/engine/kafka_edges.go`<br>`internal/engine/kafka_edges_test.go` | rdkafka FutureRecord::to("topic")/BaseRecord::to("topic") -> PUBLISHES_TO and StreamConsumer .subscribe(&["a","b"]) -> SUBSCRIBES_TO, attributed to the enclosing fn (SCOPE.Operation); MessageTopic keyed kafka:<topic> joins cross-repo. Partial: only literal topic names are resolved (const/variable topics fall back to dynamic kafka:channel), and caller attribution is same-file nearest-fn. |
 | Producer extraction | 🟢 `partial` | `2026-05-31` | 3558 | `internal/engine/kafka_edges.go`<br>`internal/engine/kafka_edges_test.go` | rdkafka FutureRecord::to("topic")/BaseRecord::to("topic") -> PUBLISHES_TO and StreamConsumer .subscribe(&["a","b"]) -> SUBSCRIBES_TO, attributed to the enclosing fn (SCOPE.Operation); MessageTopic keyed kafka:<topic> joins cross-repo. Partial: only literal topic names are resolved (const/variable topics fall back to dynamic kafka:channel), and caller attribution is same-file nearest-fn. |
 | Topic attribution | 🟢 `partial` | `2026-05-31` | 3558 | `internal/engine/kafka_edges.go`<br>`internal/engine/kafka_edges_test.go` | rdkafka FutureRecord::to("topic")/BaseRecord::to("topic") -> PUBLISHES_TO and StreamConsumer .subscribe(&["a","b"]) -> SUBSCRIBES_TO, attributed to the enclosing fn (SCOPE.Operation); MessageTopic keyed kafka:<topic> joins cross-repo. Partial: only literal topic names are resolved (const/variable topics fall back to dynamic kafka:channel), and caller attribution is same-file nearest-fn. |

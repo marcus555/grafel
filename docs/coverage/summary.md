@@ -52,13 +52,13 @@
 |---|---:|---:|---:|---:|
 | [Databases](by-category/databases.md) | 12 | 0 | 12 | 0 |
 | [Platform / k8s](by-category/platform.md) | 39 | 19 | 20 | 0 |
-| [Message Brokers](by-category/message_broker.md) | 22 | 10 | 10 | 2 |
+| [Message Brokers](by-category/message_broker.md) | 22 | 3 | 2 | 17 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 11 | 4 | 0 | 7 |
 | [Observability](by-category/observability.md) | 13 | 1 | 5 | 7 |
 | [Protocols](by-category/protocol.md) | 12 | 5 | 4 | 3 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 125 | 43 | 59 | 23 |
+| **Total** | 125 | 36 | 51 | 38 |
 
 ### Platform subcategories
 

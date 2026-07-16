@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🟢 `partial` | `2026-06-12` | — | `internal/engine/rabbitmq_edges.go`<br>`internal/engine/rabbitmq_edges_test.go` | #4923: synthesizeGoRabbitMQ resolves channel.Consume / QueueDeclare consumer sites -> SUBSCRIBES_TO. Honest-partial: literal queue/routing-key only. |
 | Producer extraction | 🟢 `partial` | `2026-06-14` | — | `internal/engine/rabbitmq_edges.go`<br>`internal/engine/rabbitmq_edges_test.go` | #4923 (de-dupe of multi msg.broker.rabbitmq): synthesizeGoRabbitMQ (rabbitmq_edges.go, case "go") resolves amqp091-go channel.Publish producer sites (messaging_layer=amqp091-go) -> PUBLISHES_TO from the enclosing func, keyed by routing-key/queue literal. Honest-partial: exchange+routing-key composition and dynamic keys not fully modelled. |
 | Topic attribution | 🟢 `partial` | `2026-06-12` | — | `internal/engine/rabbitmq_edges.go`<br>`internal/links/topic_pass.go` | #4923: amqp091-go routing-key/queue literals become topic nodes joined producer->consumer via topic_pass.go (channel=rabbitmq). Honest-partial: literal keys only; exchange topology not fully decomposed. |
