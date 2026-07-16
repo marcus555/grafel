@@ -12,7 +12,15 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [0.1.8.1] — 2026-07-16
 
-**Patch: dashboard graph perf, Kafka topology/`kind_filter` fixes, and Windows/CI test hardening.**
+**Patch: dashboard graph perf, Kafka topology/`kind_filter` fixes, a messaging config→code→topic foundation, and Windows/CI test hardening.**
+
+### Added
+
+- **Messaging config→code→topic foundation (#5782, ADR-0025):** grafel now connects the configuration, code, and messaging layers so migration/impact investigations can traverse them as one graph. A reference implementation on the Quarkus + SmallRye Reactive Messaging + Kafka stack:
+  - **`SCOPE.ChannelBinding` entities** extracted from `mp.messaging.{incoming,outgoing}.*` config (Quarkus/Spring properties + YAML), each linked by **`BINDS_CHANNEL`** to its `@Channel`/`@Incoming`/`@Outgoing` code endpoint and by **`BINDS_TOPIC`** to its Kafka `MessageTopic` — so a topic rename or channel remap is now a graph traversal, not a grep. The dashboard topology surface reports `channel_binding_orphans` (a consumer/producer binding with no counterpart in the indexed set).
+  - **`message_publish` effect** on SmallRye producers (`Emitter.send`/`sendMessage`, `@Outgoing`) in Java/Kotlin, so publish sites are first-class in the effect lattice and stub detection.
+  - **Cross-repo messaging queries:** `grafel_related direction=messaging` and `grafel_impact_radius` now expand `SCOPE.MessageTopic` seeds across repos; `grafel_debt kind=stubs` gained a clear two-group gate.
+  - **Coverage:** a new `config_binding` capability in the coverage matrix (Kafka = full; the other 36 brokers tracked as `missing` for the generalization roadmap in ADR-0025 §5).
 
 ### Changed
 
