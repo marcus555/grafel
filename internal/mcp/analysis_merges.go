@@ -34,7 +34,11 @@ import (
 func (s *Server) handleAnalysisDebt(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("kind", argString(req, "kind", ""),
 		[]string{"dead_code", "find_dead_code", "unwired", "cycles", "import_cycles", "stubs", "stub", "impure", "pure", "pure_functions", "license", "licenses"},
-		[]string{"dead_code", "cycles", "stubs", "impure", "license"}); e != nil {
+		// #5784 Category 2: find_dead_code and import_cycles are distinct
+		// handlers/response shapes (not aliases of dead_code/cycles) — advertise
+		// them so agents can discover the analysis instead of only reaching it
+		// via undocumented probing.
+		[]string{"dead_code", "find_dead_code", "cycles", "import_cycles", "stubs", "impure", "license"}); e != nil {
 		return e, nil
 	}
 	switch argString(req, "kind", "dead_code") {

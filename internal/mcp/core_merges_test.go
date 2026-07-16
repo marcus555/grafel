@@ -268,6 +268,38 @@ func TestCoreEndpointsDispatch(t *testing.T) {
 	assertSameDispatch(t, "detail=posture", srv.handleCoreEndpoints, map[string]any{"group": "g", "detail": "posture", "entity_id": "r1::a3"}, srv.handleEndpointPosture, ent)
 }
 
+// TestCoreEndpointsContractRequiresEntityID asserts detail=contract fails
+// with a clear, aspect-aware message when neither entity_id nor
+// qualified_name is supplied — the #5784 pre-flight check mirroring
+// grafel_diff's requireArgs pattern (core_merges.go handleCoreEndpoints).
+func TestCoreEndpointsContractRequiresEntityID(t *testing.T) {
+	srv := coreTestServer(t)
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "g", "detail": "contract"}
+	res, err := srv.handleCoreEndpoints(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleCoreEndpoints: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected an error result when entity_id/qualified_name are both missing, got: %s", resultText(res))
+	}
+	if msg := resultText(res); !strings.Contains(msg, "entity_id") || !strings.Contains(msg, "qualified_name") {
+		t.Errorf("error message should mention both entity_id and qualified_name, got: %s", msg)
+	}
+
+	// qualified_name alone should satisfy the pre-flight check (may still
+	// fail downstream if it doesn't resolve, but must not hit our guard).
+	req2 := mcpapi.CallToolRequest{}
+	req2.Params.Arguments = map[string]any{"group": "g", "detail": "contract", "qualified_name": "r1.a3"}
+	res2, err := srv.handleCoreEndpoints(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("handleCoreEndpoints: %v", err)
+	}
+	if res2.IsError && strings.Contains(resultText(res2), "requires entity_id or qualified_name") {
+		t.Errorf("qualified_name alone should satisfy the pre-flight check, got: %s", resultText(res2))
+	}
+}
+
 // 7. grafel_impact_radius scope= → entity / changeset.
 func TestCoreImpactRadiusDispatch(t *testing.T) {
 	srv := coreTestServer(t)

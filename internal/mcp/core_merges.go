@@ -233,6 +233,13 @@ func (s *Server) handleCoreEndpoints(ctx context.Context, req mcpapi.CallToolReq
 	}
 	switch argString(req, "detail", "list") {
 	case "contract":
+		// #5784 Category 3: entity_id/qualified_name are conditionally required
+		// (one of the two) only for detail=contract; a pre-flight check here
+		// gives an aspect-aware message instead of a downstream hard-fail,
+		// mirroring grafel_diff's requireArgs pattern.
+		if argString(req, "entity_id", "") == "" && argString(req, "qualified_name", "") == "" {
+			return mcpapi.NewToolResultError("detail=contract requires entity_id or qualified_name"), nil
+		}
 		return s.handleEffectiveContract(ctx, req)
 	case "posture":
 		return s.handleEndpointPosture(ctx, req)

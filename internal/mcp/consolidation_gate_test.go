@@ -27,12 +27,21 @@ import (
 
 // AdvertisedTokenCeiling is the regression ceiling for the *advertised*
 // (22-tool) handshake in tokens, using the same conservative 4-chars-per-token
-// estimator as cmd/mcp-audit. The post-#5546 floor is ~3,545; 4,500 leaves
+// estimator as cmd/mcp-audit. The post-#5546 floor is ~3,545; 4,500 left
 // comfortable headroom for tight per-tool schema growth while sitting well
-// under the old 7,592-token, 68-tool baseline. If un-consolidation (un-hiding
-// aliases) or schema bloat pushes the advertised surface past this, the build
-// fails — that is the point. Raise it ONLY with a recorded justification.
-const AdvertisedTokenCeiling = 4500
+// under the old 7,592-token, 68-tool baseline.
+//
+// #5784 (batch 2+3): the tool-accuracy audit lifted ~40 previously-absorbed
+// per-kind/per-action params (Category 3 — resolution/residual_id/
+// candidate_id and friends that were REQUIRED but undeclared, plus a
+// systemic pass of optional filters) into the CORE/ANALYSIS/WORKFLOW
+// umbrella schemas so an agent can form a valid call from the schema alone.
+// That is real, intentional param-surface growth (not un-consolidation or
+// accidental bloat — advertised count stays 22, no alias leaked), pushing
+// the measured cost to ~4,880 tokens. Raised to 5,200 to give it headroom
+// while still sitting well under the 8,000 mcp.TokenCeiling and the old
+// 68-tool baseline. Raise further ONLY with a recorded justification.
+const AdvertisedTokenCeiling = 5200
 
 // advertisedEnvelopeBytes mirrors the cmd/mcp-audit init-envelope estimate
 // (server name/version + JSON-RPC framing + the mcpInstructions orientation
