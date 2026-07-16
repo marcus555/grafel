@@ -2624,59 +2624,131 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 		TopEdges:     argInt(req, "top_edges", def.TopEdges),
 		MaxQuestions: argInt(req, "max_questions", def.MaxQuestions),
 	}
-	out := []map[string]any{}
+	// #5783: top_entities/top_edges/max_questions bound EACH repo block, but
+	// nothing bounded the OVERALL overview payload — a group with many repos
+	// multiplies those per-repo caps unboundedly (a 9-repo group at the
+	// default caps produced an 82KB single-line result that overflowed the MCP
+	// token limit even though every block individually honored its cap).
+	//
+	// Overview must give a bird's-eye view of the WHOLE group, so instead of
+	// dropping whole repos we SCALE DETAIL: divide the group byte budget into a
+	// per-repo sub-budget (total/N) and shrink each repo's ranked lists to fit
+	// it, so EVERY repo appears with proportionally less detail as the group
+	// grows. Dropping repos behind a truncation marker becomes a last-resort
+	// safety net (capByRenderedBytes below) that should not fire for normal
+	// groups. Default budget sits at the 64KB hard ceiling so typical groups
+	// (≤ ~10 repos) render comfortably.
+	tokenBudget := argInt(req, "token_budget", 16000)
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+
+	analyzed := make([]*graph.OrientationResult, 0, len(repos))
+	names := make([]string, 0, len(repos))
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
 		}
 		res := graph.AnalyzeOrientation(r.Doc.Entities, r.Doc.Relationships, opts)
-		out = append(out, map[string]any{
-			"repo":                  r.Repo,
-			"key_entities":          res.KeyEntities,
-			"cross_cutting_edges":   res.CrossCutEdges,
-			"orientation_questions": res.Questions,
-		})
+		analyzed = append(analyzed, &res)
+		names = append(names, r.Repo)
 	}
 
-	// #5783: top_entities/top_edges/max_questions (above) bound EACH repo
-	// block, but nothing bounded the OVERALL overview payload — a group with
-	// many repos multiplies those per-repo caps unboundedly (a 9-repo group
-	// at the default caps produced an 82KB single-line result that overflowed
-	// the MCP token limit even though every block individually honored its
-	// cap). Apply a group-level byte budget on top of the per-repo caps,
-	// mirroring the token_budget idiom used by grafel_find/find_callers
-	// (endpoint_tools.go, flow_tools.go): binary-search the largest prefix of
-	// repo blocks that fits (capByRenderedBytes), then append one explicit
-	// truncation-marker block naming what was omitted — never silently drop
-	// data past the cap ([no-silent-caps]).
-	tokenBudget := argInt(req, "token_budget", 6000)
-	budgetBytes := tokenBudget * 4
-	if budgetBytes > 64*1024 {
-		budgetBytes = 64 * 1024
+	// Per-repo sub-budget: an even share of the total, so all repos fit.
+	perRepoBytes := budgetBytes
+	if len(analyzed) > 0 {
+		perRepoBytes = budgetBytes / len(analyzed)
 	}
+
+	out := make([]map[string]any, 0, len(analyzed)+1)
+	for i, res := range analyzed {
+		block := shrinkOrientBlock(names[i], res, perRepoBytes)
+		out = append(out, block)
+	}
+
+	// Last-resort safety net: even after per-repo shrink the assembled array
+	// (plus JSON overhead) must never exceed the hard ceiling. For pathological
+	// groups (hundreds of repos) where the minimal per-repo block still won't
+	// all fit, drop the tail behind a BOUNDED truncation marker — the marker's
+	// omitted_repos list is itself capped so it cannot blow the budget, and the
+	// whole result is re-checked after the marker is appended ([no-silent-caps]).
 	capped := capByRenderedBytes(out, budgetBytes, false)
 	if len(capped) < len(out) {
-		omitted := make([]string, 0, len(out)-len(capped))
-		for _, blk := range out[len(capped):] {
-			if name, ok := blk["repo"].(string); ok {
-				omitted = append(omitted, name)
-			}
-		}
-		out = append(capped, map[string]any{
-			"truncated":      true,
-			"total_repos":    len(repos),
-			"included_repos": len(capped),
-			"omitted_repos":  omitted,
-			"note": fmt.Sprintf(
-				"response capped at token_budget=%d (~%d bytes); %d repo(s) omitted — pass repo_filter to focus on specific repos, or a larger token_budget",
-				tokenBudget, budgetBytes, len(omitted),
-			),
-		})
+		// Re-cap leaving headroom for the marker so appending it cannot push
+		// the total back over the ceiling — the marker is bounded below
+		// markerReserve by construction (capped omitted_repos + fixed text).
+		const markerReserve = 1024
+		capped = capByRenderedBytes(out, budgetBytes-markerReserve, false)
+		out = appendOrientTruncationMarker(capped, names[len(capped):], len(analyzed), tokenBudget, budgetBytes)
 	} else {
 		out = capped
 	}
 
 	return jsonResult(out), nil
+}
+
+// shrinkOrientBlock renders one repo's orientation result as a JSON block whose
+// marshalled size fits maxBytes, trimming the lowest-ranked tail entries from
+// whichever of the three ranked lists is currently longest until it fits. The
+// repo name always survives (a repo with zero detail still appears in the
+// overview), so the group-level view lists every repo. #5783.
+func shrinkOrientBlock(repo string, res *graph.OrientationResult, maxBytes int) map[string]any {
+	keys := res.KeyEntities
+	edges := res.CrossCutEdges
+	qs := res.Questions
+	build := func() map[string]any {
+		return map[string]any{
+			"repo":                  repo,
+			"key_entities":          keys,
+			"cross_cutting_edges":   edges,
+			"orientation_questions": qs,
+		}
+	}
+	for {
+		blk := build()
+		data, err := json.Marshal(blk)
+		if err != nil || len(data) <= maxBytes {
+			return blk
+		}
+		// Drop one entry from the longest remaining list (lowest-ranked tail).
+		switch {
+		case len(keys) >= len(edges) && len(keys) >= len(qs) && len(keys) > 0:
+			keys = keys[:len(keys)-1]
+		case len(edges) >= len(qs) && len(edges) > 0:
+			edges = edges[:len(edges)-1]
+		case len(qs) > 0:
+			qs = qs[:len(qs)-1]
+		default:
+			// All lists empty; the bare block is the floor we can offer.
+			return blk
+		}
+	}
+}
+
+// appendOrientTruncationMarker appends a single bounded marker block naming the
+// omitted repos. The omitted_repos list is capped (first markerRepoCap names +
+// an omitted_count) so the marker itself cannot grow past the budget as repo
+// count scales, and the marker is only a last-resort net for pathological
+// groups. #5783 (marker must count against the budget).
+func appendOrientTruncationMarker(included []map[string]any, omitted []string, totalRepos, tokenBudget, budgetBytes int) []map[string]any {
+	const markerRepoCap = 20
+	shown := omitted
+	if len(shown) > markerRepoCap {
+		shown = shown[:markerRepoCap]
+	}
+	marker := map[string]any{
+		"truncated":      true,
+		"total_repos":    totalRepos,
+		"included_repos": len(included),
+		"omitted_repos":  shown,
+		"omitted_count":  len(omitted),
+		"note": fmt.Sprintf(
+			"response capped at token_budget=%d (~%d bytes); %d repo(s) omitted at minimal detail — pass repo_filter to focus on specific repos, or a larger token_budget",
+			tokenBudget, budgetBytes, len(omitted),
+		),
+	}
+	return append(included, marker)
 }
 
 // ---------------------------------------------------------------------------

@@ -810,11 +810,13 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("top_entities", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("top_edges", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("max_questions", mcpapi.DefaultNumber(12)),
-		// #5783: group-level byte budget on the overview payload — top_entities/
+		// #5783: group-level byte budget on the overview payload. top_entities/
 		// top_edges/max_questions bound each repo block, but a group with many
-		// repos still multiplied those per-repo caps unboundedly. Repo blocks
-		// beyond the budget are dropped with an explicit truncated:true marker.
-		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(6000)),
+		// repos still multiplied those per-repo caps unboundedly. The budget is
+		// divided across repos so EVERY repo appears with proportionally less
+		// detail as the group grows (default ~64KB = the hard ceiling, so typical
+		// groups render in full); a truncated:true marker is a last-resort net.
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(16000)),
 		mcpapi.WithAny("topic_id"), // topology view
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
