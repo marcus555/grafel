@@ -366,29 +366,121 @@ func resolveChannelBindingSeed(lg *LoadedGroup, entityID string) *channelBinding
 	return nil
 }
 
-// channelBindingNeighborsStructured walks seed's outbound BINDS_CHANNEL /
-// BINDS_TOPIC edges and returns its bound operation(s) and topic(s). Both
-// edges are intra-repo (the ChannelBinding config row lives in the same repo
-// as the SCOPE.Operation / SCOPE.MessageTopic it binds), so a single
-// per-repo adjacency walk is sufficient — no lg.Links join needed.
-func channelBindingNeighborsStructured(seed *channelBindingSeed) map[string]any {
-	r := seed.repo
-	channels, topics := []topicNeighbor{}, []topicNeighbor{}
-	for _, out := range r.getAdjacency().Outgoing(seed.id) {
+// channelBindingIDPrefix is the ID prefix the config-discovery recognizer
+// stamps on the SYNTHETIC id it uses as the FromID of every BINDS_CHANNEL /
+// BINDS_TOPIC edge (mirror of internal/resolve.channelBindingIDPrefix). On the
+// real fbwriter graph the ChannelBinding ENTITY is re-keyed to a content hash
+// while these edge FromIDs are left as the synthetic string, so they dangle —
+// they resolve to no entity. bindingMatchesEdge bridges the two.
+const channelBindingIDPrefix = "scope:channelbinding:"
+
+// bindingMatchesEdge reports whether a BINDS_CHANNEL / BINDS_TOPIC edge with the
+// given FromID belongs to ChannelBinding entity b. It handles BOTH graph
+// storage modes:
+//
+//   - fromID == b.ID — the entity is keyed by its own synthetic id and the edge
+//     FromID was never re-mapped (the naive case the original #5782 cut
+//     assumed).
+//   - fromID is the DANGLING synthetic "scope:channelbinding:<subtype>:<file>:
+//     <direction>:<channel>" while b.ID is a content hash (the real fbwriter
+//     graph — #5782 live-corpus finding). The synthetic id deterministically
+//     encodes (sourcefile, direction, channel), which the binding entity also
+//     carries (SourceFile + Properties), so the tuple identifies the binding
+//     even though the ids differ. The sourcefile segment disambiguates two
+//     bindings that share a (direction, channel) across different config files.
+func bindingMatchesEdge(b *graph.Entity, fromID string) bool {
+	if b == nil {
+		return false
+	}
+	if fromID == b.ID {
+		return true
+	}
+	if !strings.HasPrefix(fromID, channelBindingIDPrefix) {
+		return false
+	}
+	suffix := bindingDirChannelSuffix(b)
+	if suffix == "" || !strings.HasSuffix(fromID, ":"+suffix) {
+		return false
+	}
+	// Disambiguate same-(direction, channel) bindings declared in different
+	// config files; skip only when we have a SourceFile to check against.
+	if b.SourceFile != "" && !strings.Contains(fromID, ":"+b.SourceFile+":") {
+		return false
+	}
+	return true
+}
+
+// bindingDirChannelSuffix returns the "<direction>:<channel>" tail that the
+// synthetic ChannelBinding FromID ends with, derived from whichever binding
+// field survived the index write. Priority:
+//
+//  1. Properties[direction]+Properties[channel] (or Name) — the richest source.
+//  2. QualifiedName after '#' (e.g. "...#outgoing:feedback-out") — always present
+//     on the real fbwriter graph even when Properties are trimmed.
+//
+// Returns "" when neither yields a usable pair (matcher then declines to match).
+func bindingDirChannelSuffix(b *graph.Entity) string {
+	dir := ""
+	if b.Properties != nil {
+		dir = b.Properties["direction"]
+	}
+	if dir == "" {
+		dir = b.Subtype // discover.go stamps Subtype = direction.
+	}
+	ch := ""
+	if b.Properties != nil {
+		ch = b.Properties["channel"]
+	}
+	if ch == "" {
+		ch = b.Name
+	}
+	if dir != "" && ch != "" {
+		return dir + ":" + ch
+	}
+	// Fallback: the QualifiedName's tail after '#' is exactly "<direction>:<channel>".
+	if i := strings.LastIndexByte(b.QualifiedName, '#'); i >= 0 && i+1 < len(b.QualifiedName) {
+		if tail := b.QualifiedName[i+1:]; strings.Contains(tail, ":") {
+			return tail
+		}
+	}
+	return ""
+}
+
+// collectChannelBindingTargets returns a ChannelBinding's RESOLVED bound
+// channel (BINDS_CHANNEL → SCOPE.Operation) and topic (BINDS_TOPIC →
+// SCOPE.MessageTopic) neighbors. Rather than walking the binding's OUTBOUND
+// adjacency (empty on the real graph — see bindingMatchesEdge), it scans the
+// repo's relationships for BINDS_* edges belonging to this binding and resolves
+// each edge's ToID to an entity. Unresolved (orphan) targets — whose ToID is
+// still the raw channel/topic string, not an entity id — are skipped.
+func collectChannelBindingTargets(r *LoadedRepo, binding *graph.Entity) (channels, topics []topicNeighbor) {
+	channels, topics = []topicNeighbor{}, []topicNeighbor{}
+	if r == nil || r.Doc == nil || binding == nil {
+		return channels, topics
+	}
+	byID := r.getByID()
+	seenCh, seenTop := map[string]bool{}, map[string]bool{}
+	for i := range r.Doc.Relationships {
+		rel := &r.Doc.Relationships[i]
 		var list *[]topicNeighbor
+		var seen map[string]bool
 		var edgeKind string
-		switch strings.ToUpper(out.kind) {
+		switch strings.ToUpper(rel.Kind) {
 		case string(types.RelationshipKindBindsChannel):
-			list, edgeKind = &channels, "BINDS_CHANNEL"
+			list, seen, edgeKind = &channels, seenCh, "BINDS_CHANNEL"
 		case string(types.RelationshipKindBindsTopic):
-			list, edgeKind = &topics, "BINDS_TOPIC"
+			list, seen, edgeKind = &topics, seenTop, "BINDS_TOPIC"
 		default:
 			continue
 		}
-		e := r.getByID()[out.target]
-		if e == nil {
+		if !bindingMatchesEdge(binding, rel.FromID) {
 			continue
 		}
+		e := byID[rel.ToID]
+		if e == nil || seen[e.ID] {
+			continue
+		}
+		seen[e.ID] = true
 		*list = append(*list, topicNeighbor{
 			EntityID: prefixedID(r.Repo, e.ID),
 			Name:     e.Name,
@@ -401,6 +493,17 @@ func channelBindingNeighborsStructured(seed *channelBindingSeed) map[string]any 
 	}
 	sortTopicNeighbors(channels)
 	sortTopicNeighbors(topics)
+	return channels, topics
+}
+
+// channelBindingNeighborsStructured returns seed's bound operation(s) and
+// topic(s) via collectChannelBindingTargets (which handles the hash-id vs
+// synthetic-id edge asymmetry). Both edges are intra-repo — the ChannelBinding
+// config row lives in the same repo as the SCOPE.Operation / SCOPE.MessageTopic
+// it binds — so no lg.Links join is needed.
+func channelBindingNeighborsStructured(seed *channelBindingSeed) map[string]any {
+	r := seed.repo
+	channels, topics := collectChannelBindingTargets(r, r.getByID()[seed.id])
 
 	return map[string]any{
 		"entity_id": prefixedID(r.Repo, seed.id),

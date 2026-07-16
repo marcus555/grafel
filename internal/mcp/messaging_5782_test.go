@@ -42,19 +42,32 @@ func newMessagingTestServer(t *testing.T) *Server {
 
 	const topicName = "kafka:orders.placed"
 
+	// The ChannelBinding entity is stored under a content-HASH id (bindingHashID),
+	// exactly like the real fbwriter graph — while its BINDS_CHANNEL/BINDS_TOPIC
+	// edges reference it by the DANGLING synthetic "scope:channelbinding:..."
+	// FromID the config recognizer emitted (which resolves to NO entity: the
+	// resolver rewrites only the edge ToID, never the FromID, and the entity id
+	// is re-hashed). This asymmetry is the #5782 live-corpus finding: a naive
+	// adj.Outgoing(binding.ID) walk finds nothing because the edges are keyed
+	// under the synthetic FromID, not the entity's hash id.
+	const bindingHashID = "cb:db417080c9d5bd11"
+	const bindingSyntheticID = "scope:channelbinding:spring_properties:application.properties:outgoing:orders-out"
+
 	producerDoc := minDoc(
 		[]graph.Entity{
 			{ID: "op:placeOrder", Name: "OrderService.placeOrder", Kind: "SCOPE.Operation", SourceFile: "order_service.go", StartLine: 12, QualifiedName: "OrderService.placeOrder"},
 			{ID: "topic:orders", Name: topicName, Kind: "SCOPE.MessageTopic", SourceFile: ""},
 			{
-				ID: "cb:orders-out", Name: "orders-out", Kind: "SCOPE.ChannelBinding", SourceFile: "application.properties", StartLine: 1,
-				Properties: map[string]string{"channel": "orders-out", "direction": "outgoing", "connector": "smallrye-kafka", "topic": topicName},
+				ID: bindingHashID, Name: "orders-out", Kind: "SCOPE.ChannelBinding", SourceFile: "application.properties", StartLine: 1,
+				QualifiedName: "producer::application.properties#outgoing:orders-out",
+				Properties:    map[string]string{"channel": "orders-out", "direction": "outgoing", "connector": "smallrye-kafka", "topic": "orders.placed"},
 			},
 		},
 		[]graph.Relationship{
 			{ID: "pub:1", FromID: "op:placeOrder", ToID: "topic:orders", Kind: "PUBLISHES_TO"},
-			{ID: "bindch:1", FromID: "cb:orders-out", ToID: "op:placeOrder", Kind: "BINDS_CHANNEL"},
-			{ID: "bindtop:1", FromID: "cb:orders-out", ToID: "topic:orders", Kind: "BINDS_TOPIC"},
+			// BINDS_* edges: dangling synthetic FromID (NOT bindingHashID), resolved ToID.
+			{ID: "bindch:1", FromID: bindingSyntheticID, ToID: "op:placeOrder", Kind: "BINDS_CHANNEL", Properties: map[string]string{"channel": "orders-out", "direction": "outgoing"}},
+			{ID: "bindtop:1", FromID: bindingSyntheticID, ToID: "topic:orders", Kind: "BINDS_TOPIC", Properties: map[string]string{"topic": "orders.placed"}},
 		},
 	)
 	producerDoc.Repo = "producer"
@@ -230,7 +243,7 @@ func TestRelated_NeighborsDefaultResolvesChannelBinding(t *testing.T) {
 	srv := newMessagingTestServer(t)
 	out := callFlowTool(t, srv.handleCoreRelated, map[string]any{
 		"direction": "neighbors",
-		"entity_id": "producer::cb:orders-out",
+		"entity_id": "producer::cb:db417080c9d5bd11",
 	})
 	if got, _ := out["kind"].(string); got != "channel_binding" {
 		t.Fatalf("expected kind=channel_binding, got %+v", out)
@@ -242,6 +255,9 @@ func TestRelated_NeighborsDefaultResolvesChannelBinding(t *testing.T) {
 	}
 	if _, ok := topics["kafka:orders.placed"]; !ok {
 		t.Errorf("expected bound topic kafka:orders.placed, got topics=%+v", topics)
+	}
+	if n, _ := out["count"].(float64); n != 2 {
+		t.Errorf("expected count=2 (one channel + one topic), got %v", out["count"])
 	}
 }
 
@@ -388,27 +404,43 @@ func TestInspect_MessageTopic_IncludesCrossRepoSemanticEdges(t *testing.T) {
 func TestInspect_ChannelBinding_HasSemanticEdges(t *testing.T) {
 	srv := newMessagingTestServer(t)
 	out := callFlowTool(t, srv.handleGetNode, map[string]any{
-		"entity_id": "producer::cb:orders-out",
+		"entity_id": "producer::cb:db417080c9d5bd11",
 	})
 	sem, _ := out["semantic_edges"].([]any)
 	if len(sem) == 0 {
 		t.Fatalf("expected semantic_edges on the ChannelBinding, got none: %+v", out)
 	}
-	var haveChannel, haveTopic bool
+	// Each edge kind must appear EXACTLY once (dedup guard), pointing at the
+	// specific RESOLVED bound entity — not the dangling synthetic FromID.
+	counts := map[string]int{}
+	otherByKind := map[string]string{}
 	for _, row := range sem {
 		m, _ := row.(map[string]any)
-		switch m["kind"] {
-		case "BINDS_CHANNEL":
-			haveChannel = true
-		case "BINDS_TOPIC":
-			haveTopic = true
+		k, _ := m["kind"].(string)
+		if k == "BINDS_CHANNEL" || k == "BINDS_TOPIC" {
+			counts[k]++
+			otherByKind[k], _ = m["other"].(string)
+			if dir, _ := m["direction"].(string); dir != "outbound" {
+				t.Errorf("%s must be outbound from the binding, got direction=%q", k, dir)
+			}
 		}
 	}
-	if !haveChannel {
-		t.Errorf("expected BINDS_CHANNEL edge, semantic_edges=%v", sem)
+	if counts["BINDS_CHANNEL"] != 1 {
+		t.Errorf("expected exactly one BINDS_CHANNEL edge, got %d: %v", counts["BINDS_CHANNEL"], sem)
 	}
-	if !haveTopic {
-		t.Errorf("expected BINDS_TOPIC edge, semantic_edges=%v", sem)
+	if counts["BINDS_TOPIC"] != 1 {
+		t.Errorf("expected exactly one BINDS_TOPIC edge, got %d: %v", counts["BINDS_TOPIC"], sem)
+	}
+	// The bound channel is the @Outgoing Operation; the bound topic is the
+	// broker-prefixed MessageTopic — both by resolved entity id, not synthetic.
+	// scopeIsOne is false here (the group has two repos), so `other` is
+	// repo-prefixed — and critically it is the RESOLVED entity id, not the
+	// dangling synthetic FromID the edge was stored with.
+	if got := otherByKind["BINDS_CHANNEL"]; got != "producer::op:placeOrder" {
+		t.Errorf("BINDS_CHANNEL should resolve to producer::op:placeOrder, got %q", got)
+	}
+	if got := otherByKind["BINDS_TOPIC"]; got != "producer::topic:orders" {
+		t.Errorf("BINDS_TOPIC should resolve to producer::topic:orders, got %q", got)
 	}
 }
 

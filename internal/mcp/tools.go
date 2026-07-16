@@ -1913,72 +1913,93 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 	return out
 }
 
-// inspectSemanticEdgesFull wraps inspectSemanticEdges and, for a
-// SCOPE.MessageTopic entity, folds in the cross-repo PUBLISHES_TO/
-// SUBSCRIBES_TO/DELIVERS_TO counterparts (#5782 ask #5).
-//
-// inspectSemanticEdges walks only lr's OWN Doc.Relationships. A MessageTopic
-// is a PER-REPO entity keyed by a broker-prefixed Name (the same Name appears
-// as a separate node in every repo that touches the topic, per
-// messaging_related_5782.go); the cross-repo publisher<->subscriber join lives
-// in lg.Links, not in any single repo's adjacency. So inspecting the topic
-// from the producer repo showed only its local PUBLISHES_TO edge and never the
-// sibling repo's SUBSCRIBES_TO/DELIVERS_TO — even though grafel_related
-// direction=messaging (collectTopicNeighbors) already unions all of it. This
-// reuses that same traversal rather than re-walking lg.Links here.
-func inspectSemanticEdgesFull(lg *LoadedGroup, r *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
-	out := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind)
-	if lg == nil || r == nil || !isMessageTopicEntity(e) {
-		return out
-	}
+// semEdgeGroup is a set of neighbors to fold into inspect's semantic_edges
+// under one fixed (kind, direction) label.
+type semEdgeGroup struct {
+	kind      string
+	direction string
+	neighbors []topicNeighbor
+}
 
+// foldTopicNeighborRows appends semantic_edge rows for each group's neighbors to
+// `rows`, deduplicating against rows already present (by kind+direction+other).
+// Shared by the MessageTopic cross-repo fold and the ChannelBinding
+// synthetic-id fold in inspectSemanticEdgesFull. The `other` id is normalized to
+// inspectSemanticEdges's convention: unprefixed when scopeIsOne AND the neighbor
+// is in r's own repo, else repo-prefixed.
+func foldTopicNeighborRows(rows []map[string]any, r *LoadedRepo, scopeIsOne bool, groups []semEdgeGroup) []map[string]any {
+	key := func(kind, direction, other string) string {
+		return strings.ToUpper(kind) + "|" + direction + "|" + other
+	}
 	seen := map[string]bool{}
-	key := func(kind, direction, other string) string { return kind + "|" + direction + "|" + other }
-	for _, row := range out {
+	for _, row := range rows {
 		k, _ := row["kind"].(string)
 		d, _ := row["direction"].(string)
 		o, _ := row["other"].(string)
-		seen[key(strings.ToUpper(k), d, o)] = true
+		seen[key(k, d, o)] = true
 	}
-
-	// otherFor normalizes a topicNeighbor's always-prefixed EntityID to match
-	// inspectSemanticEdges's convention: unprefixed when scopeIsOne AND the
-	// neighbor is in r's own repo, else repo-prefixed.
-	otherFor := func(n topicNeighbor) string {
-		if scopeIsOne {
-			if rp, local := splitPrefixed(n.EntityID); rp == r.Repo {
-				return local
+	for _, g := range groups {
+		for _, n := range g.neighbors {
+			other := n.EntityID
+			if scopeIsOne {
+				if rp, local := splitPrefixed(n.EntityID); rp == r.Repo {
+					other = local
+				}
 			}
+			k := key(g.kind, g.direction, other)
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			if rows == nil {
+				rows = []map[string]any{}
+			}
+			rows = append(rows, map[string]any{
+				"kind":      g.kind,
+				"direction": g.direction,
+				"other":     other,
+				"line":      0,
+			})
 		}
-		return n.EntityID
 	}
-	addRow := func(n topicNeighbor, kind, direction string) {
-		other := otherFor(n)
-		k := key(kind, direction, other)
-		if seen[k] {
-			return
-		}
-		seen[k] = true
-		if out == nil {
-			out = []map[string]any{}
-		}
-		out = append(out, map[string]any{
-			"kind":      kind,
-			"direction": direction,
-			"other":     other,
-			"line":      0,
+	return rows
+}
+
+// inspectSemanticEdgesFull wraps inspectSemanticEdges and folds in the
+// cross-repo / synthetic-id semantic edges that a single-repo adjacency walk
+// misses (#5782 ask #5). inspectSemanticEdges walks only lr's OWN
+// Doc.Relationships keyed by the entity's stored id, which is insufficient for:
+//
+//   - SCOPE.MessageTopic: a PER-REPO node keyed by a broker-prefixed Name (the
+//     same Name appears in every repo that touches the topic); the cross-repo
+//     publisher<->subscriber join lives in lg.Links, not any single repo's
+//     adjacency. Inspecting the topic from the producer repo otherwise shows
+//     only the local PUBLISHES_TO edge. Reuses collectTopicNeighbors.
+//   - SCOPE.ChannelBinding: on the real fbwriter graph the binding entity is
+//     re-keyed to a content hash while its BINDS_CHANNEL/BINDS_TOPIC edges keep
+//     the DANGLING synthetic FromID, so adj.Outgoing(binding.ID) is empty and
+//     inspect showed NO semantic_edges at all. Reuses collectChannelBindingTargets
+//     (bindingMatchesEdge bridges the hash-id vs synthetic-id gap), emitting the
+//     bound channel/topic as OUTBOUND edges from the binding's point of view.
+func inspectSemanticEdgesFull(lg *LoadedGroup, r *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	out := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind)
+	if r == nil || e == nil {
+		return out
+	}
+	if isMessageTopicEntity(e) && lg != nil {
+		producers, consumers, handlers := collectTopicNeighbors(lg, e.Name, r.Repo)
+		return foldTopicNeighborRows(out, r, scopeIsOne, []semEdgeGroup{
+			{string(types.RelationshipKindPublishesTo), "inbound", producers},
+			{string(types.RelationshipKindSubscribesTo), "inbound", consumers},
+			{string(types.RelationshipKindDeliversTo), "outbound", handlers},
 		})
 	}
-
-	producers, consumers, handlers := collectTopicNeighbors(lg, e.Name, r.Repo)
-	for _, n := range producers {
-		addRow(n, string(types.RelationshipKindPublishesTo), "inbound")
-	}
-	for _, n := range consumers {
-		addRow(n, string(types.RelationshipKindSubscribesTo), "inbound")
-	}
-	for _, n := range handlers {
-		addRow(n, string(types.RelationshipKindDeliversTo), "outbound")
+	if isChannelBindingEntity(e) {
+		channels, topics := collectChannelBindingTargets(r, e)
+		return foldTopicNeighborRows(out, r, scopeIsOne, []semEdgeGroup{
+			{string(types.RelationshipKindBindsChannel), "outbound", channels},
+			{string(types.RelationshipKindBindsTopic), "outbound", topics},
+		})
 	}
 	return out
 }
