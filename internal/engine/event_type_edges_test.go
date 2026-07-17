@@ -157,6 +157,448 @@ func BuildOrderEvent(orderID string) OrderEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Producer — Go — EventBridge PutEvents (GAP-015 RC2-RC4)
+// ---------------------------------------------------------------------------
+
+// TestEventType_GoProducer_EventBridgePutEvents covers RC2 (PutEvents was
+// absent from goPublishSiteRe) + RC3 (DetailType: aws.String("...") wraps
+// the string literal in a single SDK-helper call, which the bare-quote
+// allowlist regex did not tolerate). A real EventBridge Go producer shape:
+// `client.PutEvents(ctx, &eventbridge.PutEventsInput{Entries: []types.
+// PutEventsRequestEntry{{DetailType: aws.String("OrderPlaced"), ...}}})`.
+func TestEventType_GoProducer_EventBridgePutEvents(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func PublishOrderPlaced(ctx context.Context, client *eventbridge.Client, orderID string) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{
+				DetailType: aws.String("OrderPlaced"),
+				Detail:     aws.String(orderID),
+				Source:     aws.String("orders-service"),
+			},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer.go", src)
+
+	id := eventTypeID("OrderPlaced")
+	requireEventTypeEntity(t, ents, id, "Go EventBridge PutEvents producer")
+
+	fromID := "SCOPE.Function:PublishOrderPlaced"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge PutEvents producer")
+}
+
+// TestEventType_GoProducer_EventBridgePutEventsWithContext covers the
+// PutEventsWithContext (AWS SDK v1-style) variant of RC2.
+func TestEventType_GoProducer_EventBridgePutEventsWithContext(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/eventbridge"
+)
+
+func PublishOrderShipped(ctx context.Context, client *eventbridge.EventBridge, orderID string) error {
+	_, err := client.PutEventsWithContext(ctx, &eventbridge.PutEventsInput{
+		Entries: []*eventbridge.PutEventsRequestEntry{
+			{
+				DetailType: aws.String("OrderShipped"),
+				Detail:     aws.String(orderID),
+				Source:     aws.String("orders-service"),
+			},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_v1.go", src)
+
+	id := eventTypeID("OrderShipped")
+	requireEventTypeEntity(t, ents, id, "Go EventBridge PutEventsWithContext producer")
+
+	fromID := "SCOPE.Function:PublishOrderShipped"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge PutEventsWithContext producer")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_BareQuoteWrapperDifference
+// demonstrates RC3 directly: the aws.String(...) wrapper form must match
+// where a naive bare-quote-only regex would not. This isn't a regression
+// test on the OLD regex (which no longer exists) — it documents intent by
+// asserting the wrapped form resolves via the SAME allowlist key
+// (DetailType) that the bare-literal form already covered.
+func TestEventType_GoProducer_EventBridgeDetailType_BareQuoteWrapperDifference(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func PublishOrderSettled(ctx context.Context, client *eventbridge.Client) error {
+	entry := types.PutEventsRequestEntry{DetailType: aws.String("OrderSettled")}
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{entry},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_wrapper.go", src)
+
+	id := eventTypeID("OrderSettled")
+	requireEventTypeEntity(t, ents, id, "Go EventBridge aws.String wrapper producer")
+
+	fromID := "SCOPE.Function:PublishOrderSettled"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge aws.String wrapper producer")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailTypeConst covers RC4: the
+// DetailType value is a bare identifier (`aws.String(orderDetailType)`)
+// bound to a same-file `const orderDetailType = "OrderShipped"`. The
+// producer detector must resolve the identifier to its literal.
+func TestEventType_GoProducer_EventBridgeDetailTypeConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const orderDetailType = "OrderShipped"
+
+func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderID string) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{
+				DetailType: aws.String(orderDetailType),
+				Detail:     aws.String(orderID),
+				Source:     aws.String("orders-service"),
+			},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_const.go", src)
+
+	id := eventTypeID("OrderShipped")
+	requireEventTypeEntity(t, ents, id, "Go EventBridge const-bound DetailType producer")
+
+	fromID := "SCOPE.Function:PublishOrderShipped"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge const-bound DetailType producer")
+
+	ent := eventTypeEntityByID(ents, id)
+	if ent == nil {
+		t.Fatalf("expected event-type entity %q to exist", id)
+	}
+	var edgeDetection string
+	for _, r := range rels {
+		if r.FromID == fromID && r.ToID == fmt.Sprintf("%s:%s", eventTypeKind, id) {
+			edgeDetection = r.Properties["detection"]
+		}
+	}
+	if edgeDetection != "eventbridge-detailtype-const" {
+		t.Errorf("expected detection=eventbridge-detailtype-const, got %q", edgeDetection)
+	}
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_NoPublishSink_NoEdge is the
+// negative guard for RC3/RC4: a DetailType: aws.String("X") literal with NO
+// PutEvents (or any other recognized publish sink) in the enclosing function
+// must mint NOTHING — the publish-sink gate must not be bypassed by the new
+// wrapper-call / const-resolution allowances.
+func TestEventType_GoProducer_EventBridgeDetailType_NoPublishSink_NoEdge(t *testing.T) {
+	src := `package producer
+
+import (
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func BuildOrderPlacedEntry() types.PutEventsRequestEntry {
+	return types.PutEventsRequestEntry{DetailType: aws.String("OrderPlaced")}
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_no_sink.go", src)
+	requireNoEventTypeEntities(t, ents, "DetailType literal with no publish sink in function")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_ParamShadowsPackageConst is
+// the correctness guard for review MUST-FIX #1: the identifier at the publish
+// site is the enclosing function's PARAMETER (`detail string`), whose runtime
+// value is unknown — but a same-named PACKAGE-LEVEL const with a different
+// literal exists elsewhere in the file. The file-global binding table must
+// NOT resolve the param to that unrelated const literal. No node/edge.
+func TestEventType_GoProducer_EventBridgeDetailType_ParamShadowsPackageConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const detail = "OrderPlaced"
+
+func Publish(ctx context.Context, detail string, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(detail)},
+		},
+	})
+	return err
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_shadow.go", src)
+	requireNoEventTypeEntities(t, ents, "param shadows package const — must not resolve to const literal")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_CrossFunctionLocalNotResolved
+// is the reviewer's exact reproducer for MUST-FIX #1: a `:=` local in one
+// function must never bind an identically-named identifier at a publish site
+// in a DIFFERENT function (there, `detail` is a parameter). No wrong edge.
+func TestEventType_GoProducer_EventBridgeDetailType_CrossFunctionLocalNotResolved(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func A() {
+	detail := "OrderPlaced"
+	_ = detail
+}
+
+func B(ctx context.Context, detail string, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(detail)},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_crossfn.go", src)
+	requireNoEventTypeEntities(t, ents, "cross-function local must not resolve at param site")
+	for _, r := range rels {
+		if r.FromID == "SCOPE.Function:B" {
+			t.Errorf("expected no PUBLISHES_TO edge from B; got edge to %q", r.ToID)
+		}
+	}
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_FormatterNotMinted is the
+// guard for review MUST-FIX #2: a single-arg wrapper that is a FORMATTER or
+// TEMPLATE call must not mint a garbage / never-joining node. Both cases have
+// a real PutEvents sink, so the ONLY reason to reject is the wrapper's nature.
+func TestEventType_GoProducer_EventBridgeDetailType_FormatterNotMinted(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			// fmt.Sprintf as the DIRECT DetailType wrapper, with a format verb —
+			// the outermost single-wrapper exposure. Runtime value carries a `%s`.
+			name: "sprintf-verb",
+			src: `package producer
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func Publish(ctx context.Context, region string, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: fmt.Sprintf("order.%s.placed", region)},
+		},
+	})
+	return err
+}
+`,
+		},
+		{
+			// strings.ToUpper as the DIRECT DetailType wrapper — runtime value
+			// ("ORDERPLACED") never verbatim-joins the literal "orderplaced".
+			name: "strings-toupper",
+			src: `package producer
+
+import (
+	"context"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+func Publish(ctx context.Context, client *eventbridge.Client) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: strings.ToUpper("orderplaced")},
+		},
+	})
+	return err
+}
+`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ents, _ := runEventTypeDetect(t, "go", "producer_fmt.go", c.src)
+			requireNoEventTypeEntities(t, ents, "formatter/template wrapper ("+c.name+")")
+		})
+	}
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_ClosureParamShadowsConst is
+// the residual guard for re-review MUST-FIX #1: the identifier at the publish
+// site is a parameter of a CLOSURE (func literal) that lexically encloses the
+// call, whose runtime value is unknown — but a same-named package-level const
+// exists. The shadow guard must see the closure param, not just the top-level
+// func decl. No node/edge.
+func TestEventType_GoProducer_EventBridgeDetailType_ClosureParamShadowsConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const orderType = "OrderPlaced"
+
+func Outer(ctx context.Context, c *eventbridge.Client) {
+	h := func(orderType string) {
+		_, _ = c.PutEvents(ctx, &eventbridge.PutEventsInput{
+			Entries: []types.PutEventsRequestEntry{
+				{DetailType: aws.String(orderType)},
+			},
+		})
+	}
+	h("ShouldNotResolve")
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_closure.go", src)
+	requireNoEventTypeEntities(t, ents, "closure param shadows package const — must not resolve to const literal")
+	for _, r := range rels {
+		if r.FromID == "SCOPE.Function:Outer" || r.FromID == "SCOPE.Function:h" {
+			t.Errorf("expected no PUBLISHES_TO edge from closure/outer; got edge to %q", r.ToID)
+		}
+	}
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_ConstTemplateNotMinted is the
+// residual guard for re-review MUST-FIX #2: a const bound to a `%`-format
+// template resolved via the identifier path must be rejected by the same
+// value-usability gate the literal path applies. No garbage node.
+func TestEventType_GoProducer_EventBridgeDetailType_ConstTemplateNotMinted(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const tmpl = "order.%s.placed"
+
+func Pub(ctx context.Context, c *eventbridge.Client) error {
+	_, err := c.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(tmpl)},
+		},
+	})
+	return err
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer_const_tmpl.go", src)
+	requireNoEventTypeEntities(t, ents, "const %-template resolved via ident path must not mint")
+}
+
+// TestEventType_GoProducer_EventBridgeDetailType_GroupedConst covers re-review
+// MUST-FIX #3: a grouped `const ( X = "..." )` block member (bare `X = "..."`,
+// no per-line `const` keyword) must resolve at the publish site.
+func TestEventType_GoProducer_EventBridgeDetailType_GroupedConst(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+)
+
+const (
+	someOther       = "OrderPlaced"
+	orderDetailType = "OrderShipped"
+)
+
+func PublishOrderShipped(ctx context.Context, client *eventbridge.Client, orderID string) error {
+	_, err := client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{DetailType: aws.String(orderDetailType)},
+		},
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer_grouped_const.go", src)
+
+	id := eventTypeID("OrderShipped")
+	requireEventTypeEntity(t, ents, id, "Go EventBridge grouped-const DetailType producer")
+
+	fromID := "SCOPE.Function:PublishOrderShipped"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go EventBridge grouped-const DetailType producer")
+
+	var edgeDetection string
+	for _, r := range rels {
+		if r.FromID == fromID && r.ToID == toID {
+			edgeDetection = r.Properties["detection"]
+		}
+	}
+	if edgeDetection != "eventbridge-detailtype-const" {
+		t.Errorf("expected detection=eventbridge-detailtype-const, got %q", edgeDetection)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Producer — JS/TS
 // ---------------------------------------------------------------------------
 
