@@ -498,6 +498,222 @@ func applyEventTypeProducerJSTS(
 }
 
 // ---------------------------------------------------------------------------
+// Producer — Java (GAP-015 RC5)
+// ---------------------------------------------------------------------------
+
+// javaPutEventsSiteRe matches the EventBridge publish sink keyed on the AWS
+// SDK method idiom (NOT on any corpus class/variable name): `.putEvents(`.
+//
+// v1 deliberately keys ONLY on EventBridge `putEvents`. The generic
+// `.publish(` sink was DROPPED: it matches Reactor/RxJava `.publish()`
+// operators, `Optional`/stream chains, and arbitrary custom buses, and —
+// because SNS `.publish(` carries no `detailType` (it uses subject / message
+// attributes) — a detailType-gated `.publish(` only ever fired for
+// EventBridge-shaped code or false positives. SNS + other publish idioms
+// (Kinesis `.putRecord(s)`, SQS `.sendMessage`, Kafka `.send`) are deferred
+// to the follow-up (see the v1 limitations section in the report).
+var javaPutEventsSiteRe = regexp.MustCompile(`\.putEvents\s*\(`)
+
+// javaDetailTypeRe matches the event-name binding keyed on the AWS SDK
+// idiom: the v2 fluent-builder `.detailType("X")` or the v1/setter form
+// `.setDetailType("X")`. Java string literals are always double-quoted, so
+// (unlike the Go/JS-TS allowlist regex) this doesn't need to handle
+// single/backtick quoting.
+//
+// v1: STRING-LITERAL argument only. A variable-bound or constant-bound
+// detail type (`.detailType(EVENT_NAME)`, `.detailType(evt.type())`) is a
+// follow-up — resolving it needs a symbol table, out of scope for v1.
+var javaDetailTypeRe = regexp.MustCompile(`\.(?:detailType|setDetailType)\s*\(\s*"([^"\n\r]+)"\s*\)`)
+
+// findJavaDetailType scans arg (the balanced-paren argument text of a
+// putEvents call) for the first `.detailType(...)`/`.setDetailType(...)`
+// string-literal binding. Returns ("", false) when none is found.
+//
+// LOW-1 (v1): a single putEvents carrying two entries with distinct
+// detailType("A")/detailType("B") captures ONLY the first — findJavaDetailType
+// returns the first regex match. Multi-detailType fan-out per putEvents is a
+// follow-up.
+func findJavaDetailType(arg string) (value string, ok bool) {
+	m := javaDetailTypeRe.FindStringSubmatch(arg)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// balancedParenArgBounds returns the [openParen+1, close) byte range of the
+// first balanced `(`…`)` starting at openParen (which must point at the `(`).
+// Returns ok=false when the parens never balance before EOF.
+//
+// Unlike extractBalancedParensEngine, this takes the depth count over a
+// caller-supplied (comment/string-MASKED) copy so that an unbalanced `(`
+// inside a string literal in the putEvents argument — e.g. a `:(` emoticon or
+// a URL in the free-text EventBridge `detail` JSON — does not desync the depth
+// counter and swallow the whole file (MEDIUM-1). The caller slices the value
+// from the ORIGINAL source using the returned offsets (offsets are identical
+// because the mask preserves length).
+func balancedParenArgBounds(masked string, openParen int) (start, end int, ok bool) {
+	depth := 0
+	for i := openParen; i < len(masked); i++ {
+		switch masked[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return openParen + 1, i, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// maskJavaCommentsAndStrings returns a copy of src with every `//` line
+// comment, `/* */` block comment, and `"..."` string-literal SPAN replaced by
+// spaces of equal length (newlines preserved). Byte offsets are therefore
+// identical to the original, so a regex match position in the masked copy
+// maps 1:1 back to src. This is what makes a `putEvents(` inside a comment or
+// a log-line string NOT count as a real sink (review finding #2). char
+// literals (`'x'`) are stepped over so an apostrophe-in-a-string edge does
+// not desync the scanner. Java text blocks (`"""..."""`) are not specially
+// handled — v1 masks them as a sequence of ordinary string tokens, which is
+// safe (over-masking, never under-masking).
+func maskJavaCommentsAndStrings(src string) string {
+	b := []byte(src)
+	out := make([]byte, len(b))
+	copy(out, b)
+	blank := func(i int) {
+		if b[i] != '\n' && b[i] != '\r' {
+			out[i] = ' '
+		}
+	}
+	const (
+		normal = iota
+		lineComment
+		blockComment
+		str
+		charLit
+	)
+	state := normal
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch state {
+		case normal:
+			switch {
+			case c == '/' && i+1 < len(b) && b[i+1] == '/':
+				state = lineComment
+				blank(i)
+			case c == '/' && i+1 < len(b) && b[i+1] == '*':
+				state = blockComment
+				blank(i)
+			case c == '"':
+				state = str
+				blank(i)
+			case c == '\'':
+				state = charLit
+				blank(i)
+			}
+		case lineComment:
+			blank(i)
+			if c == '\n' {
+				state = normal
+			}
+		case blockComment:
+			blank(i)
+			if c == '*' && i+1 < len(b) && b[i+1] == '/' {
+				blank(i + 1)
+				i++
+				state = normal
+			}
+		case str:
+			blank(i)
+			if c == '\\' && i+1 < len(b) {
+				blank(i + 1)
+				i++
+			} else if c == '"' {
+				state = normal
+			}
+		case charLit:
+			blank(i)
+			if c == '\\' && i+1 < len(b) {
+				blank(i + 1)
+				i++
+			} else if c == '\'' {
+				state = normal
+			}
+		}
+	}
+	return string(out)
+}
+
+// applyEventTypeProducerJava detects a Java EventBridge producer keyed on the
+// AWS SDK idiom: an EventBridge `.putEvents(...)` sink whose builder-chain
+// argument CO-LOCATES a `.detailType("X")`/`.setDetailType("X")` string
+// literal —
+// `client.putEvents(PutEventsRequest.builder().entries(PutEventsRequestEntry.
+// builder().detailType("OrderPlaced").build()).build())`. The detailType is
+// bound to the SAME call's balanced-paren argument, so unlike a loose
+// whole-method-scope co-existence check it cannot associate an unrelated
+// `.detailType(...)` with an unrelated publish (review finding #1).
+//
+// Sinks inside comments or string literals are excluded: putEvents positions
+// are located in a comment/string-MASKED copy of the source (review finding
+// #2), then the argument is extracted from the ORIGINAL source at the same
+// offset (offsets are preserved by the mask).
+//
+// v1 narrowing (breadth deferred to the follow-up issue):
+//   - EventBridge `putEvents` sink ONLY — generic `.publish(`, SNS, SQS,
+//     Kinesis, Kafka sinks are not modeled.
+//   - detailType must be CO-LOCATED in the putEvents call argument — the
+//     v1/setter form built in a separate statement (`entry.setDetailType(
+//     "X"); client.putEvents(req)`) and any cross-method/cross-file binding
+//     is deferred (would need call-graph / dataflow resolution).
+//   - STRING-LITERAL detailType only (variable/constant-bound deferred).
+func applyEventTypeProducerJava(
+	src string,
+	emitEdge func(fromID, verbatim, kind string, props map[string]string),
+) {
+	methods := indexJavaEnclosingMethods(src)
+	masked := maskJavaCommentsAndStrings(src)
+	for _, m := range javaPutEventsSiteRe.FindAllStringIndex(masked, -1) {
+		openParen := m[1] - 1 // regex ends in `\(`, so m[1]-1 is the '(' index.
+		// Balance the parens over the MASKED copy so an unbalanced `(` inside
+		// a string literal in the argument (e.g. a `:(` emoticon in the
+		// EventBridge `detail` JSON) can't swallow the file (MEDIUM-1); then
+		// slice the detailType value from the ORIGINAL source at the same
+		// offsets (mask preserves length) so the masked-out literal is visible.
+		start, end, ok := balancedParenArgBounds(masked, openParen)
+		if !ok {
+			continue
+		}
+		value, ok := findJavaDetailType(src[start:end])
+		if !ok {
+			continue
+		}
+		caller := enclosingJavaMethodAt(methods, m[0])
+		if caller == "" {
+			// No enclosing method (e.g. a static field initializer): the
+			// fromID would be the bare `SCOPE.Function:` prefix, which
+			// emitEdge's fromID=="" guard does not catch. Reject (review
+			// finding #3).
+			//
+			// LOW-2 (v1): a static-field-initializer putEvents placed AFTER a
+			// method attributes to that nearest-preceding method (shared
+			// enclosingJavaMethodAt limitation) rather than being rejected;
+			// only a putEvents with NO preceding method in the file is caught
+			// here. Precise class-vs-method scoping is a follow-up.
+			continue
+		}
+		emitEdge(
+			fmt.Sprintf("SCOPE.Function:%s", caller),
+			value,
+			"PUBLISHES_TO",
+			map[string]string{"lang": "java", "key": "detailType", "detection": "publish-site-literal"},
+		)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Consumer — event-source-mapping FilterCriteria (GAP-003 fold-in)
 // ---------------------------------------------------------------------------
 
