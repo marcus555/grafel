@@ -35,9 +35,32 @@ import (
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
-// isMessageTopicEntity reports whether e is a broker message-topic node.
+// isMessageTopicEntity reports whether e is a broker message-topic node OR
+// an event-identity node the messaging query surface should treat the same
+// way for seeding/neighbor purposes (GAP-005). Without this, SCOPE.EventType
+// (and SCOPE.EventBusEvent) nodes are unreachable by `grafel_related
+// direction=msg` / direction=messaging — resolveTopicSeed and
+// collectTopicNeighbors both gate on this predicate, so extending it here is
+// the single highest-leverage change that makes event-centric traversal work
+// end to end (producer PUBLISHES_TO / consumer SUBSCRIBES_TO joined through
+// the SAME synthetic node, exactly like a SCOPE.MessageTopic).
+//
+//   - SCOPE.EventType (GAP-005): generic string-literal event-identity,
+//     `event:type:<VerbatimEventString>`.
+//   - SCOPE.EventBusEvent (#927, freebie): managed-bus event identity,
+//     `event:eventbridge:...` / `event:eventgrid:...` / `event:cloudevents:...`.
+//     Was previously unreachable via this MCP surface even though the engine
+//     pass emitting it (event_bus_edges.go) predates GAP-005.
 func isMessageTopicEntity(e *graph.Entity) bool {
-	return e != nil && e.Kind == string(types.EntityKindMessageTopic)
+	if e == nil {
+		return false
+	}
+	switch e.Kind {
+	case string(types.EntityKindMessageTopic), string(types.EntityKindEventType), string(types.EntityKindEventBusEvent):
+		return true
+	default:
+		return false
+	}
 }
 
 // topicSeed is a resolved SCOPE.MessageTopic entity: the repo it was found in,

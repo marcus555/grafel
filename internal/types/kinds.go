@@ -119,6 +119,26 @@ const (
 	// without any new linker code.
 	EntityKindEventBusEvent EntityKind = "SCOPE.EventBusEvent"
 
+	// GAP-005: generic string-literal event-identity model. EventType is a
+	// synthetic entity representing a routable event TYPE contract carried
+	// by ANY channel (Kinesis/SQS/Kafka/etc.) — the generalization of
+	// EntityKindEventBusEvent's managed-bus-specific modeling to a plain
+	// envelope `{eventType:"X"}` with no managed-bus `source`. Cross-repo
+	// identity = the VERBATIM event-type string (deliberately NOT
+	// case-folded — the string is the wire contract producer and consumer
+	// both hard-code):
+	//
+	//	event:type:<VerbatimEventString>
+	//
+	// Kept as a DISTINCT kind from EntityKindEventBusEvent (different key
+	// scopes — bus-prefixed vs. bare string) and from the channel nodes
+	// (EntityKindMessageTopic / SCOPE.Queue) — the event flows OVER a
+	// channel, it is not the channel itself. Both producers (PUBLISHES_TO)
+	// and consumers (SUBSCRIBES_TO) emit the same synthetic ID so the
+	// existing import-channel linker / messaging_related MCP surface joins
+	// them without new linker code.
+	EntityKindEventType EntityKind = "SCOPE.EventType"
+
 	// CLI command entry-point detection (epic #3628). A SCOPE.Command is a
 	// statically-declared command-line command — the CLI sibling of an HTTP
 	// endpoint. Covers click/argparse/typer (Python), commander/yargs/oclif
