@@ -86,6 +86,76 @@ func PublishOrderPlaced(ctx context.Context, client *kinesis.Client, orderID str
 	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go producer")
 }
 
+// TestEventType_GoProducer_FunctionScopeStructField covers the REALISTIC Go
+// producer shape (GAP-005 root-cause C, zero-yield-on-real-corpus
+// investigation): the event/envelope struct is built and its EventType field
+// set SEPARATELY from the publish call — via a struct literal a few lines
+// above `client.PutRecord(...)`, not co-located inside the call's own
+// argument list. TestEventType_GoProducer_PublishSiteLiteral only covers the
+// co-located shape; this exercises the function-scope-recall widening.
+func TestEventType_GoProducer_FunctionScopeStructField(t *testing.T) {
+	src := `package producer
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kinesis"
+)
+
+type OrderEvent struct {
+	EventType string ` + "`json:\"eventType\"`" + `
+	OrderID   string ` + "`json:\"orderId\"`" + `
+}
+
+func PublishOrderPlaced(ctx context.Context, client *kinesis.Client, orderID string) error {
+	evt := OrderEvent{
+		EventType: "OrderPlaced",
+		OrderID:   orderID,
+	}
+	body, err := json.Marshal(evt)
+	if err != nil {
+		return err
+	}
+	_, err = client.PutRecord(ctx, &kinesis.PutRecordInput{
+		StreamName:   aws.String("orders-stream"),
+		PartitionKey: aws.String(orderID),
+		Data:         body,
+	})
+	return err
+}
+`
+	ents, rels := runEventTypeDetect(t, "go", "producer.go", src)
+
+	id := eventTypeID("OrderPlaced")
+	requireEventTypeEntity(t, ents, id, "Go producer (function-scope struct field)")
+
+	fromID := "SCOPE.Function:PublishOrderPlaced"
+	toID := fmt.Sprintf("%s:%s", eventTypeKind, id)
+	requireEdgeFromTo(t, rels, fromID, toID, "PUBLISHES_TO", "Go producer (function-scope struct field)")
+}
+
+// TestEventType_GoProducer_FunctionScopeRecall_RequiresPublishSink verifies
+// the recall widening still requires a REAL publish call in the same
+// function — an eventType-keyed struct field in a function with no publish
+// sink never mints a node (precision guard for root-cause-C fix).
+func TestEventType_GoProducer_FunctionScopeRecall_RequiresPublishSink(t *testing.T) {
+	src := `package producer
+
+type OrderEvent struct {
+	EventType string
+}
+
+func BuildOrderEvent(orderID string) OrderEvent {
+	evt := OrderEvent{EventType: "OrderPlaced"}
+	return evt
+}
+`
+	ents, _ := runEventTypeDetect(t, "go", "producer.go", src)
+	requireNoEventTypeEntities(t, ents, "Go struct field with no publish sink in function")
+}
+
 // ---------------------------------------------------------------------------
 // Producer — JS/TS
 // ---------------------------------------------------------------------------
@@ -304,6 +374,50 @@ Resources:
 
 	fromID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaFunctionID("OrderConsumer"))
 	requireEdgeFromTo(t, rels, fromID, fmt.Sprintf("%s:%s", eventTypeKind, placedID), "SUBSCRIBES_TO", "CFN standalone ESM")
+}
+
+// TestEventType_CFNConsumer_RealisticMultilineEscapedPattern covers the
+// SHAPE SAM templates actually use in the wild: FilterCriteria.Pattern as a
+// multi-line, double-quoted YAML block scalar with \"-escaped inner quotes
+// (produced by `sam build`/hand-authored templates that keep the JSON
+// readable across lines), NOT the single-line single-quoted compact form
+// TestEventType_SAMConsumer_InlineEventsFilterCriteria exercises. Root-cause
+// investigation (GAP-005 zero-yield-on-real-corpus) found the regex-based
+// key/value extraction never handled escaped quotes or embedded newlines
+// inside the Pattern string, so this realistic shape silently mints nothing.
+func TestEventType_CFNConsumer_RealisticMultilineEscapedPattern(t *testing.T) {
+	src := "AWSTemplateFormatVersion: 2010-09-09\n" +
+		"Transform:\n" +
+		"  - AWS::Serverless-2016-10-31\n" +
+		"Resources:\n" +
+		"  OrderValidations:\n" +
+		"    Type: AWS::Serverless::Function\n" +
+		"    Properties:\n" +
+		"      Handler: node_modules/datadog-lambda-js/dist/handler.handler\n" +
+		"      Events:\n" +
+		"        Stream:\n" +
+		"          Type: Kinesis\n" +
+		"          Properties:\n" +
+		"            Stream: !ImportValue SharedEventsStreamArn\n" +
+		"            FilterCriteria:\n" +
+		"              Filters:\n" +
+		"                - Pattern: \"{ \\\"data\\\": {\n" +
+		"                              \\\"eventType\\\": [\n" +
+		"                                  \\\"OrderPlaced\\\",\n" +
+		"                                  \\\"OrderCancelled\\\",\n" +
+		"                                  \\\"OrderShipped\\\"\n" +
+		"                                ]\n" +
+		"                              }\n" +
+		"                            }\"\n"
+
+	ents, rels := runEventTypeDetect(t, "yaml", "template.yaml", src)
+
+	fromID := fmt.Sprintf("%s:%s", serverlessFunctionKind, lambdaFunctionID("OrderValidations"))
+	for _, name := range []string{"OrderPlaced", "OrderCancelled", "OrderShipped"} {
+		id := eventTypeID(name)
+		requireEventTypeEntity(t, ents, id, "SAM realistic multi-line escaped Pattern ("+name+")")
+		requireEdgeFromTo(t, rels, fromID, fmt.Sprintf("%s:%s", eventTypeKind, id), "SUBSCRIBES_TO", "SAM realistic multi-line escaped Pattern ("+name+")")
+	}
 }
 
 // TestEventType_CFNConsumer_NonTemplateYamlIgnored verifies a plain

@@ -58,10 +58,41 @@ var goPublishSiteRe = regexp.MustCompile(
 	`\.(?:Publish(?:WithContext)?|PublishMessage|SendMessage(?:Batch)?(?:WithContext)?|PutRecords?(?:WithContext)?|Produce|Send)\s*\(`,
 )
 
+// enclosingGoFuncBodyStart returns the byte offset of the nearest preceding
+// Go function/method declaration before offset, bounded by the same 4000-byte
+// lookback window findEnclosingGoFunctionName uses. Used to widen the
+// producer-recall search (see applyEventTypeProducerGo) to "earlier in this
+// function" without leaking into a PRIOR function's body.
+func enclosingGoFuncBodyStart(src string, offset int) int {
+	lookback := offset - 4000
+	if lookback < 0 {
+		lookback = 0
+	}
+	window := src[lookback:offset]
+	matches := goFunctionDeclRe.FindAllStringIndex(window, -1)
+	if len(matches) == 0 {
+		return lookback
+	}
+	last := matches[len(matches)-1]
+	return lookback + last[0]
+}
+
 // applyEventTypeProducerGo scans Go source for publish call-sites and, at
-// each one, extracts an allowlisted key/string-literal pair from the call's
-// argument list. The argument list is the precision boundary — a matching
-// key/value pair OUTSIDE any publish call's parens is never considered.
+// each one, extracts an allowlisted key/string-literal pair.
+//
+// Precision boundary #1 (co-location, the common case): the key/value pair
+// appears inside the call's own argument list — mirrors the windowed
+// extraction event_bus_edges.go uses.
+//
+// Precision boundary #2 (function-scope recall, GAP-005 root-cause C):
+// real producers frequently build the event/envelope struct SEPARATELY from
+// the publish call — `evt := OrderEvent{EventType: "OrderPlaced"}` a few
+// lines above `client.PutRecord(ctx, &kinesis.PutRecordInput{Data: body})` —
+// so the co-location gate alone finds nothing on realistic code. When the
+// argument list has no match, widen the search to the rest of the enclosing
+// function's body (from the nearest preceding `func` decl up to the call
+// site). This still requires a real publish sink in the SAME function, so it
+// cannot mint from an arbitrary unrelated struct elsewhere in the file.
 func applyEventTypeProducerGo(
 	src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
@@ -70,6 +101,12 @@ func applyEventTypeProducerGo(
 		openParen := m[1] - 1 // regex ends in `\(`, so m[1]-1 is the '(' index.
 		arg := extractBalancedParensEngine(src, openParen)
 		key, value, ok := findAllowlistedEventType(arg)
+		detection := "publish-site-literal"
+		if !ok {
+			bodyStart := enclosingGoFuncBodyStart(src, m[0])
+			key, value, ok = findAllowlistedEventType(src[bodyStart:m[0]])
+			detection = "function-scope-struct-field"
+		}
 		if !ok {
 			continue
 		}
@@ -78,7 +115,7 @@ func applyEventTypeProducerGo(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			value,
 			"PUBLISHES_TO",
-			map[string]string{"lang": "go", "key": key, "detection": "publish-site-literal"},
+			map[string]string{"lang": "go", "key": key, "detection": detection},
 		)
 	}
 }
@@ -96,7 +133,26 @@ var jstsPublishSiteRe = regexp.MustCompile(
 		`|new\s+\w*(?:PublishCommand|SendMessageCommand|PutRecordCommand|PutRecordsCommand)\s*\(`,
 )
 
-// applyEventTypeProducerJSTS mirrors applyEventTypeProducerGo for JS/TS.
+// enclosingNodeFuncBodyStart mirrors enclosingGoFuncBodyStart for JS/TS,
+// bounded by the same 4000-byte lookback window findEnclosingNodeFunctionName
+// uses.
+func enclosingNodeFuncBodyStart(src string, offset int) int {
+	lookback := offset - 4000
+	if lookback < 0 {
+		lookback = 0
+	}
+	window := src[lookback:offset]
+	matches := nodeFunctionNameForOffsetRe.FindAllStringIndex(window, -1)
+	if len(matches) == 0 {
+		return lookback
+	}
+	last := matches[len(matches)-1]
+	return lookback + last[0]
+}
+
+// applyEventTypeProducerJSTS mirrors applyEventTypeProducerGo for JS/TS,
+// including the function-scope recall widening (GAP-005 root-cause C) for
+// the `const evt = {eventType:"X"}; ...; client.send(evt)` shape.
 func applyEventTypeProducerJSTS(
 	src string,
 	emitEdge func(fromID, verbatim, kind string, props map[string]string),
@@ -105,6 +161,12 @@ func applyEventTypeProducerJSTS(
 		openParen := m[1] - 1
 		arg := extractBalancedParensEngine(src, openParen)
 		key, value, ok := findAllowlistedEventType(arg)
+		detection := "publish-site-literal"
+		if !ok {
+			bodyStart := enclosingNodeFuncBodyStart(src, m[0])
+			key, value, ok = findAllowlistedEventType(src[bodyStart:m[0]])
+			detection = "function-scope-struct-field"
+		}
 		if !ok {
 			continue
 		}
@@ -113,7 +175,7 @@ func applyEventTypeProducerJSTS(
 			fmt.Sprintf("SCOPE.Function:%s", caller),
 			value,
 			"PUBLISHES_TO",
-			map[string]string{"lang": "javascript", "key": key, "detection": "publish-site-literal"},
+			map[string]string{"lang": "javascript", "key": key, "detection": detection},
 		)
 	}
 }
@@ -308,6 +370,60 @@ var cfnFunctionNameRefRe = regexp.MustCompile(
 	`FunctionName\s*:\s*(?:!Ref\s+(\w+)|!GetAtt\s+(\w+)\.[A-Za-z]+|['"]?([\w-]+)['"]?)`,
 )
 
+// cfnPatternValueRe extracts a FilterCriteria `Pattern:` value in either of
+// the two real-world shapes: a single-line single-quoted JSON string (group
+// 1 — the compact form, e.g. `- Pattern: '{ "eventType": ["X"] }'`), or a
+// multi-line DOUBLE-quoted YAML string with backslash-`\"`-escaped inner
+// quotes (group 2 — the shape SAM/hand-authored templates actually emit to
+// keep a long JSON pattern human-readable across lines, e.g.
+// `- Pattern: "{ \"eventType\": [\n      \"X\"\n    ] }"`). The synthetic
+// unit tests that shipped with GAP-005 only covered the single-quoted form,
+// so the double-quoted/escaped/multi-line shape silently matched nothing on
+// a real corpus (root cause of the zero-SCOPE.EventType-nodes bug). Group 2
+// uses `(?:[^"\\]|\\.)*` so an escaped `\"` never terminates the match early.
+var cfnPatternValueRe = regexp.MustCompile(`-\s*Pattern\s*:\s*(?:'([^']*)'|"((?:[^"\\]|\\.)*)")`)
+
+// cfnPatternLineFoldRe matches a newline plus any following indentation
+// inside a Pattern value — the YAML double-quoted-scalar line-continuation
+// whitespace that separates `\"eventType\": [` from the next `\"X\",` line.
+// Folding it away (rather than to a space) keeps extractEventTypeArrayValues'
+// no-newline-in-quotes character class working over the flattened string.
+var cfnPatternLineFoldRe = regexp.MustCompile(`\r?\n\s*`)
+
+// normalizeCFNPatternValue turns a raw Pattern value (as captured by
+// cfnPatternValueRe, before or after unescaping) into a single-line JSON-ish
+// string safe for extractEventTypeArrayValues: fold line continuations away,
+// then unescape `\"` -> `"` so the embedded JSON's own quoting survives the
+// outer YAML double-quoted-string escaping.
+func normalizeCFNPatternValue(s string) string {
+	s = cfnPatternLineFoldRe.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, `\"`, `"`)
+	return s
+}
+
+// collectCFNPatternValues finds every FilterCriteria `Pattern:` value in
+// block (there may be more than one Filters entry) and returns their
+// normalized bodies joined by a space, ready for extractEventTypeArrayValues.
+// Returns "" when block has no Pattern field.
+func collectCFNPatternValues(block string) string {
+	matches := cfnPatternValueRe.FindAllStringSubmatch(block, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, m := range matches {
+		raw := m[1]
+		if m[2] != "" {
+			raw = m[2]
+		}
+		if raw == "" {
+			continue
+		}
+		parts = append(parts, normalizeCFNPatternValue(raw))
+	}
+	return strings.Join(parts, " ")
+}
+
 // applyEventTypeConsumerCFN parses SAM / CloudFormation templates for
 // event-source-mapping FilterCriteria.Pattern `data.eventType` arrays and
 // mints SUBSCRIBES_TO edges. Two shapes:
@@ -367,7 +483,11 @@ func applyEventTypeConsumerCFN(
 		}
 		resType := tm[1]
 
-		values := extractEventTypeArrayValues(block)
+		patternText := collectCFNPatternValues(block)
+		if patternText == "" {
+			continue
+		}
+		values := extractEventTypeArrayValues(patternText)
 		if len(values) == 0 {
 			continue
 		}
