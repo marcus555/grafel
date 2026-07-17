@@ -4,8 +4,39 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
 )
+
+// cfnToDoc converts the (entities, relationships) a CFN pass produced into a
+// graph.Document whose entity IDs equal the `<Kind>:<Name>` structural-ref
+// form the pass uses for edge endpoints. This mirrors the post-resolution
+// state (the resolver rewrites structural-ref edges to entity IDs) closely
+// enough to exercise ApplyAsyncTriggerEdges, which matches SUBSCRIBES_TO
+// targets against topic/queue entity IDs.
+func cfnToDoc(ents []types.EntityRecord, rels []types.RelationshipRecord) *graph.Document {
+	doc := &graph.Document{Repo: "fixture-cfn"}
+	for _, e := range ents {
+		doc.Entities = append(doc.Entities, graph.Entity{
+			ID:         string(e.Kind) + ":" + e.Name,
+			Name:       e.Name,
+			Kind:       string(e.Kind),
+			SourceFile: e.SourceFile,
+			Language:   e.Language,
+			Properties: e.Properties,
+		})
+	}
+	for _, r := range rels {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:         graph.RelationshipID(r.FromID, r.ToID, r.Kind),
+			FromID:     r.FromID,
+			ToID:       r.ToID,
+			Kind:       r.Kind,
+			Properties: r.Properties,
+		})
+	}
+	return doc
+}
 
 // cfnFindEntity returns the entity whose Name (canonical ID) ends with the
 // given logical-id suffix, or nil.
@@ -19,16 +50,44 @@ func cfnFindEntityByLogical(ents []types.EntityRecord, logical string) *types.En
 	return nil
 }
 
+// cfnEdgeEndpointResolves reports whether an edge endpoint string of the form
+// `<Kind>:<entityName>` names a REAL emitted entity — i.e. some entity in
+// `ents` has Kind==<Kind> AND Name==<entityName>. This catches dangling /
+// mis-kinded edges: an endpoint whose Kind-prefix points at a Kind no entity
+// was ever emitted with (e.g. "SCOPE.Config:cfn:x#P" when the Parameter was
+// emitted as "SCOPE.Schema"). Endpoints emitted by cfnResourceKindFromID use
+// exactly one `<Kind>:` prefix, but an entity Name itself can contain colons
+// (e.g. "cfn:path#Logical"), so we match against the concrete entity strings
+// rather than splitting on the first colon.
+func cfnEdgeEndpointResolves(ents []types.EntityRecord, endpoint string) bool {
+	for i := range ents {
+		if endpoint == string(ents[i].Kind)+":"+ents[i].Name {
+			return true
+		}
+	}
+	return false
+}
+
 // cfnHasEdge reports whether an edge of `kind` exists whose FromID ends with
-// `#fromLogical` and ToID ends with `#toLogical`.
-func cfnHasEdge(rels []types.RelationshipRecord, kind, fromLogical, toLogical string) bool {
+// `#fromLogical` and ToID ends with `#toLogical` AND both endpoints resolve to
+// a real emitted entity (correct Kind-prefix, not a dangling reference). The
+// endpoint resolution is the strengthened check: matching the ID suffix alone
+// let a mis-kinded/dangling edge pass silently.
+func cfnHasEdge(ents []types.EntityRecord, rels []types.RelationshipRecord, kind, fromLogical, toLogical string) bool {
 	for _, r := range rels {
 		if r.Kind != kind {
 			continue
 		}
-		if strings.HasSuffix(r.FromID, "#"+fromLogical) && strings.HasSuffix(r.ToID, "#"+toLogical) {
-			return true
+		if !strings.HasSuffix(r.FromID, "#"+fromLogical) || !strings.HasSuffix(r.ToID, "#"+toLogical) {
+			continue
 		}
+		if !cfnEdgeEndpointResolves(ents, r.FromID) {
+			continue
+		}
+		if !cfnEdgeEndpointResolves(ents, r.ToID) {
+			continue
+		}
+		return true
 	}
 	return false
 }
@@ -79,7 +138,7 @@ Resources:
 	}
 
 	// !GetAtt → USES wins over the Ref/DependsOn DEPENDS_ON to the same target.
-	if !cfnHasEdge(rels, "USES", "ProcessorFn", "DataBucket") {
+	if !cfnHasEdge(ents, rels, "USES", "ProcessorFn", "DataBucket") {
 		t.Errorf("missing USES (GetAtt) edge ProcessorFn->DataBucket; rels=%+v", rels)
 	}
 }
@@ -117,7 +176,7 @@ func TestCFN_LongForms(t *testing.T) {
 	if cfnFindEntityByLogical(ents, "ProcessorFn") == nil {
 		t.Fatalf("JSON: missing ProcessorFn entity")
 	}
-	if !cfnHasEdge(rels, "USES", "ProcessorFn", "DataBucket") {
+	if !cfnHasEdge(ents, rels, "USES", "ProcessorFn", "DataBucket") {
 		t.Errorf("JSON: missing USES (Fn::GetAtt) edge ProcessorFn->DataBucket; rels=%+v", rels)
 	}
 }
@@ -152,11 +211,11 @@ Resources:
 	}
 
 	// Events Table → DEPENDS_ON Parameter TableName (Ref to a Parameter).
-	if !cfnHasEdge(rels, "DEPENDS_ON", "Events", "TableName") {
+	if !cfnHasEdge(ents, rels, "DEPENDS_ON", "Events", "TableName") {
 		t.Errorf("missing DEPENDS_ON Events->TableName (Ref to Parameter); rels=%+v", rels)
 	}
 	// Worker → DEPENDS_ON Events (DependsOn list form AND !Sub).
-	if !cfnHasEdge(rels, "DEPENDS_ON", "Worker", "Events") {
+	if !cfnHasEdge(ents, rels, "DEPENDS_ON", "Worker", "Events") {
 		t.Errorf("missing DEPENDS_ON Worker->Events; rels=%+v", rels)
 	}
 }
@@ -364,5 +423,191 @@ Resources:
 	}
 	if !foundContainment {
 		t.Errorf("expected nested-stack IMPORTS containment edge (nested_stack=true) parent→child, got %+v", rels)
+	}
+}
+
+// TestCFN_StandaloneEventSourceMapping — #5801 Path B. SAM's inline
+// `Events:` block on AWS::Serverless::Function already produces a
+// handler-->queue SUBSCRIBES_TO trigger edge (TestCFN_SAM above). A
+// standalone AWS::Lambda::EventSourceMapping resource — decoupled from any
+// AWS::Serverless::Function, wiring a plain AWS::Lambda::Function to its
+// event source via EventSourceArn/FunctionName intrinsics — previously
+// produced only generic USES/DEPENDS_ON edges into the mapping resource
+// itself, with NO source-->handler trigger edge at all. This asserts the fix
+// resolves the same-template `!GetAtt OrdersStream.Arn` / `!Ref
+// StreamHandlerFn` intrinsics and emits the handler-->source SUBSCRIBES_TO
+// edge in the SAME shape SAM's inline path uses, so ApplyAsyncTriggerEdges
+// (#5686) inverts BOTH paths into an identical source-->handler DELIVERS_TO.
+func TestCFN_StandaloneEventSourceMapping(t *testing.T) {
+	src := `AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  StreamHandlerFn:
+    Type: AWS::Lambda::Function
+    Properties: { Handler: h.handler, Runtime: nodejs20.x }
+  OrdersStream:
+    Type: AWS::Kinesis::Stream
+    Properties: { ShardCount: 1 }
+  Esm:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt OrdersStream.Arn
+      FunctionName: !Ref StreamHandlerFn
+      StartingPosition: LATEST
+`
+	ents, rels := cfnRun("yaml", "esm/template.yaml", src)
+
+	if cfnFindEntityByLogical(ents, "OrdersStream") == nil {
+		t.Fatalf("expected OrdersStream entity, got %+v", ents)
+	}
+	if cfnFindEntityByLogical(ents, "StreamHandlerFn") == nil {
+		t.Fatalf("expected StreamHandlerFn entity, got %+v", ents)
+	}
+
+	if !cfnHasEdge(ents, rels, "SUBSCRIBES_TO", "StreamHandlerFn", "OrdersStream") {
+		t.Errorf("ESM: missing SUBSCRIBES_TO StreamHandlerFn->OrdersStream (source-->handler trigger); rels=%+v", rels)
+	}
+}
+
+// TestCFN_StandaloneEventSourceMapping_UnresolvedRefsSkipped asserts the
+// conservative same-template-only contract: when EventSourceArn or
+// FunctionName reference a logical id NOT declared in this template (e.g. a
+// cross-stack import), no SUBSCRIBES_TO edge is fabricated.
+func TestCFN_StandaloneEventSourceMapping_UnresolvedRefsSkipped(t *testing.T) {
+	src := `AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  StreamHandlerFn:
+    Type: AWS::Lambda::Function
+    Properties: { Handler: h.handler, Runtime: nodejs20.x }
+  Esm:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt ExternalStream.Arn
+      FunctionName: !Ref StreamHandlerFn
+      StartingPosition: LATEST
+`
+	_, rels := cfnRun("yaml", "esm/unresolved.yaml", src)
+	for _, r := range rels {
+		if r.Kind == "SUBSCRIBES_TO" && strings.HasSuffix(r.FromID, "#StreamHandlerFn") {
+			t.Errorf("expected no SUBSCRIBES_TO edge for unresolved cross-template EventSourceArn, got %+v", r)
+		}
+	}
+}
+
+// TestCFN_StandaloneEventSourceMapping_DynamoDBStreamDeliversTo — #5801 Bug 2.
+// A DynamoDB table (the commit's own use case) classifies as category
+// `datastore` → SCOPE.Datastore. The whole point of emitting the
+// handler-->source SUBSCRIBES_TO edge is that ApplyAsyncTriggerEdges (#5686)
+// inverts it into source-->handler DELIVERS_TO so both the standalone-ESM
+// path and SAM's inline path "render identically". This asserts the full
+// round-trip: a DynamoDB-stream ESM source DOES get a DELIVERS_TO edge after
+// inversion (previously it did not, because SCOPE.Datastore was absent from
+// the inversion pass's recognised topic kinds).
+func TestCFN_StandaloneEventSourceMapping_DynamoDBStreamDeliversTo(t *testing.T) {
+	src := `AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  TableHandlerFn:
+    Type: AWS::Lambda::Function
+    Properties: { Handler: h.handler, Runtime: nodejs20.x }
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: orders
+      StreamSpecification: { StreamViewType: NEW_AND_OLD_IMAGES }
+  Esm:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt OrdersTable.StreamArn
+      FunctionName: !Ref TableHandlerFn
+      StartingPosition: LATEST
+`
+	ents, rels := cfnRun("yaml", "esm/ddb.yaml", src)
+
+	// Source classifies as SCOPE.Datastore.
+	src2 := cfnFindEntityByLogical(ents, "OrdersTable")
+	if src2 == nil {
+		t.Fatalf("expected OrdersTable entity, got %+v", ents)
+	}
+	if src2.Kind != "SCOPE.Datastore" {
+		t.Fatalf("precondition: OrdersTable should classify as SCOPE.Datastore, got %s", src2.Kind)
+	}
+
+	// The handler-->source SUBSCRIBES_TO edge must be present and well-kinded.
+	if !cfnHasEdge(ents, rels, "SUBSCRIBES_TO", "TableHandlerFn", "OrdersTable") {
+		t.Fatalf("ESM(ddb): missing SUBSCRIBES_TO TableHandlerFn->OrdersTable; rels=%+v", rels)
+	}
+
+	// After inversion, the source must gain an inbound DELIVERS_TO to the
+	// handler — the render-identical goal.
+	doc := cfnToDoc(ents, rels)
+	stats := ApplyAsyncTriggerEdges(doc)
+	if stats.DeliversEdges != 1 {
+		t.Fatalf("ESM(ddb): expected 1 DELIVERS_TO after inversion, got %d (SCOPE.Datastore not inverted?)", stats.DeliversEdges)
+	}
+	sourceID := "SCOPE.Datastore:" + src2.Name
+	found := false
+	for _, r := range doc.Relationships {
+		if r.Kind == "DELIVERS_TO" && r.FromID == sourceID && strings.HasSuffix(r.ToID, "#TableHandlerFn") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ESM(ddb): missing DELIVERS_TO OrdersTable->TableHandlerFn after inversion; rels=%+v", doc.Relationships)
+	}
+}
+
+// TestCFN_StandaloneEventSourceMapping_ParameterTarget — #5801 Bug 1. When
+// FunctionName resolves to a CFN Parameter (parameterized handler name — a
+// `knownIDs` hit that is NOT a Resource), the edge endpoint must carry the
+// Parameter entity's actual Kind (SCOPE.Schema, per the Parameters emission),
+// NOT a fabricated SCOPE.Config prefix that resolves to no entity (a dangling
+// edge). The strengthened cfnHasEdge enforces endpoint resolution, so a
+// dangling/mis-kinded edge fails this test.
+func TestCFN_StandaloneEventSourceMapping_ParameterTarget(t *testing.T) {
+	src := `AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  HandlerFnName:
+    Type: String
+Resources:
+  OrdersQueue:
+    Type: AWS::SQS::Queue
+    Properties: { QueueName: orders }
+  Esm:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt OrdersQueue.Arn
+      FunctionName: !Ref HandlerFnName
+      BatchSize: 10
+`
+	ents, rels := cfnRun("yaml", "esm/param.yaml", src)
+
+	// Parameter entity is emitted as SCOPE.Schema.
+	p := cfnFindEntityByLogical(ents, "HandlerFnName")
+	if p == nil {
+		t.Fatalf("expected HandlerFnName parameter entity, got %+v", ents)
+	}
+	if p.Kind != "SCOPE.Schema" {
+		t.Fatalf("precondition: Parameter should be SCOPE.Schema, got %s", p.Kind)
+	}
+
+	// The SUBSCRIBES_TO edge must exist AND both endpoints must resolve to real
+	// entities (no dangling SCOPE.Config prefix on the handler endpoint).
+	if !cfnHasEdge(ents, rels, "SUBSCRIBES_TO", "HandlerFnName", "OrdersQueue") {
+		t.Errorf("ESM(param): missing/dangling SUBSCRIBES_TO HandlerFnName->OrdersQueue; rels=%+v", rels)
+	}
+
+	// Explicit Kind-prefix assertion on the handler endpoint.
+	wantFrom := "SCOPE.Schema:" + p.Name
+	found := false
+	for _, r := range rels {
+		if r.Kind == "SUBSCRIBES_TO" && strings.HasSuffix(r.ToID, "#OrdersQueue") &&
+			strings.HasSuffix(r.FromID, "#HandlerFnName") {
+			found = true
+			if r.FromID != wantFrom {
+				t.Errorf("ESM(param): handler endpoint = %q, want %q (dangling/mis-kinded)", r.FromID, wantFrom)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("ESM(param): no SUBSCRIBES_TO edge from HandlerFnName found; rels=%+v", rels)
 	}
 }
