@@ -55,12 +55,18 @@ var mediaLibraryBundleSuffixes = []string{
 
 // DefaultWatchDirCap is the default ceiling on the number of directories the
 // watcher will subscribe to (and that the indexer treats as a "this is not a
-// real code repo" tripwire) for a single repo. The live failure registered
-// 875 watch dirs on a 588MB non-code tree; a real code repo's source-only dir
-// count (after skip-list pruning) is almost always well under this. It is
-// generous so legitimate large monorepos still index fully. Override via
+// real code repo" tripwire) for a single repo. The live failure (#5296)
+// registered 875 watch dirs on a 588MB non-code media tree — well under the
+// original 5000 default, meaning the cap never actually caught its own
+// origin case; the real media/asset protection is IsProtectedPath (the TCC
+// guard) plus the .gitignore/.grafelignore/hardcoded-skip layers above,
+// which stay in force regardless of this cap. Meanwhile a real large
+// monorepo (measured: 9,120 directories) blew straight through the 5000
+// default, silently truncating ~45% of the tree with no error. Raised to
+// 100000 so legitimate large monorepos index fully while still keeping a
+// high safety ceiling against genuinely pathological trees. Override via
 // GRAFEL_WATCH_DIR_CAP.
-const DefaultWatchDirCap = 5000
+const DefaultWatchDirCap = 100000
 
 // WatchDirCap returns the effective per-repo watch-dir ceiling, honouring the
 // GRAFEL_WATCH_DIR_CAP environment override. A value <= 0 disables the cap.
