@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/event_bus_edges.go` | — |
 | Producer extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/event_bus_edges.go` | — |
 | Topic attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/event_bus_edges.go` | — |

@@ -72,10 +72,11 @@ func runLinksHook(group string) error {
 // daemonSchedulerLinks callback. The ctx is the scheduler's shutdownCtx and
 // is available for future use in subprocess handling.
 func runLinksHookWithCtx(ctx context.Context, group string) error {
-	// NOTE: ctx is not yet used by RunLinksForGroup, but is threaded through
-	// for future context-aware operations.
-	_ = ctx
-	return cli.RunLinksForGroup(group)
+	// Context-aware: RunLinksForGroupCtx checks ctx at each heavy pass boundary
+	// so a daemon Stop() OR a group delete landing mid-pass (v0.1.8 leak fix)
+	// stops the link/phantom recompute promptly instead of running it to
+	// completion.
+	return cli.RunLinksForGroupCtx(ctx, group)
 }
 
 // fail prints an error and exits non-zero. Convenience for callers

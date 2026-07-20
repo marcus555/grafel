@@ -70,6 +70,15 @@ func guardResolvedConfigPath(resolved, what string) {
 	abs = filepath.Clean(abs)
 	home := realUserHomeAtInit
 	if abs == home || strings.HasPrefix(abs+string(filepath.Separator), home+string(filepath.Separator)) {
+		// On Windows os.TempDir commonly lives below %USERPROFILE% (for example
+		// AppData\Local\Temp). A t.TempDir sandbox is therefore technically under
+		// the real home while still being isolated from live grafel config. Treat
+		// the OS temp tree as safe; the live ~/.grafel and ~/.config paths remain
+		// guarded below.
+		if temp := filepath.Clean(os.TempDir()); temp != "." &&
+			(abs == temp || strings.HasPrefix(abs+string(filepath.Separator), temp+string(filepath.Separator))) {
+			return
+		}
 		panic(fmt.Sprintf(
 			"registry: TEST SANDBOX ESCAPE — about to WRITE %s to %q, which is inside the "+
 				"REAL user home %q. This test would clobber the developer's live "+

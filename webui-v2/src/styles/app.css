@@ -187,8 +187,36 @@
   animation: wizard-bar-pulse 1.6s ease-in-out infinite;
 }
 
+/* ── Enhancing (background-enrichment) bar (#47 phase 2) ──────────────────────
+   The secondary "Enhancing relationships in the background" bar shown after the
+   graph is queryable while background passes still run. The tail reports no
+   progress signal (like the TUI's bgBar), so it is INDETERMINATE: a short
+   segment travels the track to convey ongoing work without faking a percentage.
+   Collapses to a static partial bar under reduced-motion. */
+@keyframes enhancing-bar-slide {
+  0%   { left: -35%; }
+  100% { left: 100%; }
+}
+.enhancing-bar-track {
+  position: relative;
+  overflow: hidden;
+}
+.enhancing-bar-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  border-radius: inherit;
+  animation: enhancing-bar-slide 1.4s ease-in-out infinite;
+}
+
 /* Honor reduced-motion globally (per handoff motion rules). */
 @media (prefers-reduced-motion: reduce) {
+  .enhancing-bar-seg {
+    animation: none;
+    left: 0;
+    width: 45%;
+  }
   *,
   *::before,
   *::after {

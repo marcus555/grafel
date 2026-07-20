@@ -175,6 +175,7 @@ func sniffEffectsCSharp(content string) []EffectMatch {
 	out = appendCSharpMatches(out, content, headers, csharpFSWriteRe, EffectFSWrite, "File.Write/Directory.Create", 1.0)
 	out = appendCSharpMatches(out, content, headers, csharpProcessRe, EffectFSWrite, "Process.Start", 0.9)
 	out = appendCSharpMatches(out, content, headers, csharpMutationRe, EffectMutation, "this.field=", 0.7)
+	out = appendAWSCSharpMatches(out, content, headers) // #5798: AWS SDK publish call-sites
 	return out
 }
 

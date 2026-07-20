@@ -1,6 +1,10 @@
 // grafel_effects MCP tool (#2764 Phase 1A substrate).
 //
-// Returns the effect classification for a given entity. Schema:
+// Returns the effect classification for a given entity. Recognized effect
+// elements: db_read, db_write, http_out, fs_read, fs_write, mutation,
+// env_read, message_publish (ADR-0025 §2 — SmallRye/Quarkus reactive-
+// messaging Emitter.send / @Outgoing publish sites, Java + Kotlin).
+// Schema:
 //
 //	{
 //	  "entity_id":     "<id-or-qname>",

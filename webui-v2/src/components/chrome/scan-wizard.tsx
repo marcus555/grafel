@@ -53,10 +53,18 @@ import {
   useMCPToolsDetect,
 } from "@/hooks/use-wizard";
 import { useIndexProgress } from "@/hooks/use-index-progress";
-import { aggregateProgress, overallPhaseLabel } from "@/lib/index-progress-fold";
+import { useIndexStatus } from "@/hooks/use-index-status";
+import { aggregateProgress, nestRows, overallPhaseLabel } from "@/lib/index-progress-fold";
+import {
+  engineStats,
+  groupEnhancing,
+  joinIndexStatus,
+  viewGraphEnabled,
+} from "@/lib/index-status-join";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
+import { EnhancingBar } from "@/components/chrome/enhancing-bar";
 import { ApiError } from "@/lib/api";
-import type { ScanInspectReply } from "@/data/types";
+import type { RepoNesting, ScanInspectReply, WizardRepo } from "@/data/types";
 import {
   WIZARD_ACTIONS,
   reposForAction,
@@ -95,6 +103,34 @@ function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+/**
+ * #47 phase 2 — the monorepo nesting descriptor for the progress feed. Each
+ * selected package is registered as its OWN repo_slug, so the
+ * feed nests those sibling package rows UNDER a synthesized monorepo parent
+ * (mirroring the TUI). Only monorepo (package) layouts nest; child-git-repo and
+ * single-repo layouts stay flat (empty descriptor). Keyed by child repo_slug so
+ * nestRows can join it to the folded rows.
+ */
+function buildNesting(scan: ScanInspectReply | null, repos: WizardRepo[]): RepoNesting {
+  if (!scan?.valid) return {};
+  const hasChildGitRepos = (scan.childGitRepos?.length ?? 0) > 0;
+  const isMonorepo = (scan.packages?.length ?? 0) > 0;
+  if (hasChildGitRepos || !isMonorepo) return {};
+  const parentSlug = scan.suggestedSlug || scan.suggestedGroup;
+  const parentLabel = scan.suggestedGroup || scan.suggestedSlug;
+  const nesting: RepoNesting = {};
+  for (const r of repos) {
+    if (r.slug && r.modules && r.modules.length > 0) {
+      nesting[r.slug] = {
+        repoSlug: r.slug,
+        parentSlug,
+        parentLabel,
+        moduleLabel: r.modules[0],
+      };
+    }
+  }
+  return nesting;
+}
 export function ScanWizard(props: ScanWizardProps) {
   const { open, onOpenChange, mode, groupId, groupName, takenNames = [], existingPaths = [], onIndexed } = props;
 
@@ -184,6 +220,35 @@ export function ScanWizard(props: ScanWizardProps) {
     complete: indexComplete,
   });
 
+  // #47 phase 2 — poll the index status plane alongside the SSE feed to surface
+  // the `enhancing` (background enrichment) tail + engine CPU/RSS, joined to the
+  // per-repo rows by repo_slug. Enabled while on the Index step so we observe
+  // the whole enhancing tail after the graph is queryable.
+  const indexStatus = useIndexStatus(targetGroup, progressActive);
+  const engine = engineStats(indexStatus.data);
+  // True while any repo is still enhancing in the background (graph queryable).
+  const enhancing = groupEnhancing(indexStatus.data);
+  // True once the group's graph is written + servable: every registered repo has
+  // finished extraction (indexing===false). Gates the "View graph" button so the
+  // user can only navigate once the graph will actually stream (not on job-done,
+  // which can precede a servable graph.fb). Enhancing does NOT block this.
+  //
+  // Primary source is the status plane (groupQueryable). Defense-in-depth for the
+  // already-indexed / "up to date" fast path (Bug A): when a rebuild touches 0
+  // repos the status plane can report zero repos (empty/stale engine sidecar), so
+  // groupQueryable stays false forever and the button froze disabled. viewGraphEnabled
+  // then falls back to the SSE feed's own terminal state — the job finished AND
+  // every per-repo row is terminal (already rendering "Indexed") — so the button
+  // unlocks. Stays false during active indexing (job not done, some row non-terminal).
+  const queryable = viewGraphEnabled(indexStatus.data, indexComplete, indexProgress.rows);
+  // Join the status-plane rows (enhancing / relationships / entities) onto the
+  // SSE rows, then nest monorepo package rows under a synthesized parent.
+  const joinedRows = joinIndexStatus(indexProgress.rows, indexStatus.data);
+  const nesting = buildNesting(scan, reposToIndex);
+  // Total entities across all repos, for the queryable banner — mirrors the TUI's
+  // "Graph queryable (N entities)" line (indexview.go queryableBanner).
+  const totalEntities = joinedRows.reduce((n, r) => n + (r.entitiesSoFar || 0), 0);
+
   // Reset everything when the dialog closes.
   function reset() {
     setStep(mode === "create" ? "action" : "pick");
@@ -202,16 +267,22 @@ export function ScanWizard(props: ScanWizardProps) {
     scanRepos.reset();
   }
 
-  // Drive completion toasts off the job poller.
+  // Drive completion toasts off the job poller. We DELIBERATELY do NOT navigate
+  // to the graph here (web-wizard nav bug, gates v0.1.8): job "done" fires when
+  // the rebuild RPC returns, which can be BEFORE the group's graph.fb is written
+  // and servable — auto-navigating then dropped the user onto an infinitely
+  // loading graph. Navigation is now user-driven via the gated "View graph"
+  // button below, which only enables once the status plane reports the group
+  // queryable (groupQueryable) — mirroring the TUI, which holds on the progress
+  // screen until queryable.
   useEffect(() => {
     if (!job.data) return;
     if (job.data.status === "done") {
       toast.success(job.data.message ?? "Indexing complete.");
-      onIndexed?.(job.data.group);
     } else if (job.data.status === "failed") {
       toast.error(job.data.error ?? "Indexing failed.");
     }
-  }, [job.data, onIndexed]);
+  }, [job.data]);
 
   const pathDuplicate = path.trim() !== "" && existingPaths.includes(path.trim());
   const nameSlug = slugify(name || scan?.suggestedGroup || "");
@@ -351,6 +422,16 @@ export function ScanWizard(props: ScanWizardProps) {
   // Subtle "alive" pulse while non-terminal — especially during the
   // sub-progress-less phases that would otherwise look frozen.
   const barActive = !terminal;
+  // Nested feed groups (#47 phase 2): monorepo package rows nest under a parent;
+  // related-repo / single-repo layouts stay flat. Once the wizard is terminal
+  // (parent Done) any child frozen mid-phase is lifted to Done.
+  const feedGroups = nestRows(joinedRows, nesting, terminal);
+  // The graph is queryable but background enrichment is still running: show the
+  // secondary background-enhancement bar (mirrors the TUI's bgProgressBlock).
+  // Never a false failure — a queryable+enhancing group is success. Gated on the
+  // queryable "safe to navigate" sub-state so it reads as the background tail,
+  // exactly like the TUI, which renders bgProgressBlock under the queryable banner.
+  const showEnhancing = queryable && enhancing && effectiveStatus !== "failed";
 
   return (
     <Dialog
@@ -995,6 +1076,20 @@ export function ScanWizard(props: ScanWizardProps) {
                 {effectiveStatus === "failed" && (job.data?.error || "Indexing failed.")}
                 {!effectiveStatus && "Starting…"}
               </span>
+
+              {/* Live engine CPU% / RSS badges (#47 phase 2) — mirrors the TUI's
+                  live readout. Only shown when the engine-liveness sidecar
+                  reports non-zero. */}
+              {engine && (
+                <span className="ml-auto flex shrink-0 items-center gap-1.5" data-testid="wizard-engine-stats">
+                  <Badge tone="neutral" className="tabular-nums">
+                    CPU {Math.round(engine.cpu_pct)}%
+                  </Badge>
+                  <Badge tone="neutral" className="tabular-nums">
+                    RSS {engine.rss_mb} MB
+                  </Badge>
+                </span>
+              )}
             </div>
 
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
@@ -1018,17 +1113,49 @@ export function ScanWizard(props: ScanWizardProps) {
               />
             </div>
 
-            {/* Per-repo / per-MODULE rows (#1527). For a monorepo this shows
-                one row per package; for a single repo, one row per repo. */}
+            {/* Per-repo / per-MODULE rows (#1527) with nested monorepo modules
+                (#47 phase 2). For a monorepo the package rows nest under a parent
+                header; related-repo / single-repo layouts stay flat. */}
             <IndexProgressFeed
-              rows={indexProgress.rows}
+              rows={joinedRows}
+              groups={feedGroups}
               loading={!indexProgress.hasData && !terminal}
               className="max-h-80 overflow-y-auto pr-0.5"
             />
 
+            {/* "Graph queryable — safe to navigate" banner (mirrors the TUI's
+                queryableBanner, indexview.go). Shown once the group's graph.fb is
+                servable (queryable): a prominent success line naming the entity
+                count, a hint that opening now is safe (the "View graph" button is
+                enabled), and — while background enhancement is still running — the
+                secondary indeterminate bar (mirrors the TUI's bgProgressBlock). The
+                same information/messaging the TUI shows for this sub-state. */}
+            {queryable && (
+              <div
+                className="rounded-lg border border-success/40 bg-success/5 p-3"
+                data-testid="wizard-queryable-banner"
+              >
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="shrink-0 text-success" />
+                  <span className="text-sm font-medium text-text-1">
+                    Graph queryable
+                    {totalEntities > 0 && ` (${totalEntities.toLocaleString()} entities)`}
+                    {" — safe to view now"}
+                  </span>
+                </div>
+                <p className="mt-1 pl-[23px] text-xs text-text-4" data-testid="wizard-queryable-hint">
+                  {enhancing
+                    ? 'Open it now (safe) — or wait for background enhancement to complete.'
+                    : 'Open it now (safe).'}
+                </p>
+                {showEnhancing && <EnhancingBar className="mt-2 pl-[23px]" />}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-1">
               <Button
                 type="button"
+                variant="secondary"
                 disabled={!terminal}
                 onClick={() => {
                   reset();
@@ -1038,6 +1165,23 @@ export function ScanWizard(props: ScanWizardProps) {
               >
                 {terminal ? "Done" : "Indexing…"}
               </Button>
+              {/* Web-wizard nav fix (v0.1.8): navigation to the graph view happens
+                  ONLY on this click, and ONLY once the group is queryable — the
+                  graph.fb is written + servable so it will actually stream. It is
+                  DISABLED while any repo is still extracting (queryable === false),
+                  mirroring the TUI which holds on the progress screen. Rendered
+                  only when a navigation handler is wired (create mode). */}
+              {onIndexed && (
+                <Button
+                  type="button"
+                  disabled={!queryable}
+                  onClick={() => onIndexed(job.data?.group ?? targetGroup ?? "")}
+                  data-testid="wizard-view-graph"
+                >
+                  View graph
+                  <ArrowRight size={13} />
+                </Button>
+              )}
             </div>
           </div>
         )}

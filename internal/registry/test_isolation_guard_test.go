@@ -46,12 +46,13 @@ func TestGuard_AllowsWriteUnderIsolatedHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Sanity: the resolved config path is NOT under the real home.
-	if realUserHomeAtInit != "" {
-		abs, _ := filepath.Abs(cfgPath)
-		if strings.HasPrefix(filepath.Clean(abs)+string(filepath.Separator), realUserHomeAtInit+string(filepath.Separator)) {
-			t.Fatalf("isolated config path %q unexpectedly under real home %q", abs, realUserHomeAtInit)
-		}
+	// Sanity: the resolved config path stays inside the isolated root. On
+	// Windows t.TempDir commonly lives below the real user profile, so merely
+	// checking real-home ancestry would reject a valid sandbox.
+	abs, _ := filepath.Abs(cfgPath)
+	isolatedRoot, _ := filepath.Abs(dir)
+	if !strings.HasPrefix(filepath.Clean(abs)+string(filepath.Separator), filepath.Clean(isolatedRoot)+string(filepath.Separator)) {
+		t.Fatalf("isolated config path %q escaped root %q", abs, isolatedRoot)
 	}
 
 	if err := SaveGroupConfig(cfgPath, &GroupConfig{Name: "isolated"}); err != nil {

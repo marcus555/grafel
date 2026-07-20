@@ -53,6 +53,7 @@ var _ = []passSignature{
 	applyBullMQEdges,
 	applyInngestEdges,
 	applyEventBusEdges,
+	applyEventTypeEdges,
 
 	// Real-time / streaming
 	applyWebSocketSynthesis,

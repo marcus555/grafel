@@ -221,6 +221,17 @@ func install(opts Options) (StatusInfo, error) {
 	return ensureLoaded(context.Background(), sm, defaultReadiness, nil)
 }
 
+// restartService is the macOS implementation of Restart: always converges via
+// unload→load→wait-ready (launchd bootout→bootstrap), skipping Install's
+// "already running" fast path so callers get a genuine restart.
+func restartService(opts Options) (StatusInfo, error) {
+	sm, err := newServiceManager(opts)
+	if err != nil {
+		return StatusInfo{}, err
+	}
+	return restart(context.Background(), sm, defaultReadiness, nil)
+}
+
 // uninstall is the macOS implementation of Uninstall: idempotent teardown.
 func uninstall(opts Options) error {
 	sm, err := newServiceManager(opts)

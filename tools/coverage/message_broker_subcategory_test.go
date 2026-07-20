@@ -189,7 +189,7 @@ func TestMessageBrokerSubcategoriesDeclared(t *testing.T) {
 	laneKeys := map[string][]string{
 		"schedulers":        {"consumer_extraction"},
 		"task_queues":       {"consumer_extraction", "producer_extraction", "topic_attribution"},
-		"brokers":           {"consumer_extraction", "producer_extraction", "topic_attribution"},
+		"brokers":           {"consumer_extraction", "producer_extraction", "topic_attribution", "config_binding"},
 		"realtime_channels": {"consumer_extraction", "producer_extraction", "room_channel_grouping", "topic_attribution"},
 		"webhooks":          {"consumer_extraction", "producer_extraction", "signature_verification", "topic_attribution"},
 	}

@@ -24,13 +24,25 @@
 //     / writeString / newOutputStream / createFile /
 //     createDirectories / delete / move / copy
 //   - mutation  : `this.<field> = ...` assignment inside a method
+//   - message_publish : SmallRye reactive-messaging publish sites —
+//     `Emitter.send(...)` / `MutinyEmitter.send(...)` / `.sendMessage(...)`
+//     on a receiver whose identifier contains "emitter", PLUS
+//     `<field>.send(...)` / `<field>.sendMessage(...)` where `<field>` is
+//     pre-scanned from the file as a `val`/`var` declared with type
+//     `Emitter<...>` / `MutinyEmitter<...>` (idiomatic SmallRye names the
+//     field after its `@Channel`, e.g. `val ordersOut: Emitter<T>`, not
+//     "emitter"), and any `@Outgoing("...")`-annotated function
+//     (ADR-0025 §2).
 //
 // Function attribution uses the nearest preceding `fun name(` header
 // (with optional visibility, suspend, inline, infix, operator, override,
 // open, final, abstract qualifiers).
 package substrate
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 func init() { RegisterEffectSniffer("kotlin", sniffEffectsKotlin) }
 
@@ -97,6 +109,84 @@ var kotlinMutationRe = regexp.MustCompile(
 	`\bthis\s*\.\s*[A-Za-z_][\w]*\s*=(?:[^=])`,
 )
 
+// kotlinMsgPublishRe matches SmallRye reactive-messaging publish sites
+// (ADR-0025 §2), mirroring javaMsgPublishRe: Emitter.send(...) /
+// Emitter.sendMessage(...) via the "emitter"-scoped receiver-identifier
+// shape (covers MutinyEmitter), and an @Outgoing("channel")-annotated
+// function (the annotated `fun` is itself a publisher via its return
+// value even without an explicit .send call). kotlinFuncHeaderRe's
+// modifier group likewise absorbs a leading annotation into the `fun`
+// header it attributes, so nearestHeader binds the annotation match to
+// the annotated function.
+//
+// This is a fallback heuristic for the common `emitter`-named case. The
+// receiver is scoped to "emitter"-named identifiers on purpose — an
+// unscoped `.sendMessage(` also matches Android Handler.sendMessage and
+// chat-SDK publishers that are not SmallRye reactive messaging. Idiomatic
+// SmallRye code instead names the field after its `@Channel` (e.g.
+// `val offerAssignOut: Emitter<T>`), which this regex alone would miss —
+// see kotlinEmitterFieldDeclRe / kotlinMsgPublishFieldRe below, which close
+// that gap in a type-aware way (only fields the file actually declares
+// with type Emitter/MutinyEmitter are treated as publisher receivers,
+// preserving precision).
+var kotlinMsgPublishRe = regexp.MustCompile(
+	`\b\w*[Ee]mitter\w*\s*\.\s*send(?:Message)?\s*\(` +
+		`|@Outgoing\s*\(\s*"[^"]*"\s*\)`,
+)
+
+// kotlinEmitterFieldDeclRe matches a `val`/`var` property declaration typed
+// as `Emitter<...>` or `MutinyEmitter<...>`, e.g.
+// `lateinit var offerAssignOut: Emitter<TriageActionEvent>` or
+// `val feedbackOut: MutinyEmitter<FeedbackReceivedEvent>`. Capture group 1
+// is the property name.
+//
+// It anchors on the OPENING `<` and never tries to balance the closing
+// bracket, so nested generics like `Emitter<Message<T>>` (the idiomatic
+// SmallRye Message-wrapped shape) are collected without any nesting logic.
+// The optional `(?:[A-Za-z_][\w]*\.)*` package prefix tolerates a
+// fully-qualified type name after the colon
+// (`: org.eclipse.microprofile.reactive.messaging.Emitter<T>`), harmonizing
+// with the Java sniffer's floating type-name match. A RAW non-generic type
+// (`: Emitter`, no `<`) is NOT collected — the `<` is required for precision;
+// raw-type Emitter fields are rare enough that this is an accepted limit.
+var kotlinEmitterFieldDeclRe = regexp.MustCompile(
+	`\b(?:val|var)\s+([A-Za-z_][\w]*)\s*:\s*(?:[A-Za-z_][\w]*\.)*(?:Emitter|MutinyEmitter)\s*<`,
+)
+
+// kotlinEmitterFieldNames pre-scans the file for SmallRye Emitter/MutinyEmitter
+// typed val/var declarations and returns their declared names. Only
+// properties whose declared TYPE is Emitter/MutinyEmitter are collected —
+// this is what keeps the field-aware match precise (ADR-0025 §2 field-aware
+// fix, #5782 ask #4): a `.send(`/`.sendMessage(` call on a receiver of any
+// other type is never matched by kotlinMsgPublishFieldRe below.
+func kotlinEmitterFieldNames(content string) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, m := range kotlinEmitterFieldDeclRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 || m[1] == "" || seen[m[1]] {
+			continue
+		}
+		seen[m[1]] = true
+		names = append(names, m[1])
+	}
+	return names
+}
+
+// kotlinMsgPublishFieldRe builds a regex matching `<field>.send(...)` /
+// `<field>.sendMessage(...)` for the given set of pre-scanned SmallRye
+// emitter field names. Returns nil if names is empty.
+func kotlinMsgPublishFieldRe(names []string) *regexp.Regexp {
+	if len(names) == 0 {
+		return nil
+	}
+	alt := make([]string, len(names))
+	for i, n := range names {
+		alt[i] = regexp.QuoteMeta(n)
+	}
+	pattern := `\b(?:` + strings.Join(alt, "|") + `)\s*\.\s*send(?:Message)?\s*\(`
+	return regexp.MustCompile(pattern)
+}
+
 func sniffEffectsKotlin(content string) []EffectMatch {
 	if content == "" {
 		return nil
@@ -110,6 +200,10 @@ func sniffEffectsKotlin(content string) []EffectMatch {
 	out = appendKotlinMatches(out, content, headers, kotlinFSWriteRe, EffectFSWrite, "File.write/Files.write", 1.0)
 	out = appendKotlinMatches(out, content, headers, kotlinProcessRe, EffectFSWrite, "ProcessBuilder", 0.9)
 	out = appendKotlinMatches(out, content, headers, kotlinMutationRe, EffectMutation, "this.field=", 0.7)
+	out = appendKotlinMatches(out, content, headers, kotlinMsgPublishRe, EffectMessagePublish, "smallrye.Emitter.send/@Outgoing", 0.9)
+	if fieldRe := kotlinMsgPublishFieldRe(kotlinEmitterFieldNames(content)); fieldRe != nil {
+		out = appendKotlinMatches(out, content, headers, fieldRe, EffectMessagePublish, "smallrye.@Channel-field.send", 0.9)
+	}
 	return out
 }
 

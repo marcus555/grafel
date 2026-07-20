@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🟢 `partial` | `2026-05-31` | — | `internal/engine/kafka_edges.go` | Literal topics via rd_kafka_topic_partition_list_add / consumer->subscribe({...}). |
 | Producer extraction | 🟢 `partial` | `2026-05-31` | — | `internal/engine/kafka_edges.go` | Literal topics via rd_kafka_topic_new / RdKafka::Topic::create / producer->produce. No const/config resolution. |
 | Topic attribution | 🟢 `partial` | `2026-05-31` | — | `internal/engine/kafka_edges.go` | Canonical kafka:<topic> node shared with all other Kafka languages for cross-repo linkage. |

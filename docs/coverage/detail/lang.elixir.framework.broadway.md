@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🟢 `partial` | `2026-05-31` | — | `internal/custom/elixir/broadway.go`<br>`internal/custom/elixir/broadway_test.go` | handle_message/3 and handle_batch/4 pipeline stages emitted as SCOPE.Operation/handler flow roots bound to the use Broadway module. |
 | Producer extraction | 🟢 `partial` | `2026-05-31` | — | `internal/custom/elixir/broadway.go`<br>`internal/custom/elixir/broadway_test.go` | Broadway producer module (BroadwayKafka/BroadwaySQS/OffBroadway...) parsed from producer: [module: {Mod, opts}]; broker normalised (kafka|sqs|rabbitmq|gcp-pubsub|kinesis). |
 | Topic attribution | 🟢 `partial` | `2026-05-31` | — | `internal/custom/elixir/broadway.go`<br>`internal/custom/elixir/broadway_test.go` | Ingress topics/queues parsed from producer topics:/topic:/queue:/queue_url: options emitted as SCOPE.MessageTopic with broker + ingress=true + owning pipeline. |

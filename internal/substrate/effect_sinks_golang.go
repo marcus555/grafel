@@ -132,6 +132,7 @@ func sniffEffectsGo(content string) []EffectMatch {
 	out = appendGoMatches(out, content, headers, goFSReadRe, EffectFSRead, "os.Open/ReadFile", 1.0)
 	out = appendGoMatches(out, content, headers, goFSWriteRe, EffectFSWrite, "os.Create/WriteFile", 1.0)
 	out = appendGoMatches(out, content, headers, goMutationRe, EffectMutation, "recv.field=", 0.6)
+	out = appendAWSGoMatches(out, content, headers) // #5798: AWS SDK publish call-sites
 	return out
 }
 

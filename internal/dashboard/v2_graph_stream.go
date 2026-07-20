@@ -53,6 +53,7 @@
 package dashboard
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -65,6 +66,87 @@ import (
 // so each flush is a meaningful render step without being chatty; edges that
 // become deliverable at a given chunk ride along in that chunk.
 const graphStreamChunkSize = 750
+
+// streamWarmDeadline bounds how long a COLD stream request blocks warming the
+// group before it gives up. A bounded warm keeps the SSE connection open (with
+// `warming` heartbeats) instead of returning a bare 503 that makes the browser
+// eventually fall back to the uncapped, blocking full-payload blob. It is
+// generous so a genuinely large cold corpus (hundreds of thousands of nodes)
+// finishes warming inside it; only a truly stuck warm hits the ceiling.
+//
+// streamWarmHeartbeat is how often a `warming` progress event is flushed while
+// the bounded warm proceeds, keeping the connection (and any intermediary
+// proxies) alive so the browser stays in its "warming" state rather than
+// erroring on an idle socket. Both are vars so tests can shrink the cadence.
+// defaultStreamWarmDeadline is the named deadline knob (#50). With the
+// non-blocking served-graph load (Fix A#1), a cold group becomes warm as soon
+// as graph.fb is deserialized (Pass-4 fills in the background), so the stream
+// gets data quickly and this ceiling is only reached by a genuinely stuck warm.
+// It is raised well above the old 25s so a legitimately large corpus never trips
+// warm_timeout during an ordinary cold start.
+const defaultStreamWarmDeadline = 180 * time.Second
+
+var (
+	streamWarmDeadline  = defaultStreamWarmDeadline
+	streamWarmHeartbeat = 1 * time.Second
+)
+
+// setStreamWarmTimingForTest overrides the bounded-warm cadence for tests and
+// returns a restore func. Not for production use.
+func setStreamWarmTimingForTest(deadline, heartbeat time.Duration) func() {
+	pd, ph := streamWarmDeadline, streamWarmHeartbeat
+	streamWarmDeadline, streamWarmHeartbeat = deadline, heartbeat
+	return func() { streamWarmDeadline, streamWarmHeartbeat = pd, ph }
+}
+
+// warmWaitOutcome is the terminal state of waitForWarmGroup.
+type warmWaitOutcome int
+
+const (
+	warmReady    warmWaitOutcome = iota // the group became warm
+	warmFailed                          // a warm attempt failed (surface the error)
+	warmTimedOut                        // the deadline elapsed while still warming
+)
+
+// waitForWarmGroup blocks until the group is warm, its warm attempt fails, or
+// the deadline elapses — whichever comes first — invoking heartbeat once per
+// poll tick while it waits (nil-safe) so the caller can keep an SSE connection
+// alive. `cached` reports (grp,true) once warm; `lastErr` reports (err,true)
+// once a warm attempt has genuinely failed. Polling (rather than a channel)
+// keeps this a pure, dependency-free seam that unit-tests can drive with fake
+// closures and a tiny tick.
+func waitForWarmGroup(
+	cached func() (*DashGroup, bool),
+	lastErr func() (error, bool),
+	heartbeat func(elapsed time.Duration),
+	deadline, tick time.Duration,
+) (*DashGroup, error, warmWaitOutcome) {
+	if grp, ok := cached(); ok {
+		return grp, nil, warmReady
+	}
+	if err, failed := lastErr(); failed {
+		return nil, err, warmFailed
+	}
+	start := time.Now()
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	for range t.C {
+		if grp, ok := cached(); ok {
+			return grp, nil, warmReady
+		}
+		if err, failed := lastErr(); failed {
+			return nil, err, warmFailed
+		}
+		elapsed := time.Since(start)
+		if elapsed >= deadline {
+			return nil, nil, warmTimedOut
+		}
+		if heartbeat != nil {
+			heartbeat(elapsed)
+		}
+	}
+	return nil, nil, warmTimedOut
+}
 
 // v2GraphStreamMeta is the first (`meta`) event payload. It carries the totals
 // the frontend's progress counter needs plus the legend/filter metadata
@@ -104,6 +186,24 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #49 — gzip the SSE stream for clients that accept it. This is the exact
+	// path a large cold corpus uses, and the JSON is highly repetitive (repeated
+	// keys, kind strings, repo slugs) so gzip is ~8-12x here — the single biggest
+	// payload win. withGzip (server.go) deliberately EXCLUDES `/stream` because a
+	// naive buffering gzip breaks progressive delivery; instead we compress
+	// through a FLUSH-COMPATIBLE wrapper that gzip-flushes THEN http-flushes after
+	// every event, so each chunk still reaches the client promptly. Without the
+	// header we behave exactly as before (uncompressed live flush). Set the
+	// content-negotiation headers now, before any WriteHeader.
+	if clientAcceptsGzip(r) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Vary", "Accept-Encoding")
+		sw, cleanup := newSSEGzipWriter(w, flusher)
+		defer cleanup()
+		w = sw
+		flusher = sw
+	}
+
 	filterKind := r.URL.Query().Get("filter_kind")
 	reposParam := r.URL.Query().Get("repos")
 	includeExternal := r.URL.Query().Get("include_external") == "true"
@@ -111,24 +211,70 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("include") == "modules"
 	refParam := r.URL.Query().Get("ref")
 
-	// Warm-cache only — never force a disk load or algorithm recompute from a
-	// stream request. A cold group returns the not-loaded signal (503) and warms
-	// in the background; the frontend handles warm-up separately.
+	// Try the warm cache first (fast path: an already-loaded group streams
+	// immediately). GetGroupCachedForRef also kicks a background warm when cold.
 	grp, warm := s.graphs.GetGroupCachedForRef(group, refParam)
+
+	// `connected` tracks whether the SSE preamble has already been written: the
+	// cold-warm branch below opens the stream early so it can emit `warming`
+	// heartbeats, and the common streaming path must not write it twice.
+	connected := false
+
 	if !warm {
-		// #5722 — distinguish a genuine load FAILURE from the ordinary "still
-		// warming" case. EventSource can't read a non-2xx body, so a bare 503
-		// is indistinguishable from "warming" to the frontend and it retries
-		// forever. When the last warm attempt for this group actually failed,
-		// upgrade to SSE and emit a `connected` + distinguishable `error` event
-		// carrying the failure detail instead of the opaque 503.
+		// #5722 — a genuine load FAILURE (not merely "still warming") is
+		// distinguishable up front: surface it as a `connected`+`error` SSE
+		// frame so EventSource (which cannot read a non-2xx body) sees why.
 		if loadErr, failed := s.graphs.LastWarmError(group, refParam); failed {
 			writeV2GraphStreamLoadError(w, loadErr)
 			return
 		}
-		writeV2Err(w, http.StatusServiceUnavailable, "unavailable",
-			"group not loaded; warming up — retry shortly")
-		return
+
+		// Cold but warming. A bare 503 here used to make the browser retry a
+		// few times, give up, and fall back to the full-payload blob — which
+		// for a large cold group serialises the WHOLE graph before the first
+		// byte and never returns (TTFB=0 forever). Instead, keep the SSE
+		// connection OPEN and do a BOUNDED blocking warm, flushing `warming`
+		// heartbeats so the client shows progress and stays connected.
+		setV2SSEHeaders(w)
+		w.WriteHeader(http.StatusOK)
+		writeV2SSEConnected(w, flusher)
+		connected = true
+
+		emitWarming := func(elapsed time.Duration) {
+			writeV2SSEEvent(w, "warming", jsonString(map[string]any{
+				"warming":    true,
+				"elapsed_ms": elapsed.Milliseconds(),
+				"message":    "warming index…",
+			}))
+			flusher.Flush()
+		}
+		emitWarming(0) // immediate first frame so the browser paints "warming" now.
+
+		g, loadErr, outcome := waitForWarmGroup(
+			func() (*DashGroup, bool) { return s.graphs.GetGroupCachedForRef(group, refParam) },
+			func() (error, bool) { return s.graphs.LastWarmError(group, refParam) },
+			emitWarming,
+			streamWarmDeadline, streamWarmHeartbeat,
+		)
+		switch outcome {
+		case warmFailed:
+			// A genuine failure discovered mid-warm — surface it (#5722) so the
+			// client shows the real error instead of masking it.
+			writeV2SSEEvent(w, "error", jsonString(v2GraphStreamError{
+				Code:    "load_failed",
+				Message: loadErr.Error(),
+			}))
+			flusher.Flush()
+			return
+		case warmTimedOut:
+			writeV2SSEEvent(w, "error", jsonString(v2GraphStreamError{
+				Code:    "warm_timeout",
+				Message: "graph is taking too long to warm; retry shortly",
+			}))
+			flusher.Flush()
+			return
+		}
+		grp = g
 	}
 
 	repos := sortedRepos(grp)
@@ -151,11 +297,14 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 
 	orderGraphStreamNodes(resp.Nodes)
 
-	setV2SSEHeaders(w)
-	w.WriteHeader(http.StatusOK)
-
-	writeV2SSEEvent(w, "connected", fmt.Sprintf(`{"subscribed_at":%d}`, time.Now().UnixMilli()))
-	flusher.Flush()
+	// The cold-warm branch already opened the stream (headers + `connected`) so
+	// it could emit `warming` heartbeats; only the warm fast path writes them
+	// here.
+	if !connected {
+		setV2SSEHeaders(w)
+		w.WriteHeader(http.StatusOK)
+		writeV2SSEConnected(w, flusher)
+	}
 
 	meta := v2GraphStreamMeta{
 		TotalNodes:  len(resp.Nodes),
@@ -277,6 +426,54 @@ func writeV2GraphStreamLoadError(w http.ResponseWriter, loadErr error) {
 	if ok {
 		flusher.Flush()
 	}
+}
+
+// writeV2SSEConnected writes and flushes the opening `connected` SSE frame.
+func writeV2SSEConnected(w http.ResponseWriter, flusher http.Flusher) {
+	writeV2SSEEvent(w, "connected", fmt.Sprintf(`{"subscribed_at":%d}`, time.Now().UnixMilli()))
+	flusher.Flush()
+}
+
+// clientAcceptsGzip reports whether the request opted into gzip. Mirrors the
+// check in withGzip (server.go) so the stream negotiates identically.
+func clientAcceptsGzip(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+}
+
+// sseGzipWriter is a FLUSH-COMPATIBLE gzip wrapper for an SSE ResponseWriter
+// (#49). Writes are compressed through a pooled gzip.Writer; Flush() flushes the
+// gzip framing (a sync flush, so everything written so far is immediately
+// decodable by the client) and THEN the underlying http.Flusher — preserving
+// the progressive, per-chunk delivery the stream depends on. Header()/
+// WriteHeader() delegate to the embedded ResponseWriter so headers land on the
+// real connection.
+type sseGzipWriter struct {
+	http.ResponseWriter
+	gz    *gzip.Writer
+	under http.Flusher
+}
+
+func (s *sseGzipWriter) Write(b []byte) (int, error) { return s.gz.Write(b) }
+
+// Flush pushes the gzip sync-flush first (making buffered data decodable) then
+// flushes the underlying writer so the bytes actually leave the server.
+func (s *sseGzipWriter) Flush() {
+	_ = s.gz.Flush()
+	s.under.Flush()
+}
+
+// newSSEGzipWriter wraps w for gzip-compressed SSE, reusing the shared
+// gzipWriterPool (no new dependency). The returned cleanup MUST be deferred: it
+// closes the gzip writer (emitting the trailer) and returns it to the pool.
+func newSSEGzipWriter(w http.ResponseWriter, under http.Flusher) (*sseGzipWriter, func()) {
+	gz := gzipWriterPool.Get().(*gzip.Writer)
+	gz.Reset(w)
+	sw := &sseGzipWriter{ResponseWriter: w, gz: gz, under: under}
+	cleanup := func() {
+		_ = gz.Close()
+		gzipWriterPool.Put(gz)
+	}
+	return sw, cleanup
 }
 
 // jsonString marshals v to a compact JSON string for an SSE data field. On the

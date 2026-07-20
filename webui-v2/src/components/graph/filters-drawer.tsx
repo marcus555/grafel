@@ -61,6 +61,8 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
   const setMinDegree = useGraphStore((s) => s.setMinDegree);
   const hideUnconnected = useGraphStore((s) => s.hideUnconnected);
   const setHideUnconnected = useGraphStore((s) => s.setHideUnconnected);
+  const instantLayout = useGraphStore((s) => s.instantLayout);
+  const setInstantLayout = useGraphStore((s) => s.setInstantLayout);
   const clearAllFilters = useGraphStore((s) => s.clearAllFilters);
 
   return (
@@ -204,6 +206,26 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
                 <span className="mt-0.5 block text-text-3">
                   Zero-edge constants, types, and config — hidden by default so
                   the connected structure reads clearly.
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">Layout</h4>
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-text-2">
+              <input
+                type="checkbox"
+                checked={instantLayout}
+                onChange={(e) => setInstantLayout(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-accent"
+              />
+              <span>
+                Instant layout
+                <span className="mt-0.5 block text-text-3">
+                  Skip the settle animation — pre-run the force layout to
+                  convergence and drop the graph straight into its final
+                  positions. Off by default (the animated explode/settle).
                 </span>
               </span>
             </label>

@@ -115,11 +115,10 @@ var intentionalGaps = []intentionalGap{
 	// explicit-window params from_line/to_line ARE declared in the schema (#4891 —
 	// discoverable in the handshake so callers reach for the window instead of a
 	// grep fallback). start_line/end_line remain accepted as legacy aliases and
-	// max_lines is the #2828 head cap; all three stay undeclared per the #1639
-	// token-ceiling pattern. All optional; absence = legacy entity-span behaviour.
+	// stay undeclared per the #1639 token-ceiling pattern; max_lines was lifted
+	// into the schema (#5784 Category 3 — opt-in output cap, worth discovering).
 	{"grafel_get_source", "start_line", "#2828 / #1639 token-ceiling: legacy alias of from_line, undeclared"},
 	{"grafel_get_source", "end_line", "#2828 / #1639 token-ceiling: legacy alias of to_line, undeclared"},
-	{"grafel_get_source", "max_lines", "#2828 / #1639 token-ceiling: opt-in head cap, undeclared"},
 
 	// grafel_patterns: action-specific args for sub-actions (query, record, get,
 	// reject, promote) that are undeclared in the schema to stay under the token-ceiling
@@ -156,14 +155,9 @@ var intentionalGaps = []intentionalGap{
 	{"grafel_list_findings", "limit", "#2426 token ceiling pattern — optional result limit"},
 	{"grafel_list_findings", "type", "#2810 token ceiling pattern — optional finding-type filter (e.g. security_finding)"},
 
-	// grafel_cross_links: per-action args undeclared for token budget (#2424 / #1639 pattern).
-	{"grafel_cross_links", "channel", "#2424 token ceiling pattern — list filter"},
-	{"grafel_cross_links", "method", "#2424 token ceiling pattern — list filter"},
-	{"grafel_cross_links", "limit", "#2424 token ceiling pattern — list limit"},
-	{"grafel_cross_links", "repo_filter", "#2424 token ceiling pattern — list filter"},
-	{"grafel_cross_links", "candidate_id", "#2424 token ceiling pattern — accept/reject arg"},
-	{"grafel_cross_links", "override_target", "#2424 token ceiling pattern — accept override"},
-	{"grafel_cross_links", "reason", "#2424 token ceiling pattern — reject reason"},
+	// grafel_cross_links: per-action args were undeclared for token budget
+	// (#2424 / #1639 pattern) but lifted into the schema (#5784 Category 3 —
+	// candidate_id is REQUIRED for accept/reject and was undiscoverable).
 
 	// grafel_license_audit: optional args undeclared for token budget (#2427 / #1639 pattern).
 	{"grafel_license_audit", "include_transitive", "#2427 token ceiling pattern — optional transitive flag"},
@@ -223,6 +217,55 @@ var intentionalGaps = []intentionalGap{
 	// it is intentionally undeclared on the orient schema. handleTopology's own
 	// `action` is declared on grafel_topology.
 	{"grafel_orient", "action", "#5549 CORE-cluster — internal topology-view default, not user-facing"},
+
+	// #5784: TestSchemaContract_AllHandlerArgsDeclared was strengthened to
+	// require EVERY tool that can reach a handler (not just the first one
+	// found) to declare its args. This surfaced a systemic class of
+	// previously-invisible gaps on CORE/ANALYSIS/WORKFLOW umbrella
+	// dispatchers (#5546) whose sub-handlers are ALSO directly wrapped as
+	// their own standalone (now-hidden-alias) tool: the standalone tool
+	// already declares these args under the existing #1639 token-ceiling
+	// pattern, but the umbrella dispatcher that delegates to the same
+	// handler never re-declared them. These are genuine discoverability
+	// gaps (an agent reading only the umbrella schema can't see them), but
+	// they are all optional/secondary filters on an already-far-from-default
+	// action, not required-to-form-a-call params (the #5784 audit's
+	// high-severity findings, e.g. cross_links candidate_id and
+	// docgen_apply repairs resolution/residual_id, were declared for real
+	// above/in registerTools, not allow-listed). Allow-listed here rather
+	// than duplicated onto every umbrella schema to keep the handshake
+	// token budget in check, per the same #1639 pattern the standalone tool
+	// already follows.
+	{"grafel_orient", "verbose", "#5784 — handleTopologyTopicDetail via view=topology; same gap as grafel_topology's own #1639 verbose"},
+	{"grafel_orient", "top_n", "#5784 — handleModuleCombined/handleModuleCentrality via view=modules; same gap as grafel_module_analysis's own #1639 top_n"},
+	{"grafel_orient", "limit", "#5784 — handleModuleCombined/handleModuleCycles via view=modules; same gap as grafel_module_analysis's own #1639 limit"},
+	{"grafel_orient", "min_size", "#5784 — handleModuleCycles/handleListCommunities via view=modules|clusters; module_analysis/clusters #1639 min_size"},
+	{"grafel_orient", "top_entities_limit", "#5784 — handleListCommunities via view=clusters; same gap as grafel_clusters's own declared-elsewhere param, undeclared here"},
+	{"grafel_orient", "breakdown", "#5784 — handleGraphStats via view=stats; same param as grafel_stats's own declared-elsewhere param, undeclared here"},
+	{"grafel_patterns", "needs_attention", "#5784 — handlePatternsListGraph via kind=graph; same gap as grafel_graph_patterns's own params, undeclared here"},
+	{"grafel_patterns", "status", "#5784 — handlePatternsListGraph via kind=graph; same gap as grafel_graph_patterns's own params, undeclared here"},
+	{"grafel_patterns", "confidence_min", "#5784 — handlePatternsListGraph via kind=graph; same gap as grafel_graph_patterns's own params, undeclared here"},
+	// grafel_find limit + format were lifted into the schema (#5784 F2) —
+	// the agent-facing output-control knobs for search=substring.
+	{"grafel_related", "verbose", "#5784 — findCallersStructured/findCalleesStructured via direction=callers|callees; same #1639 pattern as grafel_find_callers/find_callees"},
+	{"grafel_related", "route", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
+	{"grafel_related", "with_param", "#5784 — handleNavigates via direction=uses|used_by; same gap as grafel_navigates's own params, undeclared here"},
+	{"grafel_related", "mode", "#5784 — handleNavigates via direction=uses|used_by; internal navigation mode (list|flow), not user-facing on grafel_related"},
+	// limit + max_depth were lifted into the grafel_related schema (#5784 F2)
+	// — they are the agent-facing output-control knobs for direction=uses|
+	// used_by, exactly what this audit exists to make discoverable.
+	{"grafel_debt", "include_transitive", "#5784 — handleLicenseAudit via kind=license; same gap as grafel_license_audit's own #2427 include_transitive"},
+	{"grafel_debt", "severity", "#5784 — handleLicenseAudit via kind=license; same gap as grafel_license_audit's own #2427 severity"},
+	{"grafel_debt", "endpoint", "#5784 — handleStubDetector via kind=stubs; same gap as grafel_stub_detector's own #4425 endpoint"},
+	{"grafel_subgraph", "node", "#5784 — handleGetNeighbors via mode=expand; same deprecated-alias gap as grafel_expand's own #1916 node"},
+	{"grafel_docgen_apply", "include_stale", "#5784 — handleListResiduals via kind=repairs,action=list; same gap as grafel_repairs's own #1639 include_stale"},
+	{"grafel_trace", "cross_stack_only", "#5784 — handleTracesList via kind=process; same #1639 pattern as grafel_traces's own cross_stack_only"},
+	{"grafel_trace", "min_steps", "#5784 — handleTracesList via kind=process; same #1639 pattern as grafel_traces's own min_steps"},
+	{"grafel_trace", "verbose", "#5784 — handleTracesGet/handleTracesFollow via kind=process; same #1639 pattern as grafel_traces's own verbose"},
+	{"grafel_trace", "branching_factor", "#5784 — handleTracesFollow via kind=process; same #1639 pattern as grafel_traces's own branching_factor"},
+	// token_budget + max_depth were lifted into the grafel_trace schema
+	// (#5784 F2) — the agent-facing output-control knobs for kind=process,
+	// exactly what this audit exists to make discoverable.
 }
 
 // handlerToTool and dispatchTree have been REMOVED.
@@ -339,8 +382,8 @@ func TestSchemaContract_AllHandlerArgsDeclared(t *testing.T) {
 	reportedUnregistered := make(map[string]bool)
 
 	for _, u := range usages {
-		tool, ok := funcToTool[u.funcName]
-		if !ok {
+		tools, ok := funcToTool[u.funcName]
+		if !ok || len(tools) == 0 {
 			// Function reads args but is not reachable from any registered tool.
 			// If it is a known pre-existing orphan, skip silently (tech debt noted).
 			if _, isOrphaned := orphanedHandlers[u.funcName]; isOrphaned {
@@ -360,31 +403,39 @@ func TestSchemaContract_AllHandlerArgsDeclared(t *testing.T) {
 			continue
 		}
 
-		// Check allowlist first.
-		key := tool + "\x00" + u.argKey
-		if allowlist[key] {
-			continue
-		}
+		// #5784: a handler can be reachable from MULTIPLE tools (its own
+		// standalone/hidden-alias wrap() AND one or more umbrella dispatchers
+		// that delegate to it). Every reaching tool must declare (or
+		// allow-list) the arg — declaring it on only one silently starves the
+		// others of discoverability, which is exactly the bug class this test
+		// exists to catch.
+		for _, tool := range tools {
+			// Check allowlist first.
+			key := tool + "\x00" + u.argKey
+			if allowlist[key] {
+				continue
+			}
 
-		// Check schema.
-		st, toolFound := byName[tool]
-		if !toolFound {
-			// Tool not registered — already caught by TestSchemaContract_2318_* tests.
-			continue
-		}
-		props := st.Tool.InputSchema.Properties
-		if props == nil {
-			t.Errorf("%s:%d: tool %q has no schema properties; handler %q reads arg %q",
-				u.file, u.line, tool, u.funcName, u.argKey)
-			failures++
-			continue
-		}
-		if _, declared := props[u.argKey]; !declared {
-			t.Errorf("%s:%d: tool %q is missing schema declaration for arg %q (read in %s) — "+
-				"add mcpapi.WithNumber/WithString/WithBoolean/WithArray(%q, ...) to registerTools, "+
-				"or add an intentionalGaps entry if the omission is intentional",
-				u.file, u.line, tool, u.argKey, u.funcName, u.argKey)
-			failures++
+			// Check schema.
+			st, toolFound := byName[tool]
+			if !toolFound {
+				// Tool not registered — already caught by TestSchemaContract_2318_* tests.
+				continue
+			}
+			props := st.Tool.InputSchema.Properties
+			if props == nil {
+				t.Errorf("%s:%d: tool %q has no schema properties; handler %q reads arg %q",
+					u.file, u.line, tool, u.funcName, u.argKey)
+				failures++
+				continue
+			}
+			if _, declared := props[u.argKey]; !declared {
+				t.Errorf("%s:%d: tool %q is missing schema declaration for arg %q (read in %s, "+
+					"reachable via tools %v) — add mcpapi.WithNumber/WithString/WithBoolean/WithArray(%q, ...) "+
+					"to registerTools, or add an intentionalGaps entry if the omission is intentional",
+					u.file, u.line, tool, u.argKey, u.funcName, tools, u.argKey)
+				failures++
+			}
 		}
 	}
 

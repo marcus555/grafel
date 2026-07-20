@@ -608,6 +608,12 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	}
 	repoFilter := argStringSlice(req, "repo_filter")
 	crossRepo := argBool(req, "cross_repo", false)
+	// #5781: the bm25 find path historically IGNORED kind_filter — a query like
+	// `kind_filter=MessageTopic` returned the full ranked set (Package/Schema/…),
+	// while callers expected only that kind. We now enforce it (see the
+	// enumerateByKind fold below). Normalisation (leaf/SCOPE. stripping) lives in
+	// matchesKindFilter, so `MessageTopic` matches the stored `SCOPE.MessageTopic`.
+	kindFilter := strings.ToLower(argString(req, "kind_filter", ""))
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
 	minConfidence := argMinConfidence(req) // #2769 Phase 1C
@@ -706,6 +712,20 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			filtered = append(filtered, sc)
 		}
 		all = filtered
+	}
+
+	// #5781: enforce kind_filter in the bm25 path. Two things happen here:
+	//   1. bm25 hits whose kind doesn't match are dropped (so the result is ONLY
+	//      the requested kind, not the full ranked set).
+	//   2. every in-scope entity of that kind that bm25 didn't surface is folded
+	//      in, turning kind_filter into an enumeration so `kind_filter=MessageTopic
+	//      cross_repo=true` returns the per-repo topic nodes even when the query
+	//      text doesn't textually rank them.
+	// Kind enumeration is not text-score gated, so we disable the min_score cull
+	// below (a topic named "kafka:orders" won't BM25-match a generic query).
+	if kindFilter != "" {
+		all = enumerateByKind(all, repos, kindFilter, includeNoise, minConfidence, maxResults)
+		minScore = 0
 	}
 
 	// Re-rank (#1614): real, lined, qualified entities sort above
@@ -1068,6 +1088,67 @@ const (
 // non-selective result as a real subgraph.
 const noStrongMatchHint = "no strong matches above min_score — the query terms don't match any entity names; try different/more specific terms, or use grafel_orient / grafel_topology to explore the repo"
 
+// enumerateByKind enforces a kind_filter over the bm25-scored hit set and folds
+// in every in-scope entity of that kind that bm25 didn't already surface (#5781).
+//
+// Result: ONLY entities whose kind matches kindFilter (via matchesKindFilter,
+// which strips a leading "SCOPE." and compares case-insensitively so a display
+// kind "MessageTopic" matches the stored "SCOPE.MessageTopic"). bm25-ranked
+// matches keep their score and order; folded-in entities get a nominal score so
+// they sort last but still enumerate. Noise / low-confidence entities are
+// excluded on the same terms as the normal ranked path.
+// foldCap bounds how many entities the enumeration folds in. The ranked list is
+// truncated to maxResults downstream regardless, so folding much beyond that is
+// wasted O(N)/O(N log N) work for a huge common kind (e.g. Function). We keep a
+// small multiple of maxResults so the re-rank still has enough real hits to
+// choose from, then stop.
+func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, includeNoise bool, minConfidence float64, maxResults int) []scored {
+	foldCap := maxResults * 4
+	if foldCap < 200 {
+		foldCap = 200
+	}
+	seen := make(map[*LoadedRepo]map[string]bool, len(repos))
+	// 1. Keep only kind-matching bm25 hits (reuse the backing array).
+	out := all[:0]
+	for _, sc := range all {
+		if !matchesKindFilter(sc.hit.Entity, kindFilter) {
+			continue
+		}
+		out = append(out, sc)
+		if seen[sc.repo] == nil {
+			seen[sc.repo] = map[string]bool{}
+		}
+		seen[sc.repo][sc.hit.Entity.ID] = true
+	}
+	// 2. Fold in kind-matching entities bm25 didn't surface (enumeration),
+	//    bounded by foldCap so a huge kind can't drive unbounded alloc/sort.
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			if len(out) >= foldCap {
+				return out
+			}
+			e := &r.Doc.Entities[i]
+			if !matchesKindFilter(e, kindFilter) {
+				continue
+			}
+			if seen[r] != nil && seen[r][e.ID] {
+				continue
+			}
+			if !includeNoise && isNoise(e) {
+				continue
+			}
+			if !entityPassesConfidence(e, minConfidence) {
+				continue
+			}
+			out = append(out, scored{repo: r, hit: Hit{Entity: e, Score: 0.0001, Source: "kind_filter"}})
+		}
+	}
+	return out
+}
+
 // serializeHits is the structured (full=true) shape.
 //
 // Default (verbose=false): id, name, file, line, score, kind.
@@ -1226,7 +1307,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				// #3897: full semantic, non-structural edge set (JOINS_COLLECTION,
 				// GRAPH_RELATES, DEPENDS_ON_SERVICE, THROWS/CATCHES, DATA_FLOWS_TO,
 				// …). Generalizes the DI-only #3870 projection; omitted when empty.
-				if sem := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind); len(sem) > 0 {
+				if sem := inspectSemanticEdgesFull(lg, r, e, scopeIsOne); len(sem) > 0 {
 					out["semantic_edges"] = sem
 				}
 				// #2642: metadata block with index provenance.
@@ -1306,7 +1387,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// #3897: full semantic, non-structural edge set (JOINS_COLLECTION,
 	// GRAPH_RELATES, DEPENDS_ON_SERVICE, THROWS/CATCHES, DATA_FLOWS_TO, …).
 	// Generalizes the DI-only #3870 projection; omitted when empty.
-	if sem := inspectSemanticEdges(m.repo, m.ent, scopeIsOne, isSemanticEdgeKind); len(sem) > 0 {
+	if sem := inspectSemanticEdgesFull(lg, m.repo, m.ent, scopeIsOne); len(sem) > 0 {
 		out["semantic_edges"] = sem
 	}
 	// #2642: metadata block with index provenance.
@@ -1743,6 +1824,17 @@ var semanticEdgeKinds = map[string]struct{}{
 	// any isSemanticEdgeKind). The outbound walk (Section → code) already
 	// traversed every out-edge, so this makes the edge_kind label symmetric.
 	string(types.RelationshipKindMentions): {},
+	// #5782 (ADR-0025) ask #5: BINDS_CHANNEL / BINDS_TOPIC are the config↔code
+	// and config↔topic join edges emitted by the ChannelBinding recognizer.
+	// They were left out of this set at #5782's initial cut even though they
+	// are intra-repo edges inspectSemanticEdges already walks — inspecting a
+	// SCOPE.ChannelBinding returned NO semantic_edges at all, though the edges
+	// exist on the graph (confirmed via cypher export). Adding them here is
+	// sufficient; no cross-repo handling is needed (unlike PUBLISHES_TO/
+	// SUBSCRIBES_TO/DELIVERS_TO below), because a ChannelBinding's bound
+	// operation/topic always live in the SAME repo as the binding row.
+	string(types.RelationshipKindBindsChannel): {},
+	string(types.RelationshipKindBindsTopic):   {},
 }
 
 // isSemanticEdgeKind reports whether k is one of the projected semantic edge
@@ -1817,6 +1909,97 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+// semEdgeGroup is a set of neighbors to fold into inspect's semantic_edges
+// under one fixed (kind, direction) label.
+type semEdgeGroup struct {
+	kind      string
+	direction string
+	neighbors []topicNeighbor
+}
+
+// foldTopicNeighborRows appends semantic_edge rows for each group's neighbors to
+// `rows`, deduplicating against rows already present (by kind+direction+other).
+// Shared by the MessageTopic cross-repo fold and the ChannelBinding
+// synthetic-id fold in inspectSemanticEdgesFull. The `other` id is normalized to
+// inspectSemanticEdges's convention: unprefixed when scopeIsOne AND the neighbor
+// is in r's own repo, else repo-prefixed.
+func foldTopicNeighborRows(rows []map[string]any, r *LoadedRepo, scopeIsOne bool, groups []semEdgeGroup) []map[string]any {
+	key := func(kind, direction, other string) string {
+		return strings.ToUpper(kind) + "|" + direction + "|" + other
+	}
+	seen := map[string]bool{}
+	for _, row := range rows {
+		k, _ := row["kind"].(string)
+		d, _ := row["direction"].(string)
+		o, _ := row["other"].(string)
+		seen[key(k, d, o)] = true
+	}
+	for _, g := range groups {
+		for _, n := range g.neighbors {
+			other := n.EntityID
+			if scopeIsOne {
+				if rp, local := splitPrefixed(n.EntityID); rp == r.Repo {
+					other = local
+				}
+			}
+			k := key(g.kind, g.direction, other)
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			if rows == nil {
+				rows = []map[string]any{}
+			}
+			rows = append(rows, map[string]any{
+				"kind":      g.kind,
+				"direction": g.direction,
+				"other":     other,
+				"line":      0,
+			})
+		}
+	}
+	return rows
+}
+
+// inspectSemanticEdgesFull wraps inspectSemanticEdges and folds in the
+// cross-repo / synthetic-id semantic edges that a single-repo adjacency walk
+// misses (#5782 ask #5). inspectSemanticEdges walks only lr's OWN
+// Doc.Relationships keyed by the entity's stored id, which is insufficient for:
+//
+//   - SCOPE.MessageTopic: a PER-REPO node keyed by a broker-prefixed Name (the
+//     same Name appears in every repo that touches the topic); the cross-repo
+//     publisher<->subscriber join lives in lg.Links, not any single repo's
+//     adjacency. Inspecting the topic from the producer repo otherwise shows
+//     only the local PUBLISHES_TO edge. Reuses collectTopicNeighbors.
+//   - SCOPE.ChannelBinding: on the real fbwriter graph the binding entity is
+//     re-keyed to a content hash while its BINDS_CHANNEL/BINDS_TOPIC edges keep
+//     the DANGLING synthetic FromID, so adj.Outgoing(binding.ID) is empty and
+//     inspect showed NO semantic_edges at all. Reuses collectChannelBindingTargets
+//     (bindingMatchesEdge bridges the hash-id vs synthetic-id gap), emitting the
+//     bound channel/topic as OUTBOUND edges from the binding's point of view.
+func inspectSemanticEdgesFull(lg *LoadedGroup, r *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	out := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind)
+	if r == nil || e == nil {
+		return out
+	}
+	if isMessageTopicEntity(e) && lg != nil {
+		producers, consumers, handlers := collectTopicNeighbors(lg, e.Name, r.Repo)
+		return foldTopicNeighborRows(out, r, scopeIsOne, []semEdgeGroup{
+			{string(types.RelationshipKindPublishesTo), "inbound", producers},
+			{string(types.RelationshipKindSubscribesTo), "inbound", consumers},
+			{string(types.RelationshipKindDeliversTo), "outbound", handlers},
+		})
+	}
+	if isChannelBindingEntity(e) {
+		channels, topics := collectChannelBindingTargets(r, e)
+		return foldTopicNeighborRows(out, r, scopeIsOne, []semEdgeGroup{
+			{string(types.RelationshipKindBindsChannel), "outbound", channels},
+			{string(types.RelationshipKindBindsTopic), "outbound", topics},
+		})
 	}
 	return out
 }
@@ -2441,20 +2624,167 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 		TopEdges:     argInt(req, "top_edges", def.TopEdges),
 		MaxQuestions: argInt(req, "max_questions", def.MaxQuestions),
 	}
-	out := []map[string]any{}
+	// #5783: top_entities/top_edges/max_questions bound EACH repo block, but
+	// nothing bounded the OVERALL overview payload — a group with many repos
+	// multiplies those per-repo caps unboundedly (a 9-repo group produced an
+	// 82KB single-line result that overflowed the MCP token limit even though
+	// every block individually honored its cap).
+	//
+	// Overview must give a bird's-eye view of the WHOLE group, so instead of
+	// dropping whole repos we SCALE DETAIL: shrink every repo's ranked lists to
+	// a shared per-list cap K so EVERY repo appears with proportionally less
+	// detail as the group grows. Dropping whole repos behind a truncation
+	// marker is a last-resort net for pathological groups only.
+	//
+	// CRITICAL (#5783 v0.1.8.1): the budget MUST be measured against the FINAL
+	// serialized response the client receives, not an intermediate array.
+	// jsonResult → finalizeDeferred TOON-encodes the `items` array and then
+	// JSON-escapes that whole schema-string into the {count,elapsed_ms,items}
+	// envelope; the nested key_entities/cross_cutting_edges quotes and braces
+	// get double-escaped, inflating the real body ~15% above json.Marshal(out).
+	// Capping json.Marshal(out) (the old capByRenderedBytes proxy) therefore
+	// let a 64KB "budget" ship a ~74KB body that still overflowed the client.
+	// We binary-search K against finalOrientBodyLen — the real wire size.
+	tokenBudget := argInt(req, "token_budget", 12000)
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+
+	analyzed := make([]*graph.OrientationResult, 0, len(repos))
+	names := make([]string, 0, len(repos))
+	maxLen := 0
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
 		}
 		res := graph.AnalyzeOrientation(r.Doc.Entities, r.Doc.Relationships, opts)
-		out = append(out, map[string]any{
-			"repo":                  r.Repo,
-			"key_entities":          res.KeyEntities,
-			"cross_cutting_edges":   res.CrossCutEdges,
-			"orientation_questions": res.Questions,
-		})
+		analyzed = append(analyzed, &res)
+		names = append(names, r.Repo)
+		for _, n := range []int{len(res.KeyEntities), len(res.CrossCutEdges), len(res.Questions)} {
+			if n > maxLen {
+				maxLen = n
+			}
+		}
 	}
+
+	// Binary-search the largest uniform per-list cap K whose FINAL wire body
+	// fits the budget. finalOrientBodyLen is monotonic in K (more entries ⇒
+	// larger body), so the search is well-defined. best>=0 means every repo
+	// appears (all lists capped to K); best<0 means even bare name-only blocks
+	// (K=0) overflow — a pathological group that falls to the drop path below.
+	best := -1
+	lo, hi := 0, maxLen
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		if finalOrientBodyLen(buildOrientBlocks(names, analyzed, mid)) <= budgetBytes {
+			best = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+
+	var out []map[string]any
+	if best >= 0 {
+		out = buildOrientBlocks(names, analyzed, best)
+	} else {
+		// Last-resort: even minimal (name-only) blocks won't all fit. Drop the
+		// tail behind a BOUNDED marker, binary-searching the largest repo prefix
+		// whose final body — MARKER INCLUDED — fits the budget. The marker is
+		// re-measured on every probe, so appending it can never push the result
+		// back over the ceiling ([no-silent-caps]).
+		zero := buildOrientBlocks(names, analyzed, 0)
+		buildWithMarker := func(r int) []map[string]any {
+			included := append([]map[string]any(nil), zero[:r]...)
+			return appendOrientTruncationMarker(included, names[r:], len(analyzed), tokenBudget, budgetBytes)
+		}
+		bestR := 0
+		lo, hi := 0, len(zero)-1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if finalOrientBodyLen(buildWithMarker(mid)) <= budgetBytes {
+				bestR = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+		out = buildWithMarker(bestR)
+	}
+
 	return jsonResult(out), nil
+}
+
+// buildOrientBlocks renders each repo's orientation result as a JSON block with
+// its three ranked lists capped to the first k entries (highest-ranked). k<=0
+// yields name-only blocks so every repo still appears in the overview. #5783.
+func buildOrientBlocks(names []string, analyzed []*graph.OrientationResult, k int) []map[string]any {
+	out := make([]map[string]any, len(analyzed))
+	for i, res := range analyzed {
+		out[i] = map[string]any{
+			"repo":                  names[i],
+			"key_entities":          headSlice(res.KeyEntities, k),
+			"cross_cutting_edges":   headSlice(res.CrossCutEdges, k),
+			"orientation_questions": headSlice(res.Questions, k),
+		}
+	}
+	return out
+}
+
+// headSlice returns the first n elements of s (all of s when n>=len; empty when
+// n<=0). Always returns a non-nil slice so the JSON field renders as [].
+func headSlice[T any](s []T, n int) []T {
+	if n <= 0 {
+		return []T{}
+	}
+	if n >= len(s) {
+		return s
+	}
+	return s[:n]
+}
+
+// finalOrientBodyLen renders the repo-block array through the SAME path the
+// client receives (finalizeDeferred → TOON `items` schema-string →
+// JSON-escaped {count,elapsed_ms,items} envelope) and returns the real wire
+// body byte length. #5783: capping json.Marshal(out) measured the wrong layer
+// — TOON-encoding the nested lists and JSON-escaping the resulting string
+// inflates the real body well above the raw array, so the cap MUST measure
+// this. elapsed_ms/interning applied later in wrap() only shrink the body
+// (interning) or add a fixed-width int (elapsed_ms), so this is a safe upper
+// bound on the delivered size.
+func finalOrientBodyLen(out []map[string]any) int {
+	text, err := finalizeDeferred(out, 0, nil)
+	if err != nil {
+		data, _ := json.Marshal(out)
+		return len(data)
+	}
+	return len(text)
+}
+
+// appendOrientTruncationMarker appends a single bounded marker block naming the
+// omitted repos. The omitted_repos list is capped (first markerRepoCap names +
+// an omitted_count) so the marker itself cannot grow past the budget as repo
+// count scales, and the marker is only a last-resort net for pathological
+// groups. #5783 (marker must count against the budget).
+func appendOrientTruncationMarker(included []map[string]any, omitted []string, totalRepos, tokenBudget, budgetBytes int) []map[string]any {
+	const markerRepoCap = 20
+	shown := omitted
+	if len(shown) > markerRepoCap {
+		shown = shown[:markerRepoCap]
+	}
+	marker := map[string]any{
+		"truncated":      true,
+		"total_repos":    totalRepos,
+		"included_repos": len(included),
+		"omitted_repos":  shown,
+		"omitted_count":  len(omitted),
+		"note": fmt.Sprintf(
+			"response capped at token_budget=%d (~%d bytes); %d repo(s) omitted at minimal detail — pass repo_filter to focus on specific repos, or a larger token_budget",
+			tokenBudget, budgetBytes, len(omitted),
+		),
+	}
+	return append(included, marker)
 }
 
 // ---------------------------------------------------------------------------

@@ -424,6 +424,7 @@ func sniffEffectsJSTS(content string) []EffectMatch {
 	out = appendJSTSMatches(out, content, headers, jstsFSReadRe, EffectFSRead, "fs.read", 1.0)
 	out = appendJSTSMatches(out, content, headers, jstsFSWriteRe, EffectFSWrite, "fs.write", 1.0)
 	out = appendJSTSMatches(out, content, headers, jstsMutationRe, EffectMutation, "this.field=", 0.7)
+	out = appendAWSJSTSMatches(out, content, headers) // #5798: AWS SDK publish call-sites
 	return out
 }
 

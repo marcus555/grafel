@@ -52,11 +52,15 @@ type AsyncTriggerStats struct {
 // delivery channel: a handler that SUBSCRIBES_TO one of these is triggered by
 // message delivery. Matched case-insensitively. Covers the broker MessageTopic
 // synthetics (kafka/sns/nats/pulsar/eventbridge/…), the SQS/RabbitMQ Queue
-// synthetics, and the managed event-bus event kind.
+// synthetics, the managed event-bus event kind, and datastores that emit a
+// change stream (DynamoDB Streams / Kinesis-backed tables) which a Lambda
+// EventSourceMapping consumes — a table's stream is an async delivery source
+// exactly like a queue (#5801 Bug 2).
 var asyncTriggerTopicKinds = map[string]bool{
 	strings.ToUpper("SCOPE.MessageTopic"):  true,
 	strings.ToUpper("SCOPE.Queue"):         true,
 	strings.ToUpper("SCOPE.EventBusEvent"): true,
+	strings.ToUpper("SCOPE.Datastore"):     true,
 }
 
 func isAsyncTriggerTopicKind(kind string) bool {

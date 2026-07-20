@@ -182,6 +182,17 @@ func install(opts Options) (StatusInfo, error) {
 	return ensureLoaded(context.Background(), sm, defaultReadiness, nil)
 }
 
+// restartService is the Linux implementation of Restart: always converges via
+// unload→load→wait-ready (systemctl disable→enable), skipping Install's
+// "already running" fast path so callers get a genuine restart.
+func restartService(opts Options) (StatusInfo, error) {
+	sm, err := newServiceManager(opts)
+	if err != nil {
+		return StatusInfo{}, err
+	}
+	return restart(context.Background(), sm, defaultReadiness, nil)
+}
+
 // uninstall is the Linux implementation of Uninstall.
 func uninstall(opts Options) error {
 	sm, err := newServiceManager(opts)

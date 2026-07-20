@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/requests"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
@@ -22,6 +24,7 @@ import (
 	"github.com/cajasmota/grafel/internal/perf"
 	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/version"
 )
 
@@ -563,27 +566,47 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	// construction: split mode NEVER reaches the s.rebuild(*args) call
 	// below, and monolith/engine mode NEVER writes a request file.
 	//
-	// Fire-and-forget, mirroring Index's async fast path: the reply carries
-	// no repo/stat/progress data because the rebuild hasn't happened yet by
-	// the time this RPC returns. In particular args.ProgressToken-based
+	// Fire-and-forget by default, mirroring Index's async fast path: the reply
+	// carries no repo/stat/progress data because the rebuild hasn't happened yet
+	// by the time this RPC returns. In particular args.ProgressToken-based
 	// polling (IndexProgress) is NOT bridged across the process boundary —
 	// s.progress lives in serve's memory, but the rebuild itself runs in the
 	// engine process, so nothing here would ever mark that session done.
-	// That is a known, documented limitation of this fire-and-forget queue
-	// hop (not one of the two PR6-prerequisite gaps this change closes) and
-	// is left for a follow-up if split-mode progress UX is needed.
+	//
+	// WaitForCompletion (#5790) opts INTO a synchronous wait for callers that
+	// treat err==nil as "the rebuild ran" (e.g. `grafel group add --index`,
+	// which reports "indexed": true). When set, we stamp a scoping token onto
+	// the request, enqueue it, then block on awaitRebuildCompletion until the
+	// engine drains+acks THAT request (the same request-ack signal the wizard
+	// polls via RebuildRequestPending), returning nil only on real completion
+	// and a clear error on engine-death / never-alive / timeout. Callers that
+	// leave it false keep the immediate fire-and-forget return.
 	if SplitModeEnabled() {
+		if args.WaitForCompletion && args.ProgressToken == "" {
+			// Scope the completion poll to OUR request so a concurrent rebuild
+			// of the same group (a different token) is never mistaken for ours.
+			args.ProgressToken = uuid.NewString()
+		}
 		payload, err := json.Marshal(*args)
 		if err != nil {
 			return fmt.Errorf("encode rebuild request: %w", err)
 		}
-		if _, err := requests.Write(requestsDirForGroup(args.Group), requests.Record{
+		dir := requestsDirForGroup(args.Group)
+		id, err := requests.Write(dir, requests.Record{
 			Kind:    requests.KindRebuild,
 			Payload: payload,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("queue rebuild request: %w", err)
 		}
-		return nil
+		if !args.WaitForCompletion {
+			return nil
+		}
+		// Block until the engine finishes OUR rebuild and read its terminal ack
+		// (bounded + failure-aware; see awaitRebuildCompletion). The request is
+		// already on disk, so the ack read is race-free, and the engine KEEPS the
+		// ack for a WaitForCompletion request so its OK/error outcome is readable.
+		return s.awaitRebuildCompletion(dir, id)
 	}
 
 	atomic.AddInt64(&s.inFlight, 1)
@@ -1035,6 +1058,35 @@ func (s *Service) RemoveRepo(args *proto.RemoveRepoArgs, reply *proto.RemoveRepo
 	return nil
 }
 
+// cancelGroupWork signals cancellation of a group's in-flight background work
+// (scheduler enrichment passes + an in-flight group rebuild) so a delete stops
+// the CPU burn promptly instead of letting an 11-minute pass run to completion.
+// Best-effort and non-blocking — it never awaits the cancelled work, so
+// DeleteGroup cannot deadlock behind it.
+func (s *Service) cancelGroupWork(group string) {
+	// In-process path (monolith / engine): cancel directly. Both are no-ops when
+	// nothing is in flight for the group.
+	if s.scheduler != nil {
+		s.scheduler.CancelGroup(group)
+	}
+	CancelGroupRebuild(group)
+
+	// Split-mode path: the enrichment/rebuild goroutines live in the engine
+	// process, unreachable from this serve process. Drop a KindCancelGroup
+	// request the engine's drain loop applies (Scheduler.CancelGroup +
+	// CancelGroupRebuild on the engine side). The group name travels in RepoPath
+	// (see requests.KindCancelGroup). Best-effort: a write failure is logged but
+	// never fails the delete.
+	if SplitModeEnabled() {
+		if _, err := requests.Write(requestsDirForGroup(group), requests.Record{
+			Kind:     requests.KindCancelGroup,
+			RepoPath: group,
+		}); err != nil && s.logger != nil {
+			s.logger.Warn("delete-group: queue cancel request failed", "group", group, "err", err)
+		}
+	}
+}
+
 // DeleteGroup tears down every repo in a group and removes the group from
 // the registry. Mirrors RemoveRepo for each member repo, then deletes the
 // fleet config file and per-group state directory.
@@ -1057,12 +1109,37 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 	if ref == nil {
 		return fmt.Errorf("unknown group: %s", args.Group)
 	}
+
+	// Cancel the group's IN-FLIGHT background work BEFORE tearing down its state
+	// (v0.1.8 leak fix): a delete removed the group from the registry but left
+	// its in-flight (re)index + enrichment goroutines — betweenness, phantom-edge
+	// / link passes, and the multi-minute group rebuild — burning CPU to
+	// completion after the group was gone. Cancellation is scoped to THIS group
+	// (the scheduler leaves a shared repo's reindex running if a surviving group
+	// still references it; other groups' passes use different map keys), and it
+	// never blocks: it signals cancel funcs and returns.
+	//
+	//   - In-process (monolith / engine-in-same-process): the scheduler is
+	//     attached to this Service, so cancel its group-algo/link/reindex passes
+	//     directly, plus any in-process group rebuild via the package registry.
+	//   - Split mode: this RPC runs in the SERVE process, but the enrichment /
+	//     rebuild goroutines live in the ENGINE process, so serve cannot reach
+	//     them in-process (s.scheduler is nil there). Drop a KindCancelGroup
+	//     request; the engine's drain loop invokes the same two cancels.
+	s.cancelGroupWork(args.Group)
+
 	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
 	if cfg != nil {
+		// #34 guard: a repo's underlying store, in-repo manifest, and status
+		// sidecar may be SHARED — referenced by another still-registered group.
+		// Compute the set of repo paths every OTHER group references so per-repo
+		// state is only torn down when NO surviving group still needs it.
+		sharedPaths := otherGroupRepoPaths(args.Group)
+
 		for _, r := range cfg.Repos {
 			// Stop watcher.
 			if s.watcher != nil {
@@ -1075,8 +1152,13 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 			if cfg.Features.GitHooks {
 				_ = hooks.Uninstall(r.Path)
 			}
-			// Delete per-repo cache.
-			if !args.KeepCaches {
+
+			shared := sharedPaths[canonRepoKey(r.Path)]
+
+			// Delete per-repo cache (the repo store: graph.fb, links, …). Never
+			// when another group still references this repo — that would strip a
+			// live group's graph out from under it (#34).
+			if !args.KeepCaches && !shared {
 				cacheDir := StateDirForRepo(r.Path)
 				if _, err := os.Stat(cacheDir); err == nil {
 					freed, _ := dirSize(cacheDir)
@@ -1084,6 +1166,26 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 					_ = os.RemoveAll(cacheDir)
 				}
 			}
+
+			// Remove the per-repo orphaned state that outlives the group in the
+			// registry (Bug 1): the committed in-repo manifest
+			// <repo>/.grafel/group.json (the source of the wizard's stale
+			// "already in group" note) and the engine status-plane sidecar
+			// ~/.grafel/status/<hash>.json. Same #34 guard: only when no other
+			// group still references this repo.
+			if !shared {
+				manifest := filepath.Join(r.Path, ".grafel", "group.json")
+				if _, err := os.Stat(manifest); err == nil {
+					_ = os.Remove(manifest)
+					// Best-effort: drop the now-likely-empty .grafel dir. Fails
+					// harmlessly (and is skipped) if anything else lives there.
+					_ = os.Remove(filepath.Join(r.Path, ".grafel"))
+				}
+				if sp, err := statusfile.PathFor(r.Path); err == nil {
+					_ = os.Remove(sp)
+				}
+			}
+
 			reply.RemovedRepos = append(reply.RemovedRepos, r.Slug)
 		}
 	}
@@ -1102,7 +1204,115 @@ func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGr
 		_ = os.RemoveAll(stateDir)
 	}
 
+	// Remove the GROUP-LEVEL artifacts keyed by the deleted group name. These
+	// are always safe to remove (they belong to this group alone, never shared
+	// with another): the link/algo sidecars under ~/.grafel/groups/<group>-*.json
+	// and the group store dir(s) ~/.grafel/store/group-<group>-*.
+	reply.FreedBytes += removeGroupArtifacts(args.Group)
+
 	return nil
+}
+
+// canonRepoKey normalises a repo path for equality comparison (absolute +
+// lexically clean) so the #34 shared-repo guard matches the same repo referenced
+// by two groups regardless of how each config spelled the path.
+func canonRepoKey(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		abs = p
+	}
+	return filepath.Clean(abs)
+}
+
+// otherGroupRepoPaths returns the set of repo paths (canonRepoKey-normalised)
+// referenced by every registered group EXCEPT exclude. DeleteGroup consults it
+// so a repo shared with a surviving group keeps its store/manifest/status (#34).
+func otherGroupRepoPaths(exclude string) map[string]bool {
+	out := map[string]bool{}
+	groups, err := registry.Groups()
+	if err != nil {
+		return out
+	}
+	for _, g := range groups {
+		if g.Name == exclude {
+			continue
+		}
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil || cfg == nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			out[canonRepoKey(r.Path)] = true
+		}
+	}
+	return out
+}
+
+// removeGroupArtifacts deletes the group-level (not per-repo) state keyed by a
+// group name: the ~/.grafel/groups/<group>-*.json link/algo sidecars and the
+// ~/.grafel/store/group-<group>-* group store dir(s). Returns bytes freed.
+//
+// The globs are prefix-based and a group name can be a hyphen-prefix of a
+// SURVIVING group's name (delete "api" while "api-v2" survives): "api-*.json"
+// also matches "api-v2-links.json", and "group-api-*" also matches
+// "group-api-v2-<hash>". So each candidate match is attributed to the LONGEST
+// registered group-name prefix that owns it, and a match owned by a surviving
+// group is left intact — the group-level analog of the per-repo
+// otherGroupRepoPaths survivor-exclusion guard (#34).
+func removeGroupArtifacts(group string) int64 {
+	// Owner-candidate names: the deleted group PLUS every still-registered group
+	// (survivors — RemoveGroup already ran, so registry.Groups() excludes the
+	// deleted one). Longest-prefix attribution over this set distinguishes
+	// "api"'s artifacts from "api-v2"'s.
+	names := []string{group}
+	if groups, err := registry.Groups(); err == nil {
+		for _, g := range groups {
+			if g.Name != group {
+				names = append(names, g.Name)
+			}
+		}
+	}
+	// ownerIsDeleted reports whether subj (a match's basename minus its fixed
+	// prefix) is owned by the group being deleted: the deleted group is the
+	// LONGEST candidate name N for which subj == N or subj starts with N+"-".
+	ownerIsDeleted := func(subj string) bool {
+		owner := ""
+		for _, n := range names {
+			if subj == n || strings.HasPrefix(subj, n+"-") {
+				if len(n) > len(owner) {
+					owner = n
+				}
+			}
+		}
+		return owner == group
+	}
+
+	var freed int64
+	remove := func(m string) {
+		if sz, err := dirSize(m); err == nil {
+			freed += sz
+		}
+		_ = os.RemoveAll(m)
+	}
+
+	// groups/<group>-*.json — subject is the basename (e.g. "api-v2-links.json").
+	if home, err := registry.HomeDir(); err == nil {
+		matches, _ := filepath.Glob(filepath.Join(home, "groups", group+"-*.json"))
+		for _, m := range matches {
+			if ownerIsDeleted(filepath.Base(m)) {
+				remove(m)
+			}
+		}
+	}
+	// store/group-<group>-* — subject is the basename with the "group-" prefix
+	// stripped (e.g. "api-v2-<hash>").
+	matches, _ := filepath.Glob(filepath.Join(StoreDir(), "group-"+group+"-*"))
+	for _, m := range matches {
+		if ownerIsDeleted(strings.TrimPrefix(filepath.Base(m), "group-")) {
+			remove(m)
+		}
+	}
+	return freed
 }
 
 // dirSize returns the total number of bytes in a directory tree.

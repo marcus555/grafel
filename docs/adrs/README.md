@@ -30,6 +30,7 @@ decision itself, and the consequences we accepted.
 | [0022](0022-http-mcp-transport.md) | Proposed | Authenticated shared HTTP MCP transport for team deployments |
 | [0023](0023-migrate-to-official-tree-sitter-binding-per-language-modules.md) | Proposed | Migrate to official tree-sitter binding + per-language grammar modules (B2 assessment) |
 | [0024](0024-decouple-mcp-serving-from-engine.md) | Accepted | Decouple MCP serving from the engine (serve/engine process split) |
+| [0025](0025-channelbinding-config-code-topic-messaging.md) | Proposed | ChannelBinding — connect config↔code↔topic for messaging (reference impl: Quarkus/SmallRye/Kafka) |
 
 Numbers are append-only.
 

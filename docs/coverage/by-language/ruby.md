@@ -93,9 +93,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Brokers
 
-| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
-|---|---|---|---|---|
-| [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | ✅ | ✅ | ✅ | |
+| Name | Config binding | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | 🔴 | ✅ | ✅ | ✅ | |
 
 
 ### Realtime Channels

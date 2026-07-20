@@ -28,12 +28,16 @@ import (
 // ---------------------------------------------------------------------------
 
 // handleTopology dispatches on action= to the appropriate topology handler.
+//
+// #5781: action defaults to "channels" (the full topic listing with per-topic
+// publisher/consumer edge counts) when none is supplied, so `grafel_orient
+// view=topology` shows the message topics the caller expects rather than only
+// the orphan-publisher subset.
 func (s *Server) handleTopology(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	action, err := req.RequireString("action")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
+	action := argString(req, "action", "channels")
 	switch action {
+	case "channels", "list":
+		return s.handleTopologyChannels(ctx, req)
 	case "orphan_publishers":
 		return s.handleTopologyOrphanPublishers(ctx, req)
 	case "orphan_subscribers":
@@ -42,9 +46,112 @@ func (s *Server) handleTopology(ctx context.Context, req mcpapi.CallToolRequest)
 		return s.handleTopologyTopicDetail(ctx, req)
 	default:
 		return mcpapi.NewToolResultError(
-			"unknown action " + action + " (allowed: orphan_publishers, orphan_subscribers, topic_detail)",
+			"unknown action " + action + " (allowed: channels, orphan_publishers, orphan_subscribers, topic_detail)",
 		), nil
 	}
+}
+
+// topologyChannelsMax caps the channel listing so a topic-heavy corpus can't
+// blow the MCP token budget. Truncation is surfaced via the response.
+const topologyChannelsMax = 200
+
+// handleTopologyChannels lists every message topic/channel in scope with its
+// publisher (inbound PUBLISHES_TO) and consumer (inbound SUBSCRIBES_TO /
+// DELIVERS_TO) edge counts. This is the default view for grafel_orient
+// view=topology (#5781).
+func (s *Server) handleTopologyChannels(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	_, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+
+	type channel struct {
+		TopicID        string `json:"topic_id"`
+		TopicName      string `json:"topic_name"`
+		Repo           string `json:"repo"`
+		PublisherCount int    `json:"publisher_count"`
+		ConsumerCount  int    `json:"consumer_count"`
+		SourceFile     string `json:"source_file,omitempty"`
+	}
+
+	var out []channel
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		// Tally publisher/consumer edges per topic in a single pass.
+		//
+		// Edge directions (see internal/types/kinds.go, async_trigger_edges.go):
+		//   PUBLISHES_TO  handler → topic   (topic = ToID)   inbound
+		//   SUBSCRIBES_TO handler → topic   (topic = ToID)   inbound
+		//   DELIVERS_TO   topic   → handler (topic = FromID) outbound — the
+		//                 synthesised INVERSE of SUBSCRIBES_TO (#5686). A served
+		//                 doc may carry topic→handler DELIVERS_TO after
+		//                 stripProcessEntities removes SUBSCRIBES_TO.
+		//
+		// consumer_count is the number of DISTINCT consumer handlers: because
+		// DELIVERS_TO is the inverse of SUBSCRIBES_TO, a handler with both edges
+		// must be counted once, so we union handler IDs per topic in a set.
+		pubCount := map[string]int{}
+		consumers := map[string]map[string]bool{} // topicID → set of handler IDs
+		addConsumer := func(topicID, handlerID string) {
+			set := consumers[topicID]
+			if set == nil {
+				set = map[string]bool{}
+				consumers[topicID] = set
+			}
+			set[handlerID] = true
+		}
+		for i := range r.Doc.Relationships {
+			rel := &r.Doc.Relationships[i]
+			switch rel.Kind {
+			case "PUBLISHES_TO":
+				pubCount[rel.ToID]++
+			case "SUBSCRIBES_TO":
+				addConsumer(rel.ToID, rel.FromID) // topic=ToID, handler=FromID
+			case "DELIVERS_TO":
+				addConsumer(rel.FromID, rel.ToID) // topic=FromID, handler=ToID
+			}
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if !isTopic(e) {
+				continue
+			}
+			out = append(out, channel{
+				TopicID:        prefixedID(r.Repo, e.ID),
+				TopicName:      e.Name,
+				Repo:           r.Repo,
+				PublisherCount: pubCount[e.ID],
+				ConsumerCount:  len(consumers[e.ID]),
+				SourceFile:     e.SourceFile,
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TopicName != out[j].TopicName {
+			return out[i].TopicName < out[j].TopicName
+		}
+		return out[i].Repo < out[j].Repo
+	})
+	total := len(out)
+	truncated := false
+	if len(out) > topologyChannelsMax {
+		out = out[:topologyChannelsMax]
+		truncated = true
+	}
+	resp := map[string]any{
+		"channels":  out,
+		"count":     len(out),
+		"total":     total,
+		"truncated": truncated,
+	}
+	if truncated {
+		resp["truncation_note"] = "channel listing capped at " +
+			strconv.Itoa(topologyChannelsMax) + "; narrow with repo_filter to see the rest"
+	}
+	return jsonResult(resp), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -749,7 +856,17 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 		QualifiedName string `json:"qualified_name,omitempty"`
 		SourceFile    string `json:"source_file,omitempty"`
 		StartLine     int    `json:"start_line,omitempty"`
+		nameHit       bool   // internal: entity name/qualified-name matched the query substring
 	}
+
+	// #5781: when kind_filter is set, this tool ENUMERATES the kind (parity with
+	// the bm25 find path's enumerateByKind) instead of requiring a name-substring
+	// match — a kind-only intent whose query doesn't literally appear in any name
+	// (e.g. "kafka topic" vs "kafka:feedback-topic") must still return the topics.
+	// Name/qualified-name substring matches are kept and ranked FIRST; the rest of
+	// the in-scope kind members are folded in after. With NO kind_filter the
+	// behaviour is unchanged: name-substring matching only.
+	enumerateKind := kindFilter != ""
 
 	var out []item
 	for _, r := range repos {
@@ -775,7 +892,10 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 			}
 			nameL := strings.ToLower(e.Name)
 			qnL := strings.ToLower(e.QualifiedName)
-			if !strings.Contains(nameL, ql) && !strings.Contains(qnL, ql) {
+			nameHit := strings.Contains(nameL, ql) || strings.Contains(qnL, ql)
+			// Without a kind_filter, keep name-only matching. With a kind_filter,
+			// fold in every in-scope kind member (nameHit just drives ranking).
+			if !nameHit && !enumerateKind {
 				continue
 			}
 			out = append(out, item{
@@ -786,11 +906,17 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 				QualifiedName: e.QualifiedName,
 				SourceFile:    e.SourceFile,
 				StartLine:     e.StartLine,
+				nameHit:       nameHit,
 			})
 		}
 	}
-	// Sort: exact-name matches first, then alphabetical.
+	// Sort: name-substring hits first (kind enumeration only), then exact-name
+	// matches, then alphabetical. When kind_filter is empty every row is a
+	// name-hit, so the nameHit tier is a no-op and ordering is unchanged.
 	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].nameHit != out[j].nameHit {
+			return out[i].nameHit
+		}
 		iExact := strings.EqualFold(out[i].EntityName, query)
 		jExact := strings.EqualFold(out[j].EntityName, query)
 		if iExact != jExact {
@@ -1116,11 +1242,20 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-// isTopic returns true if the entity is a messaging topic.
+// isTopic returns true if the entity is a messaging topic/channel.
+//
+// #5781: Kafka topics are extracted as kind "SCOPE.MessageTopic" (leaf
+// "messagetopic"), which ends in "messagetopic" — NOT ".topic" — so the old
+// suffix set silently excluded every message-topic entity from the topology
+// scans. dead_code.go (frameworkEntryKindsMCP) and denoise.go
+// (isStructuralLineless) already treat SCOPE.MessageTopic / messagetopic as
+// topic-like; this restores consistency with them.
 func isTopic(e *graph.Entity) bool {
 	k := strings.ToLower(e.Kind)
 	return k == "topic" || k == "scope.topic" || k == "queue" || k == "scope.queue" ||
-		strings.HasSuffix(k, ".topic") || strings.HasSuffix(k, ".queue")
+		k == "messagetopic" || k == "scope.messagetopic" ||
+		strings.HasSuffix(k, ".topic") || strings.HasSuffix(k, ".queue") ||
+		strings.HasSuffix(k, ".messagetopic")
 }
 
 // hasRelationshipFrom returns true if doc has any edge of edgeKind from fromID.

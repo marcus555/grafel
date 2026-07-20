@@ -946,6 +946,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// entity IDs from #925 (`aws-lambda:<name>`) without reinventing them.
 	// Append-only — cannot regress surrounding passes.
 	applyPass(applyEventBusEdges)
+	// Generic string-literal event-identity model (GAP-005). Generalizes
+	// the eventType-literal idea above to a plain envelope
+	// `{eventType:"X"}` carried over ANY channel (Kinesis/SQS/Kafka), with
+	// no managed-bus `source`. Emits SCOPE.EventType synthetic entities
+	// keyed by the verbatim event-type string, plus PUBLISHES_TO (Go/JS/TS
+	// publish call-sites) and SUBSCRIBES_TO (Terraform
+	// aws_lambda_event_source_mapping / serverless.yml filterPatterns
+	// FilterCriteria) edges. Distinct kind from SCOPE.EventBusEvent — does
+	// not touch or regress it. Append-only — cannot regress surrounding
+	// passes.
+	applyPass(applyEventTypeEdges)
 
 	// Extract final accumulated entities and relationships from passArgs.
 	entities = passArgs.Entities

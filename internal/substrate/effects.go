@@ -3,7 +3,8 @@
 // Effect classification tags every function with the set of side-effect
 // primitives it executes directly:
 //
-//	{db_read, db_write, http_out, fs_read, fs_write, mutation, env_read}
+//	{db_read, db_write, http_out, fs_read, fs_write, mutation, env_read,
+//	 message_publish}
 //
 // A function with none of these is pure (low confidence — absence of
 // detection does not prove absence of effect).
@@ -56,6 +57,13 @@ const (
 	// source and a signal that a function is environment-coupled, so
 	// callers that need "is this function pure?" must see it.
 	EffectEnvRead Effect = "env_read"
+	// EffectMessagePublish — publish of a message to an async broker
+	// channel/topic (SmallRye reactive-messaging Emitter.send /
+	// MutinyEmitter.send, an @Outgoing-annotated method's return-value
+	// publish, ...). ADR-0025 §2. Appended at the END of the lattice
+	// (position 7) — order is load-bearing (see AllEffects), so new
+	// elements must always be appended, never inserted.
+	EffectMessagePublish Effect = "message_publish"
 )
 
 // AllEffects returns the canonical sorted list of effect names. The
@@ -66,13 +74,13 @@ func AllEffects() []Effect {
 	return []Effect{
 		EffectDBRead, EffectDBWrite, EffectHTTPOut,
 		EffectFSRead, EffectFSWrite, EffectMutation,
-		EffectEnvRead,
+		EffectEnvRead, EffectMessagePublish,
 	}
 }
 
 // effectSlots is the number of lattice elements; sizes the bit-packed
 // EffectSet arrays. Must equal len(AllEffects()).
-const effectSlots = 7
+const effectSlots = 8
 
 // EffectMatch is one detected sink primitive inside a function body.
 //

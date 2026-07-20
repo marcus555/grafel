@@ -73,6 +73,17 @@ const (
 	// Service.Rebuild ran a full group rebuild IN THE SERVE PROCESS even in
 	// split mode.
 	KindRebuild Kind = "rebuild"
+	// KindCancelGroup asks the engine to cancel ALL in-flight background work for
+	// a group — the scheduler's group-algo/link/reindex passes AND an in-flight
+	// group REBUILD — because the group was just deleted. In split mode the
+	// DeleteGroup RPC is answered by the SERVE process, but the enrichment /
+	// rebuild goroutines burning CPU live in the ENGINE process, so serve cannot
+	// cancel them in-process; it drops this request instead and the engine's
+	// drain loop invokes Scheduler.CancelGroup + daemon.CancelGroupRebuild. The
+	// target group travels in RepoPath (reused as the group key — a cancel needs
+	// no payload). Fire-and-forget: cancellation is best-effort and idempotent,
+	// so no ack-completion contract is required.
+	KindCancelGroup Kind = "cancel_group"
 )
 
 // Status is the terminal state an Ack records for a drained request.
@@ -397,7 +408,16 @@ const (
 //
 // maxAttempts <= 0 disables the cap (unbounded, i.e. ApplyAndAck semantics for
 // the crash case) and is not used by the engine.
-func ApplyAndAckBounded(dir string, rec Record, maxAttempts int, apply func(Record) error) (Outcome, error) {
+//
+// keepAck (added for #5790): when true the terminal ack is NOT GC'd after the
+// request is deleted — it is left on disk as the DURABLE completion outcome so a
+// WaitForCompletion producer (see internal/daemon.awaitRebuildCompletion) can
+// read its Status via ReadAck (OK vs error/dead-letter) and then consume it via
+// DeleteAck. This closes the honesty gap where a rebuild that errored or was
+// dead-lettered still flipped the request "gone", which a waiter keying purely
+// on request-absence misread as success. keepAck=false preserves the original
+// leak-free GC behavior for fire-and-forget requests (no waiter to read the ack).
+func ApplyAndAckBounded(dir string, rec Record, maxAttempts int, keepAck bool, apply func(Record) error) (Outcome, error) {
 	if maxAttempts > 0 && rec.Attempts >= maxAttempts {
 		ack := Ack{
 			Status: StatusError,
@@ -409,7 +429,9 @@ func ApplyAndAckBounded(dir string, rec Record, maxAttempts int, apply func(Reco
 		if err := Delete(dir, rec.ID); err != nil {
 			return OutcomeDeadLettered, fmt.Errorf("requests: delete dead-lettered request %s: %w", rec.ID, err)
 		}
-		_ = deleteAck(dir, rec.ID)
+		if !keepAck {
+			_ = deleteAck(dir, rec.ID)
+		}
 		return OutcomeDeadLettered, nil
 	}
 
@@ -438,7 +460,9 @@ func ApplyAndAckBounded(dir string, rec Record, maxAttempts int, apply func(Reco
 	if err := Delete(dir, rec.ID); err != nil {
 		return OutcomeApplied, fmt.Errorf("requests: delete request %s: %w", rec.ID, err)
 	}
-	_ = deleteAck(dir, rec.ID)
+	if !keepAck {
+		_ = deleteAck(dir, rec.ID)
+	}
 	if applyErr != nil {
 		return OutcomeAppliedError, nil
 	}
@@ -457,6 +481,11 @@ func safeApply(apply func(Record) error, rec Record) (err error, crashed bool) {
 	}()
 	return apply(rec), false
 }
+
+// DeleteAck removes dir/<id>.ack.json. Absent file is not an error. Exported so
+// a WaitForCompletion producer that read a KEPT ack (see ApplyAndAckBounded's
+// keepAck) can consume it after observing the terminal outcome (#5790).
+func DeleteAck(dir, id string) error { return deleteAck(dir, id) }
 
 // deleteAck removes dir/<id>.ack.json. Absent file is not an error.
 func deleteAck(dir, id string) error {

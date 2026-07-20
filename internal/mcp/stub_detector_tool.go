@@ -99,7 +99,19 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 	v3Group := argString(req, "group_v3", "")
 	oracleGroup := argString(req, "group_oracle", "")
 	if v3Group == "" || oracleGroup == "" {
-		return mcpapi.NewToolResultError("group_v3 and group_oracle are both required"), nil
+		// #5782: stubs is a TWO-GROUP v3↔oracle rewrite-comparison mode (it joins
+		// a v3-rewrite endpoint to its behavioural-oracle counterpart and contrasts
+		// their effect profiles). It surfaces on the general grafel_debt tool as
+		// kind=stubs, so a caller who omits the two groups previously hit the bare
+		// "group_v3 and group_oracle are both required" error with no hint that
+		// this mode is fundamentally cross-group. Name both args and say why.
+		return mcpapi.NewToolResultError(
+			"grafel_debt kind=stubs is a two-group comparison mode: it contrasts a v3-rewrite " +
+				"group against a behavioural-oracle group to find endpoints that look implemented " +
+				"but return constants where the oracle computes. It requires BOTH `group_v3` (the " +
+				"v3-rewrite group) and `group_oracle` (the reference/oracle group). Re-run with both, " +
+				"e.g. grafel_debt(kind=\"stubs\", group_v3=\"<rewrite>\", group_oracle=\"<oracle>\"). " +
+				"For single-group tech-debt use kind=dead_code|cycles|impure|license."), nil
 	}
 
 	lgV3 := s.State.Group(v3Group)

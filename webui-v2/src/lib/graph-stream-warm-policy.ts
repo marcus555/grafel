@@ -50,6 +50,40 @@ export function decideWarmRetry(attempt: number): WarmDecision {
   return { kind: "retry", delayMs: WARM_BACKOFF_MS[idx] };
 }
 
+/**
+ * Reset the warm-retry budget after a server `warming` heartbeat (#48).
+ *
+ * The backend now keeps the SSE connection open on a cold group and flushes
+ * `warming` heartbeats while it performs a BOUNDED blocking warm, instead of
+ * returning a bare 503. A heartbeat is server-confirmed progress, so a genuinely
+ * large graph that legitimately takes a long time to warm must not be cut off by
+ * the give-up ceiling: every heartbeat resets the attempt counter to 0, so the
+ * client keeps waiting/retrying as long as the server is demonstrably still
+ * working. The ceiling then only fires when heartbeats STOP (a truly stuck or
+ * failed warm), never on a slow-but-progressing one.
+ */
+export function warmAttemptAfterHeartbeat(_current: number): number {
+  return 0;
+}
+
+/**
+ * Backend `error` SSE codes that mean "still warming, just slow" rather than a
+ * terminal failure (#50). On these the consumer must RECONNECT and keep waiting
+ * (bounded by the retry ceiling) instead of surfacing `error` and falling back
+ * to the uncapped, blocking full-payload blob — which re-pays the SAME slow load
+ * and hangs. `warm_timeout` is the bounded-warm deadline elapsing; the graph is
+ * still loading server-side, so a reconnect resumes the warm.
+ */
+const RECONNECTABLE_WARM_CODES = new Set<string>(["warm_timeout"]);
+
+/**
+ * Whether a backend `error` SSE event with this code should trigger a reconnect
+ * (keep waiting) rather than a fall-back-to-blob error (#50).
+ */
+export function isReconnectableWarmError(code: string): boolean {
+  return RECONNECTABLE_WARM_CODES.has(code);
+}
+
 /** Parsed shape of the backend's `error` SSE event (v2GraphStreamError). */
 export interface WarmErrorDetail {
   code: string;
