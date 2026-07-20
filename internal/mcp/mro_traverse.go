@@ -39,8 +39,21 @@ package mcp
 // the helpers below skip stubs that already carry an explicit INHERITS edge.
 
 import (
+	"sync/atomic"
+
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
+)
+
+// Observability / test hooks for the #5791 read-path fix. These count the two
+// operations whose cost the fix collapses so tests can assert by CALL-COUNT
+// (the 88s wall-clock outlier is not locally reproducible):
+//   - mroBuildCount: full buildMROInbound runs (should be one per contentHash).
+//   - baseChainComputeCount: base-chain resolutions that MISSED the per-class
+//     memo (the O(classes) witness — pre-fix this was one walk per member).
+var (
+	mroBuildCount         atomic.Int64
+	baseChainComputeCount atomic.Int64
 )
 
 // inheritsEdgeKind is the member-granularity inheritance edge kind (#3834).
@@ -174,6 +187,7 @@ func externalContractEntity(res memberResolution) *graph.Entity {
 // — an external pack contract has no in-repo node whose callers a user could
 // query. Built once and cached on LoadedRepo (#3834).
 func buildMROInbound(lr *LoadedRepo) map[string][]string {
+	mroBuildCount.Add(1)
 	out := map[string][]string{}
 	if lr == nil || lr.Doc == nil {
 		return out

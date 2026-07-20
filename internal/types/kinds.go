@@ -75,6 +75,17 @@ const (
 	// and Pub/Sub.
 	EntityKindMessageTopic EntityKind = "SCOPE.MessageTopic"
 
+	// #5782 (ADR-0025): ChannelBinding captures the config row that maps a
+	// messaging channel to its connector + topic (reference impl:
+	// Quarkus/SmallRye/Kafka `mp.messaging.{incoming,outgoing}.<ch>.*`). One
+	// entity per (direction, channel) group. It is the join the graph never
+	// had between the code-side @Incoming/@Outgoing SCOPE.Operation (by
+	// `channel`) and the engine SCOPE.MessageTopic (by `kafka:<topic>`), via
+	// the BINDS / BINDS_TOPIC edges. A config-side declaration with no callers
+	// by design — allow-listed as a framework entry-kind in dead-code and a
+	// real (non-noise) structural signal in denoise.
+	EntityKindChannelBinding EntityKind = "SCOPE.ChannelBinding"
+
 	// #725: gRPC service definitions + client/server cross-repo edges.
 	//   GrpcService represents a gRPC service implementation (server) or stub
 	//   (client). Cross-repo identity is the service name.
@@ -107,6 +118,26 @@ const (
 	// the same synthetic ID so the existing import-channel linker joins them
 	// without any new linker code.
 	EntityKindEventBusEvent EntityKind = "SCOPE.EventBusEvent"
+
+	// GAP-005: generic string-literal event-identity model. EventType is a
+	// synthetic entity representing a routable event TYPE contract carried
+	// by ANY channel (Kinesis/SQS/Kafka/etc.) — the generalization of
+	// EntityKindEventBusEvent's managed-bus-specific modeling to a plain
+	// envelope `{eventType:"X"}` with no managed-bus `source`. Cross-repo
+	// identity = the VERBATIM event-type string (deliberately NOT
+	// case-folded — the string is the wire contract producer and consumer
+	// both hard-code):
+	//
+	//	event:type:<VerbatimEventString>
+	//
+	// Kept as a DISTINCT kind from EntityKindEventBusEvent (different key
+	// scopes — bus-prefixed vs. bare string) and from the channel nodes
+	// (EntityKindMessageTopic / SCOPE.Queue) — the event flows OVER a
+	// channel, it is not the channel itself. Both producers (PUBLISHES_TO)
+	// and consumers (SUBSCRIBES_TO) emit the same synthetic ID so the
+	// existing import-channel linker / messaging_related MCP surface joins
+	// them without new linker code.
+	EntityKindEventType EntityKind = "SCOPE.EventType"
 
 	// CLI command entry-point detection (epic #3628). A SCOPE.Command is a
 	// statically-declared command-line command — the CLI sibling of an HTTP
@@ -376,6 +407,8 @@ func AllEntityKinds() []EntityKind {
 		// #1884:
 		EntityKindModule,
 		EntityKindMessageTopic,
+		// #5782 (ADR-0025) config↔code↔topic messaging join:
+		EntityKindChannelBinding,
 		// #725:
 		EntityKindGrpcService,
 		EntityKindGrpcMethod,
@@ -753,6 +786,26 @@ const (
 	//                       config's directory contains downstream modules).
 	RelationshipKindDependsOnConfig RelationshipKind = "DEPENDS_ON_CONFIG"
 	RelationshipKindConfigures      RelationshipKind = "CONFIGURES"
+
+	// #5782 (ADR-0025) messaging config↔code↔topic join edges. Emitted by the
+	// config-discovery ChannelBinding recognizer and rebound by the intra-repo
+	// resolver:
+	//
+	//   BINDS_CHANNEL : SCOPE.ChannelBinding → SCOPE.Operation, matched by the
+	//                   shared `channel` property with direction agreement
+	//                   (incoming binding → @Incoming op; outgoing → @Outgoing).
+	//                   This is a DISTINCT kind (NOT the reused Helm/DI "BINDS"):
+	//                   a config→channel binding must never be mislabeled as a
+	//                   dependency-injection edge (isDIEdgeKind) nor be swept by
+	//                   the generic ambiguous-bare-name resolver via
+	//                   hintKinds("BINDS")→componentKindFamily, which could
+	//                   mis-bind an unresolved channel ref to a coincidentally
+	//                   named component. Leaving it out of both keeps unresolved
+	//                   channel refs available for orphan detection.
+	//   BINDS_TOPIC   : SCOPE.ChannelBinding → SCOPE.MessageTopic, matched by
+	//                   Name == "kafka:" + topic.
+	RelationshipKindBindsChannel RelationshipKind = "BINDS_CHANNEL"
+	RelationshipKindBindsTopic   RelationshipKind = "BINDS_TOPIC"
 
 	// #2008: DRF SerializerMethodField → method link.
 	//   RESOLVED_BY : SCOPE.Schema/field → SCOPE.Operation/method
@@ -1444,6 +1497,10 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #1885 first-class config entities:
 		RelationshipKindDependsOnConfig,
 		RelationshipKindConfigures,
+		// #5782 (ADR-0025) messaging config↔code↔topic join edges (distinct
+		// from the reused Helm/DI "BINDS"):
+		RelationshipKindBindsChannel,
+		RelationshipKindBindsTopic,
 		// #2008 DRF SerializerMethodField → method link:
 		RelationshipKindResolvedBy,
 		// #2142 DRF plain serializer field → custom field class:

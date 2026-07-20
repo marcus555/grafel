@@ -79,7 +79,7 @@ CONVENTIONS
 PICK A TOOL BY INTENT (use these instead of reading raw source by hand)
 - Compare two refs/versions/responses: grafel_diff (aspect=response_shape|payload|auth|literals|refs) - NOT get_source + eyeball.
 - Who calls X / what X calls: grafel_related (direction=callers|callees|neighbors|uses|used_by).
-- Trace data/control flow: grafel_trace (kind=data|control|def_use|effects).
+- Confidence-weighted route, or data/control flow: grafel_trace (kind=path(def)|data|control|def_use|effects).
 - What breaks if I change X: grafel_impact_radius (scope=entity|changeset for a PR/diff).
 - Dead code / cycles / stubs / tech debt: grafel_debt (kind=dead_code|cycles|stubs|impure|license).
 - Security posture: grafel_security (kind=findings|secrets|auth_coverage).
@@ -683,6 +683,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(8)), // #2828: was 20
 		mcpapi.WithNumber("from_line"),                              // #4891: explicit window start (1-based, inclusive)
 		mcpapi.WithNumber("to_line"),                                // #4891: explicit window end (1-based, inclusive)
+		mcpapi.WithNumber("max_lines", mcpapi.Description("Opt-in head-line cap.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_get_source", s.handleGetNodeSource))
@@ -698,6 +699,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
+		mcpapi.WithNumber("limit", mcpapi.Description("search=substring: result limit.")),
+		mcpapi.WithString("format", mcpapi.Description("search=substring: terse=compact lines.")),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("cross_repo", mcpapi.DefaultBool(false)), // #2643: opt-in to search all repos
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
@@ -747,7 +750,9 @@ func (s *Server) registerTools() {
 	s.addTool(mcpapi.NewTool("grafel_trace",
 		mcpapi.WithDescription("Trace flow. kind=path(def)|data|control|def_use|effects|flows|process."),
 		mcpapi.WithString("kind", mcpapi.DefaultString("path"),
-			mcpapi.Description("path=src→tgt route; data=input→sink; control=CFG; def_use=reaching defs; effects=db/http/fs; flows=dead-ends; process=process traces.")),
+			mcpapi.Description("path=src→tgt route; data=input→sink; control=CFG; def_use=reaching defs; "+
+				"effects=db/http/fs (pass the METHOD, not its class — a class falsely reports pure); "+
+				"flows=dead-ends; process=process traces.")),
 		mcpapi.WithString("source"),    // kind=path
 		mcpapi.WithString("target"),    // kind=path
 		mcpapi.WithString("entity_id"), // kind=control|effects|data|def_use
@@ -757,6 +762,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("action"),    // kind=flows|process
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithNumber("token_budget", mcpapi.Description("kind=process: output token cap.")),
+		mcpapi.WithNumber("max_depth", mcpapi.Description("kind=process,action=follow: max follow depth.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
@@ -810,6 +817,13 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("top_entities", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("top_edges", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("max_questions", mcpapi.DefaultNumber(12)),
+		// #5783: hard cap on the FINAL serialized response (token_budget*4 bytes,
+		// clamped ≤64KB). Overview shrinks every repo's ranked lists to a shared
+		// per-list cap measured against the real TOON-encoded wire body so EVERY
+		// repo appears with proportionally less detail as the group grows; a
+		// truncated:true marker is a last-resort net. Default 12000 keeps the
+		// delivered body ≲48KB — comfortably under the client's tool-result limit.
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(12000)),
 		mcpapi.WithAny("topic_id"), // topology view
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -817,9 +831,10 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_orient", s.handleCoreOrient))
 
 	// #2764 — Phase 1A effect classification. Returns the union of
-	// db/http/fs/mutation effects for the named entity, plus per-effect
-	// confidence (0..1) and sink primitive tags. Pure functions report
-	// effects=[] with effect_source="pure" and a low confidence floor.
+	// db/http/fs/mutation/message_publish effects for the named entity,
+	// plus per-effect confidence (0..1) and sink primitive tags. Pure
+	// functions report effects=[] with effect_source="pure" and a low
+	// confidence floor.
 	s.addTool(mcpapi.NewTool("grafel_effects",
 		mcpapi.WithDescription("Effects + sinks; include=branches|effect_contexts (cond/loop+complexity)"),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
@@ -1034,6 +1049,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Per-repo index freshness; gate on YOUR repo state==current, not is_indexing."),
 		mcpapi.WithString("repo", mcpapi.Description("Filter to repos whose path matches (case-insensitive substring or exact).")),
 		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_index_status", s.handleIndexStatus))
 
 	// grafel_enrichments — action: list|submit|reject.
@@ -1054,12 +1070,16 @@ func (s *Server) registerTools() {
 	// grafel_get_next_enrichment_task dropped (use enrichments(action=list,limit=1) instead).
 
 	// grafel_cross_links — action=list|accept|reject (#2424).
-	// Per-action optional args read from the request map but undeclared to
-	// stay under the token ceiling (#1639 pattern): channel, method,
-	// limit, repo_filter, candidate_id, override_target.
 	s.addTool(mcpapi.NewTool("grafel_cross_links",
 		mcpapi.WithDescription("Cross-repo link candidates: list=pending, accept|reject=resolve."),
 		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithString("candidate_id", mcpapi.Description("accept|reject (required): candidate to resolve.")),
+		mcpapi.WithString("reason", mcpapi.Description("reject: rejection reason.")),
+		mcpapi.WithString("override_target", mcpapi.Description("accept: target override.")),
+		mcpapi.WithString("channel", mcpapi.Description("list: channel filter.")),
+		mcpapi.WithString("method", mcpapi.Description("list: method filter.")),
+		mcpapi.WithNumber("limit", mcpapi.Description("list: result limit.")),
+		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_cross_links", s.handleCrossLinks))
@@ -1123,6 +1143,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("steps"),
 		mcpapi.WithArray("exemplars"),
 		mcpapi.WithArray("repo_filter"), // kind=graph|template
+		mcpapi.WithString("literal_kind",
+			mcpapi.Description("kind=template only: filter literal-pattern entries by their own kind (i18n|log_format|sql).")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_patterns", s.handleAnalysisPatterns))
@@ -1132,12 +1154,17 @@ func (s *Server) registerTools() {
 	s.addTool(mcpapi.NewTool("grafel_debt",
 		mcpapi.WithDescription("Code smells/dead code/cycles. kind=dead_code(def)|cycles|stubs|impure|license."),
 		mcpapi.WithString("kind", mcpapi.DefaultString("dead_code"),
-			mcpapi.Description("dead_code=unreached entities; cycles=import cycles; stubs=v3 fakes; impure=fns w/ effects-free; license=dep-license conflicts.")),
+			mcpapi.Description("dead_code=unreached entities (from=optional entry-point recompute); "+
+				"find_dead_code=isolated/unused/test-only symbols; cycles=import cycles (live); "+
+				"import_cycles=IMPORTS SCC sidecar (min_size=); stubs=v3 fakes (needs group_v3+group_oracle); "+
+				"impure=effects-free fns; license=dep-license conflicts.")),
 		mcpapi.WithArray("repo_filter"),
-		mcpapi.WithAny("kind_filter"), // kind=dead_code
+		mcpapi.WithAny("kind_filter"), // kind=dead_code|find_dead_code
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
-		mcpapi.WithString("group_oracle"), // kind=stubs
-		mcpapi.WithString("group_v3"),     // kind=stubs
+		mcpapi.WithString("from", mcpapi.Description("kind=dead_code: entry-point entity_id for per-entry-point recompute.")),
+		mcpapi.WithNumber("min_size", mcpapi.Description("kind=import_cycles: minimum cycle size (default 2).")),
+		mcpapi.WithString("group_oracle", mcpapi.Description("kind=stubs (required): behavioural-oracle group.")), // kind=stubs
+		mcpapi.WithString("group_v3", mcpapi.Description("kind=stubs (required): v3-rewrite group.")),             // kind=stubs
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"),
@@ -1148,12 +1175,16 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Security posture. kind=findings(def,taint)|secrets|auth_coverage."),
 		mcpapi.WithString("kind", mcpapi.DefaultString("findings"),
 			mcpapi.Description("findings=taint source→sink paths; secrets=hardcoded-credential scan; auth_coverage=endpoints missing auth.")),
-		mcpapi.WithString("category"),       // kind=findings
-		mcpapi.WithNumber("min_confidence"), // kind=findings
-		mcpapi.WithString("source_repo"),    // kind=findings
-		mcpapi.WithAny("severity"),          // kind=secrets
-		mcpapi.WithArray("repo_filter"),     // kind=auth_coverage
-		mcpapi.WithString("format"),         // kind=auth_coverage
+		mcpapi.WithString("category"), // kind=findings
+		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0.7),
+			mcpapi.Description("kind=findings: confidence floor (default 0.7).")),
+		mcpapi.WithString("source_repo"), // kind=findings
+		mcpapi.WithString("severity", mcpapi.Description("kind=secrets: critical|high|medium|low.")),
+		mcpapi.WithArray("repo_filter"), // kind=auth_coverage
+		mcpapi.WithString("format", mcpapi.Description("kind=auth_coverage: terse(def)|full.")),
+		mcpapi.WithBoolean("only_missing", mcpapi.Description("kind=auth_coverage: only endpoints missing auth.")),
+		mcpapi.WithNumber("token_budget", mcpapi.Description("kind=auth_coverage: hard byte cap on the list.")),
+		mcpapi.WithBoolean("verbose", mcpapi.Description("kind=auth_coverage: full records (same as format=full).")),
 		mcpapi.WithNumber("limit"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -1170,6 +1201,13 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("severity"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithString("only_ineffective", mcpapi.DefaultString("true"),
+			mcpapi.Description("kind=contract_effectiveness: default true; pass \"false\" for everything.")),
+		mcpapi.WithBoolean("ineffective_only", mcpapi.DefaultBool(false),
+			mcpapi.Description("kind=coverage_effectiveness: default false (naming twin of only_ineffective).")),
+		mcpapi.WithBoolean("top_directories", mcpapi.Description("kind=coverage: group by top-level directory.")),
+		mcpapi.WithBoolean("untested_only", mcpapi.Description("kind=reachability: only entities with no test path.")),
+		mcpapi.WithBoolean("endpoints_only", mcpapi.Description("kind=reachability: only HTTP endpoints.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"),
@@ -1183,6 +1221,12 @@ func (s *Server) registerTools() {
 			mcpapi.Description("list=enumerate stored findings; save=persist (requires question + answer).")),
 		mcpapi.WithString("question"), // action=save
 		mcpapi.WithString("answer"),   // action=save
+		mcpapi.WithString("type", mcpapi.Description("save: finding type (default \"note\"); list: filter by type.")),
+		mcpapi.WithArray("nodes"),       // action=save: optional entity_id list the finding is about
+		mcpapi.WithArray("repo_filter"), // action=save: optional repo scope
+		mcpapi.WithString("entity_id", mcpapi.Description("action=list: filter findings mentioning this entity.")),
+		mcpapi.WithString("since", mcpapi.Description("action=list: RFC3339 timestamp floor.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_findings", s.handleAnalysisFindings))
@@ -1196,22 +1240,32 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Compare two refs/versions; aspect picks what (params vary by aspect)."),
 		mcpapi.WithString("aspect", mcpapi.DefaultString("response_shape"),
 			mcpapi.Description("response_shape=per-status field drift (group_oracle+group_v3); payload=schema/envelope drift (group); auth=auth-posture parity (group_oracle+group_v3); literals=enum/ConstantSet parity (group_oracle+group_v3+set); refs=entity/rel deltas between two git refs (repo+ref_a+ref_b).")),
-		mcpapi.WithString("group_oracle", mcpapi.Description("aspect=response_shape|auth|literals: baseline group.")),
-		mcpapi.WithString("group_v3", mcpapi.Description("aspect=response_shape|auth|literals: comparison group.")),
-		mcpapi.WithString("set", mcpapi.Description("aspect=literals (required): ConstantSet/enum name to compare.")),
-		mcpapi.WithString("drift_class", mcpapi.Description("aspect=payload: optional drift-class filter.")),
-		mcpapi.WithString("repo", mcpapi.Description("aspect=refs (required): repo whose two refs are compared.")),
-		mcpapi.WithString("ref_a", mcpapi.Description("aspect=refs (required): first git ref.")),
-		mcpapi.WithString("ref_b", mcpapi.Description("aspect=refs (required): second git ref.")),
+		mcpapi.WithString("group_oracle", mcpapi.Description("response_shape|auth|literals: baseline group.")),
+		mcpapi.WithString("group_v3", mcpapi.Description("response_shape|auth|literals: comparison group.")),
+		mcpapi.WithString("set", mcpapi.Description("literals (required): ConstantSet/enum name.")),
+		mcpapi.WithString("drift_class", mcpapi.Description("payload: drift-class filter.")),
+		mcpapi.WithString("repo", mcpapi.Description("refs (required): repo whose two refs are compared.")),
+		mcpapi.WithString("ref_a", mcpapi.Description("refs (required): first git ref.")),
+		mcpapi.WithString("ref_b", mcpapi.Description("refs (required): second git ref.")),
+		mcpapi.WithString("severity", mcpapi.Description("payload: severity floor.")),
+		mcpapi.WithString("endpoint", mcpapi.Description("response_shape|auth|payload: single-endpoint filter.")),
+		mcpapi.WithNumber("limit", mcpapi.Description("payload: result limit.")),
+		mcpapi.WithString("format", mcpapi.Description("response_shape|auth: terse|full.")),
+		mcpapi.WithString("oracle_source", mcpapi.Description("literals: oracle-side ConstantSet pin.")),
+		mcpapi.WithString("v3_source", mcpapi.Description("literals: v3-side ConstantSet pin.")),
+		mcpapi.WithString("oracle_derive", mcpapi.Description("literals: oracle-side derivation resolver.")),
+		mcpapi.WithString("v3_derive", mcpapi.Description("literals: v3-side derivation resolver.")),
+		mcpapi.WithString("viewset", mcpapi.Description("literals: ViewSet scope for a derivation.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_diff", s.handleAnalysisDiff))
 
-	// grafel_topology — message-channel topology (#1281). action=orphan_publishers|orphan_subscribers|topic_detail.
+	// grafel_topology — message-channel topology (#1281, #5781).
+	// action=channels(default)|orphan_publishers|orphan_subscribers|topic_detail.
 	// verbose=true (default false) read from request map to stay under token ceiling.
 	s.addTool(mcpapi.NewTool("grafel_topology",
-		mcpapi.WithDescription("Message-channel topology: orphans and topic detail."),
-		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithDescription("Message topics: channels(default), orphan pubs/subs, topic detail."),
+		mcpapi.WithAny("action"),
 		mcpapi.WithAny("topic_id"),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
@@ -1269,7 +1323,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Graph slice. mode=hops(N-hop,def)|expand(immediate both-dir neighbors)."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("hops"),
-			mcpapi.Description("hops=nodes+edges within depth N; expand=just the immediate neighbours of the entity.")),
+			mcpapi.Description("hops=nodes+edges within depth N; expand (alias: neighbors)=just the immediate neighbours of the entity.")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)), // mode=expand
 		mcpapi.WithArray("fields"),                                   // mode=expand
@@ -1285,7 +1339,7 @@ func (s *Server) registerTools() {
 	// grafel_find_paths — CORE canonical route tool (#5546/#5549). Keeps the
 	// verb because "paths" collides with URL/file paths.
 	s.addTool(mcpapi.NewTool("grafel_find_paths",
-		mcpapi.WithDescription("Route(s) between two entities (from→to) over the graph, with confidence."),
+		mcpapi.WithDescription("Route between two entities (from→to), no confidence — see trace kind=path."),
 		mcpapi.WithString("from", mcpapi.Required()),
 		mcpapi.WithString("to", mcpapi.Required()),
 		mcpapi.WithNumber("max_hops", mcpapi.DefaultNumber(5)),
@@ -1305,10 +1359,10 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("HTTP endpoints. detail=list(def)|contract(per-verb)|posture(auth/limits)."),
 		mcpapi.WithString("detail", mcpapi.DefaultString("list"),
 			mcpapi.Description("list=routes (action=definitions|calls|stats); contract=per-verb effective contract of a ViewSet; posture=auth/rate_limit/throws/flags.")),
-		mcpapi.WithString("entity_id"),   // detail=contract|posture
-		mcpapi.WithAny("qualified_name"), // detail=contract
-		mcpapi.WithString("facet"),       // detail=posture
-		mcpapi.WithString("action"),      // detail=list (definitions|calls|stats)
+		mcpapi.WithString("entity_id", mcpapi.Description("detail=contract: required unless qualified_name given.")),
+		mcpapi.WithString("qualified_name", mcpapi.Description("detail=contract: alternative to entity_id.")),
+		mcpapi.WithString("facet"),  // detail=posture
+		mcpapi.WithString("action"), // detail=list (definitions|calls|stats)
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
 		mcpapi.WithAny("effect"),                                            // #2811 — filter definitions by handler effect closure
 		mcpapi.WithBoolean("include_navigation", mcpapi.DefaultBool(false)), // #2665
@@ -1364,12 +1418,17 @@ func (s *Server) registerTools() {
 	// direction= routes over callers/callees/neighbours/navigation. Default
 	// callers — the hot "who calls this?" case.
 	s.addTool(mcpapi.NewTool("grafel_related",
-		mcpapi.WithDescription("Entities related to X. direction=callers(def)|callees|neighbors|uses|used_by."),
+		mcpapi.WithDescription("Entities related to X. direction=callers(def)|callees|neighbors|uses|used_by|msg"),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithString("direction", mcpapi.DefaultString("callers"),
-			mcpapi.Description("callers=who calls it; callees=what it calls; neighbors=both dirs; uses=NAVIGATES_TO out; used_by=NAVIGATES_TO in.")),
+			mcpapi.Description("callers=who calls it; callees=what it calls; neighbors=both dirs (also messaging-aware: "+
+				"a SCOPE.MessageTopic or SCOPE.ChannelBinding auto-resolves to its messaging/binding neighbors); "+
+				"uses=NAVIGATES_TO out; used_by=NAVIGATES_TO in; msg (alias: messaging)=a SCOPE.MessageTopic's "+
+				"producers/consumers/handlers across every repo that touches it (cross-repo pub/sub).")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
+		mcpapi.WithNumber("limit", mcpapi.Description("direction=uses|used_by: result limit.")),
+		mcpapi.WithNumber("max_depth", mcpapi.Description("direction=uses|used_by: max navigation-chain depth.")),
 		mcpapi.WithArray("fields"),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
@@ -1412,7 +1471,15 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("base"),      // scope=changeset
 		mcpapi.WithString("head"),      // scope=changeset
 		mcpapi.WithArray("refs"),       // scope=changeset (conflicts mode)
-		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2)),
+		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2),
+			mcpapi.Description("Per-scope default: scope=entity default 2; scope=changeset default 3.")),
+		// #5793: scope=entity is compact by default (aggregate blast-radius
+		// summary + a small top-N by risk_score). detail=full opts into the full
+		// per-entity list; token_budget hard-caps the delivered wire body.
+		mcpapi.WithString("detail",
+			mcpapi.Description("scope=entity: compact(def,aggregate+top-N)|full(complete per-entity list).")),
+		mcpapi.WithNumber("token_budget",
+			mcpapi.Description("scope=entity: hard cap on the delivered response (tokens; ~4 bytes/token). Default 2000 compact / 12000 detail=full.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
@@ -1652,7 +1719,7 @@ func (s *Server) registerTools() {
 	s.addTool(mcpapi.NewTool("grafel_docgen",
 		mcpapi.WithDescription("Docgen run lifecycle. action=start|status|list|promote|abort|validate."),
 		mcpapi.WithString("action", mcpapi.DefaultString("status"),
-			mcpapi.Description("start=open run(group); status=files+SHAs(run_id); list=canonical docs(group); promote/abort=run_id; validate=lint(run_id).")),
+			mcpapi.Description("start=open run(group, alias: start_run); status=files+SHAs(run_id); list=canonical docs(group); promote/abort=run_id; validate=lint(run_id).")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("run_id"),
 		mcpapi.WithBoolean("resume", mcpapi.DefaultBool(true)),
@@ -1663,18 +1730,34 @@ func (s *Server) registerTools() {
 
 	// grafel_docgen_apply — WORKFLOW canonical doc-enrichment/repair apply tool
 	// (#5546/#5551). kind= routes over the apply/queue handlers; default semantics.
+	// #5784 Category 4: kind=repairs/enrichments action=submit|reject|accept
+	// paths MUTATE repo state (writes enrichment/repair files) with no
+	// dry_run gate on those code paths — dry_run only short-circuits
+	// kind=semantics/repairs(no action) apply steps.
 	s.addTool(mcpapi.NewTool("grafel_docgen_apply",
-		mcpapi.WithDescription("Apply doc enrichments/repairs. kind=semantics|repairs|enrichments."),
+		mcpapi.WithDescription("Apply doc enrichments/repairs (MUTATES; dry_run doesn't gate submit/reject)."),
 		mcpapi.WithString("kind", mcpapi.DefaultString("semantics"),
-			mcpapi.Description("semantics=L2 DesignDecision apply; repairs=docgen→graph apply (or residual queue w/ action); enrichments=candidate queue (action=list|submit|reject).")),
+			mcpapi.Description("semantics=L2 DesignDecision apply; repairs=docgen→graph apply (or residual queue w/ action, alias: repair); enrichments=candidate queue (action=list|submit|reject, alias: enrichment).")),
 		mcpapi.WithString("action"),
 		mcpapi.WithArray("repo_filter"),
-		mcpapi.WithBoolean("dry_run"),
+		mcpapi.WithBoolean("dry_run", mcpapi.Description("Gates kind=semantics/repairs(no action) — NOT submit/reject/accept.")),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
+		mcpapi.WithNumber("offset", mcpapi.Description("repairs,list: pagination offset.")),
 		mcpapi.WithAny("candidate_id"),
 		mcpapi.WithAny("value"),
 		mcpapi.WithNumber("confidence", mcpapi.DefaultNumber(1)),
 		mcpapi.WithAny("reason"),
+		mcpapi.WithString("candidate_kind", mcpapi.Description("enrichments,list: filter by candidate kind.")),
+		mcpapi.WithString("residual_id", mcpapi.Description("repairs,submit (required): residual-edge id.")),
+		mcpapi.WithString("resolution", mcpapi.Description("repairs,submit (required): bind_to_entity|reclassify_as_external|reclassify_as_dynamic|reclassify_as_resolved|abandon.")),
+		mcpapi.WithString("reasoning", mcpapi.Description("repairs,submit: free-text justification.")),
+		mcpapi.WithString("target_entity_id", mcpapi.Description("repairs,submit+bind_to_entity: target entity.")),
+		mcpapi.WithString("module", mcpapi.Description("repairs,submit+reclassify_as_external: module name.")),
+		mcpapi.WithString("new_target", mcpapi.Description("repairs,submit: replacement target.")),
+		mcpapi.WithString("dynamic_reason", mcpapi.Description("repairs,submit+reclassify_as_dynamic: why.")),
+		mcpapi.WithString("abandon_reason", mcpapi.Description("repairs,submit+abandon: why.")),
+		mcpapi.WithString("source", mcpapi.DefaultString("mcp_submit_repair"), mcpapi.Description("repairs,submit: audit-log source tag.")),
+		mcpapi.WithString("repo", mcpapi.Description("repairs,submit: repo override when residual_id ambiguous.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_apply", s.handleWorkflowDocgenApply))
@@ -2051,7 +2134,7 @@ func extractIDs(res *mcpapi.CallToolResult) (nodeIDs, edgeIDs []string) {
 			"id", "entity_id", "node_id", "pattern_id", "topic_id", "process_id")...)
 		nodeIDs = append(nodeIDs, collectSliceIDs(payload,
 			"results", "nodes", "steps", "orphans", "patterns", "orphan_publishers",
-			"orphan_subscribers", "dead_ends", "truncated_flows", "publishers",
+			"orphan_subscribers", "channels", "dead_ends", "truncated_flows", "publishers",
 			"subscribers", "exemplars",
 			"callers", "callees", "affected", "dead_code", "dependencies")...)
 		edgeIDs = append(edgeIDs, collectSliceIDs(payload, "edges")...)

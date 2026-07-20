@@ -125,8 +125,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Brokers
 
-| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
-|---|---|---|---|---|
-| [Kafka — Go (Sarama / segmentio/kafka-go)](../detail/msg.broker.kafka-go.md) | 🟢 | ✅ | 🟢 | |
-| [NATS — Go (nats.go / JetStream)](../detail/msg.broker.nats-go.md) | ✅ | ✅ | ✅ | |
-| [RabbitMQ — Go (amqp091-go)](../detail/msg.broker.rabbitmq-go.md) | 🟢 | 🟢 | 🟢 | |
+| Name | Config binding | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [Kafka — Go (Sarama / segmentio/kafka-go)](../detail/msg.broker.kafka-go.md) | 🔴 | 🟢 | ✅ | 🟢 | |
+| [NATS — Go (nats.go / JetStream)](../detail/msg.broker.nats-go.md) | 🔴 | ✅ | ✅ | ✅ | |
+| [RabbitMQ — Go (amqp091-go)](../detail/msg.broker.rabbitmq-go.md) | 🔴 | 🟢 | 🟢 | 🟢 | |

@@ -1151,8 +1151,11 @@ func makeDaemonRebuildFunc(concurrency int) daemon.RebuildFunc {
 		opts = append([]IndexOption{WithInteractive(true)}, opts...)
 		return Index(repoPath, outPath, repoTag, skipPasses, pretty, jsonStats, opts...)
 	}
-	linksFn := func(group string) error {
-		return runLinksHook(group)
+	linksFn := func(ctx context.Context, group string) error {
+		// Context-aware so a group delete mid-rebuild cancels the (multi-minute)
+		// cross-repo link/phantom pass instead of running it to completion for a
+		// group that no longer exists (v0.1.8 leak fix).
+		return runLinksHookWithCtx(ctx, group)
 	}
 	return func(args proto.RebuildArgs) ([]string, string, error) {
 		return daemonRebuildFuncCore(concurrency, args, indexFn, linksFn)
@@ -1266,7 +1269,7 @@ func daemonRebuildFuncCore(
 	concurrency int,
 	args proto.RebuildArgs,
 	indexFn func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error,
-	linksFn func(group string) error,
+	linksFn func(ctx context.Context, group string) error,
 ) ([]string, string, error) {
 	rebuildStart := time.Now()
 	fmt.Fprintf(os.Stderr, "grafel: rebuild start group=%s slug=%q wipe=%v incremental=%v\n",
@@ -1275,6 +1278,18 @@ func daemonRebuildFuncCore(
 		fmt.Fprintf(os.Stderr, "grafel: rebuild exit group=%s took=%s\n",
 			args.Group, time.Since(rebuildStart).Truncate(time.Millisecond))
 	}()
+
+	// Per-group rebuild cancellation (v0.1.8 leak fix): register a cancelable
+	// context so a `grafel delete <group>` (Service.DeleteGroup →
+	// daemon.CancelGroupRebuild, or the engine's KindCancelGroup drain in split
+	// mode) can interrupt this multi-minute loop instead of letting it index
+	// every repo and run the cross-repo link/phantom passes to completion after
+	// the group is gone. groupCtx roots the per-repo index contexts and is passed
+	// to linksFn; it is checked at each repo boundary below. EndGroupRebuild
+	// deregisters it on return so the entry never leaks.
+	groupCtx, groupCancel, endGroupRebuild := daemon.GroupRebuildContext(args.Group)
+	defer groupCancel()
+	defer endGroupRebuild()
 
 	groups, err := registry.Groups()
 	if err != nil {
@@ -1479,11 +1494,24 @@ func daemonRebuildFuncCore(
 	// in the background (matching the existing RPC-timeout semantics) rather
 	// than killed mid-write.
 	indexOne := func(idx int, rw repoWork) repoResult {
-		// Per-repo cancellable context. Cancelling it (on timeout below, or on
-		// normal completion via defer) SIGKILLs a wedged subprocess child so its
-		// parent goroutine unblocks from cmd.Wait and releases the repolock claim
-		// — no process/claim leak. The in-process path ignores ctx.
-		ctx, cancel := context.WithCancel(context.Background())
+		// Short-circuit if the group was deleted mid-rebuild: skip the remaining
+		// repos immediately (each returns a cancelled result) so the loop unwinds
+		// within seconds instead of indexing every remaining member of a group
+		// that no longer exists (v0.1.8 leak fix).
+		if groupCtx.Err() != nil {
+			return repoResult{
+				path: rw.r.Path,
+				slug: rw.r.Slug,
+				err:  fmt.Errorf("rebuild cancelled (group deleted): %w", groupCtx.Err()),
+			}
+		}
+		// Per-repo cancellable context, rooted at groupCtx so a group delete
+		// (which cancels groupCtx) SIGKILLs the in-flight subprocess child too.
+		// Cancelling it (on timeout below, group delete, or normal completion via
+		// defer) SIGKILLs a wedged subprocess child so its parent goroutine
+		// unblocks from cmd.Wait and releases the repolock claim — no
+		// process/claim leak. The in-process path ignores ctx.
+		ctx, cancel := context.WithCancel(groupCtx)
 		defer cancel()
 		if perRepoTimeout <= 0 {
 			return indexOneInner(ctx, idx, rw)
@@ -1606,9 +1634,15 @@ func daemonRebuildFuncCore(
 	linkTrk := progress.NewTracker(progressPub, args.Group, args.Group)
 	linkTrk.Phase(progress.PhaseDetectLinks, "cross-repo links", 0)
 
-	// Cross-repo link passes run after every member is indexed.
+	// Cross-repo link passes run after every member is indexed. Skip them
+	// entirely if the group was deleted mid-rebuild — running the multi-minute
+	// phantom-edge / link recompute for a group that no longer exists is exactly
+	// the CPU burn the v0.1.8 delete-cancellation fix removes. groupCtx is passed
+	// through so a delete that lands DURING the pass also interrupts it.
 	warning := ""
-	if err := linksFn(args.Group); err != nil {
+	if groupCtx.Err() != nil {
+		warning = fmt.Sprintf("link passes skipped: rebuild cancelled (group deleted): %v", groupCtx.Err())
+	} else if err := linksFn(groupCtx, args.Group); err != nil {
 		// Best-effort — surface as a warning, not a hard failure.
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}

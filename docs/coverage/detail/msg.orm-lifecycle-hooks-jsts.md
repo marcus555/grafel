@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_lifecycle_hook_edges_test.go` | — |
 | Producer extraction | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_lifecycle_hook_edges_test.go` | — |
 | Topic attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_lifecycle_hook_edges_test.go` | — |

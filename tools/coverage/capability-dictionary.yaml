@@ -55,7 +55,7 @@ categories:
     capabilities: [model_extraction, query_attribution, migration_parsing, migration_schema_ops]
     subcategory_order: [orm_mapper]
   message_broker:
-    capabilities: [producer_extraction, consumer_extraction, topic_attribution, room_channel_grouping, signature_verification]
+    capabilities: [producer_extraction, consumer_extraction, topic_attribution, room_channel_grouping, signature_verification, config_binding]
     subcategory_order: [schedulers, task_queues, brokers, realtime_channels, webhooks]
   observability:
     capabilities: [trace_extraction, metric_extraction, log_extraction]
@@ -967,6 +967,7 @@ subcategories:
       - consumer_extraction
       - producer_extraction
       - topic_attribution
+      - config_binding
     groups: []
 
   realtime_channels:

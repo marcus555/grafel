@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/types"
@@ -151,5 +152,73 @@ resource "aws_sns_topic_subscription" "a" {
 	}
 	if topicCount == 0 {
 		t.Fatalf("fan-out: no SNS topic entity emitted")
+	}
+}
+
+// TestIaCSNSEdges_CloudFormation_SameTemplateResourceRefs — #5802. The
+// existing TestIaCSNSEdges_CloudFormation test above covers TopicArn
+// resolved via a Parameter Default (an ARN literal one hop away). This
+// covers the more common shape: TopicArn/Endpoint intrinsics that reference
+// AWS::SNS::Topic / AWS::SQS::Queue resource logical ids declared directly
+// in the SAME template (`TopicArn: !Ref FanoutTopic`, `Endpoint: !GetAtt
+// ConsumerQueueA.Arn`) — a single topic fanning out to two queues. Locks in
+// that this resolution already works so it does not regress.
+func TestIaCSNSEdges_CloudFormation_SameTemplateResourceRefs(t *testing.T) {
+	src := `AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  FanoutTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: demo-fanout-topic
+  ConsumerQueueA:
+    Type: AWS::SQS::Queue
+    Properties: { QueueName: demo-consumer-a }
+  ConsumerQueueB:
+    Type: AWS::SQS::Queue
+    Properties: { QueueName: demo-consumer-b }
+  SubA:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref FanoutTopic
+      Protocol: sqs
+      Endpoint: !GetAtt ConsumerQueueA.Arn
+      RawMessageDelivery: true
+  SubB:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref FanoutTopic
+      Protocol: sqs
+      Endpoint: !GetAtt ConsumerQueueB.Arn
+`
+	res := applyIaCSNSEdges(DetectorPassArgs{Lang: "yaml", Path: "fanout.yaml", Content: []byte(src)})
+	n, tools := countSNSSubscribers(res.Relationships, snsTopicID("demo-fanout-topic"))
+	if n != 2 {
+		t.Fatalf("same-template CFN fanout: want 2 subscribers (queue A + B), got %d; rels=%+v", n, res.Relationships)
+	}
+	if !tools["cloudformation"] {
+		t.Fatalf("same-template CFN fanout: want iac_tool=cloudformation, got %v", tools)
+	}
+	// Each queue must resolve to its own SQS queue name (QueueName), not
+	// collapse to a generic/disconnected placeholder.
+	wantQueueIDs := map[string]bool{
+		sqsQueueID("demo-consumer-a"): false,
+		sqsQueueID("demo-consumer-b"): false,
+	}
+	for _, r := range res.Relationships {
+		if r.Kind != subscribesToEdgeKind {
+			continue
+		}
+		if !strings.HasPrefix(r.FromID, queueEntityKind+":") {
+			continue
+		}
+		qid := strings.TrimPrefix(r.FromID, queueEntityKind+":")
+		if _, ok := wantQueueIDs[qid]; ok {
+			wantQueueIDs[qid] = true
+		}
+	}
+	for qid, found := range wantQueueIDs {
+		if !found {
+			t.Errorf("same-template CFN fanout: missing SUBSCRIBES_TO from queue %q", qid)
+		}
 	}
 }

@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -300,45 +299,12 @@ func TestGraphStream_NoOverlayFallsBackToDegree(t *testing.T) {
 	}
 }
 
-// TestGraphStream_ColdGroupReturns503 verifies a not-warm group yields the
-// not-loaded signal rather than force-loading from disk.
-func TestGraphStream_ColdGroupReturns503(t *testing.T) {
-	st := newFakeStore()
-	st.groups["testgrp"] = GroupSummary{
-		Name: "testgrp", ConfigPath: "/tmp/testgrp.json", Repos: []string{"testrepo"},
-	}
-	cfg := DefaultConfig()
-	srv, err := NewServer(cfg, st)
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	// Deliberately do NOT populate srv.graphs.entries → cold.
-	ts := httptest.NewServer(srv.routes())
-	t.Cleanup(ts.Close)
-
-	resp, err := http.Get(ts.URL + "/api/v2/graph/testgrp/stream")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("cold group status = %d, want 503", resp.StatusCode)
-	}
-	var env struct {
-		OK    bool `json:"ok"`
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		t.Fatalf("decode err body: %v", err)
-	}
-	if env.OK || env.Error.Code != "unavailable" {
-		t.Errorf("cold group body = %+v, want ok=false code=unavailable", env)
-	}
-	// Give the background warm goroutine a beat so it doesn't race t.Cleanup.
-	time.Sleep(10 * time.Millisecond)
-}
+// Note: the former TestGraphStream_ColdGroupReturns503 was retired in #48. A
+// cold group no longer answers the stream with a bare 503 (which tripped the
+// blob fallback) — it now stays a 200 SSE stream and warms with `warming`
+// heartbeats. See v2_graph_stream_warm_test.go:
+//   - TestGraphStream_ColdGroupWarmsAndStreams (cold-but-warmable → streams)
+//   - TestGraphStream_ColdUnregisterableGroupSurfacesError (#5722 error path)
 
 // TestGraphStream_LoadFailureEmitsSSEError verifies that when a PRIOR warm
 // attempt for the group has actually failed (as opposed to simply not having

@@ -71,7 +71,10 @@ func writeFreshnessTestGroup(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	graphPath := filepath.Join(stateDir, "graph.fb")
-	doc := &graph.Document{Entities: []graph.Entity{{ID: "service:a", Name: "ServiceA"}}}
+	doc := &graph.Document{
+		Entities:    []graph.Entity{{ID: "service:a", Name: "ServiceA"}},
+		Communities: []graph.CommunityResult{{ID: 0}},
+	}
 	if err := fbwriter.WriteAtomic(graphPath, doc); err != nil {
 		t.Fatal(err)
 	}

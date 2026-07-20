@@ -10,6 +10,176 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.8.2] — 2026-07-17
+
+**Patch: large-repo MCP responsiveness (a `grafel_related` perf cliff and an `impact_radius` overflow), honest `group add --index` completion, an upgrade-path daemon race, and Windows status-file atomicity. All from real corpus-testing feedback.**
+
+### Fixed
+
+- **`grafel_related direction=callers` no longer rebuilds a repo-global inheritance index on every call (#5791):** the callers path recomputed the reverse-`INHERITS` map by resolving every member's full `EXTENDS`/`IMPLEMENTS` chain — O(members × walk) — and re-armed it on every graph change, so with a live indexer it paid the full cost *per call* (~88 s p50 on a ~296 K-entity graph). The base chain is now memoized per owning-class and the map is cached by content-hash, taking a 9-result callers query from ~88 s to sub-second with byte-identical output (proven against a pre-fix oracle on diamond/cycle/multi-base hierarchies).
+- **`grafel_impact_radius` no longer overflows the MCP token cap on high-degree nodes (#5793):** on a "god node" the per-entity dump exceeded the limit (~150 K chars) and spilled to disk, defeating the point of an inline tool call. The default is now a compact aggregate — `total_affected`, per-kind breakdown, hop distribution, and the top 15 affected by risk — that stays inline at any node degree; a new `token_budget` parameter is a hard cap measured against the *real* serialized wire body; `detail=full` opts into the historical per-entity list (with the existing 500-cap + truncation note). Same fix pattern as `grafel_orient view=overview` in 0.1.8.1.
+- **`grafel group add --index` reports honest completion (#5790):** with the serve/engine split (default-on since 0.1.8.1), split-mode `Rebuild` was fire-and-forget, so `--index` reported `"indexed": true` off the enqueue ack — before, or even without, the engine actually rebuilding. It now waits for the engine's terminal ack **and reads its status**: a failed or dead-lettered rebuild (e.g. an OOM-reaped large-monorepo rebuild) reports `indexed:false` + `index_pending` with a reason, never a false success. Fire-and-forget callers and monolith-mode behavior are unchanged. (Advances #5729.)
+- **Upgrade no longer spawns a second, service-blind daemon (#5789):** `grafel start`/`restart` forked a manual daemon without checking for an installed launchd/systemd/schtasks service for this root, so an upgrade could leave the OS-managed daemon and a manual one fighting over the pidfile — the service manager respawning its copy (~20 s throttle) while the wedged-daemon pidfile reclaim SIGKILL'd the other, tearing down in-flight rebuilds in a loop. `start`/`restart` now detect a service registered for this root (compared on the HOME dimension the unit files record) and route through the service manager's restart; the manual fork remains the fallback for dev/foreground use.
+- **Windows status-file writes are atomic under concurrency:** the tmp+rename publish now retries the *write-side* rename on the transient NTFS replace-open-file errors (`ERROR_ACCESS_DENIED` / `ERROR_SHARING_VIOLATION`) — matching the read-side retry — so a status write no longer hard-fails when a reader holds the file open during the replace. Verified green on the Windows CI matrix.
+
+### Internal
+
+- Relationship-count investigation (#5792, `question`): a reported ~44 % drop across the 0.1.7.4→0.1.8.1 upgrade was checked by re-indexing a public corpus with both versions and diffing per-edge-kind histograms — every structural edge kind (`CALLS`, `IMPORTS`, `REFERENCES`, `CONTAINS`, `EXTENDS`/`IMPLEMENTS`) is byte-identical or higher; only new messaging edge kinds were added. No structural edge-loss regression; the drop is content-specific dedup. Regression coverage added for the substring `grafel_find kind_filter` path (#5786).
+
+---
+
+## [0.1.8.1] — 2026-07-16
+
+**Patch: dashboard graph perf, Kafka topology/`kind_filter` fixes, a messaging config→code→topic foundation, an MCP tool-accuracy sweep, and Windows/CI test hardening.**
+
+### Added
+
+- **Messaging config→code→topic foundation (#5782, ADR-0025):** grafel now connects the configuration, code, and messaging layers so migration/impact investigations can traverse them as one graph. A reference implementation on the Quarkus + SmallRye Reactive Messaging + Kafka stack:
+  - **`SCOPE.ChannelBinding` entities** extracted from `mp.messaging.{incoming,outgoing}.*` config (Quarkus/Spring properties + YAML), each linked by **`BINDS_CHANNEL`** to its `@Channel`/`@Incoming`/`@Outgoing` code endpoint and by **`BINDS_TOPIC`** to its Kafka `MessageTopic` — so a topic rename or channel remap is now a graph traversal, not a grep. The dashboard topology surface reports `channel_binding_orphans` (a consumer/producer binding with no counterpart in the indexed set).
+  - **`message_publish` effect** on SmallRye producers (`Emitter.send`/`sendMessage`, `@Outgoing`) in Java/Kotlin, so publish sites are first-class in the effect lattice and stub detection.
+  - **Cross-repo messaging queries:** `grafel_related direction=messaging` and `grafel_impact_radius` now expand `SCOPE.MessageTopic` seeds across repos; `grafel_debt kind=stubs` gained a clear two-group gate.
+  - **Coverage:** a new `config_binding` capability in the coverage matrix (Kafka = full; the other 36 brokers tracked as `missing` for the generalization roadmap in ADR-0025 §5).
+
+### Changed
+
+- **Capped level-of-detail graph responses project through compact integer adjacency before allocating edges** (#5779, thanks @marcus555) — ≈2× faster and ≈3.2× less memory on large graphs; the full/unlimited path is unchanged. Closes #5778.
+- **`grafel_orient view=topology` now defaults to a channel listing** (topics with publisher/consumer counts) instead of the orphan-publisher scan (#5781).
+- **MCP tool schema & description accuracy sweep (#5784):** an audit of all 22 consolidated tools found that the tool-consolidation had left per-`kind`/`action` parameters undeclared in the schemas — so ~30 params an absorbed handler actually reads were invisible to agents (e.g. `grafel_security only_missing`, `grafel_docgen_apply resolution`, `grafel_cross_links candidate_id`, `grafel_trace token_budget`, `min_confidence` default 0.7). Those are now declared (with conditionally-required ones flagged), all accepted enum values are advertised (e.g. `grafel_debt find_dead_code`/`import_cycles`), and inaccurate descriptions are corrected (`grafel_find_paths` no longer claims a confidence it doesn't return; `grafel_trace kind=effects` documents the method-vs-class caveat). A strengthened arg-coverage test guards against regressions.
+
+### Fixed
+
+- **Topology & cross-repo topic queries recognize Kafka `MessageTopic` (#5781):** `isTopic` now matches `SCOPE.MessageTopic`, so `grafel_orient view=topology` and the orphan/topic-detail scans surface Kafka topics; the bm25 `grafel_find` path now *enforces* `kind_filter` (it was silently ignored); `cross_repo` returns per-repo topic nodes; and the `channels` consumer count now counts `DELIVERS_TO` from the topic end with handler de-duplication.
+- **MCP consolidated-tool functional bugs (#5784):** `grafel_patterns kind=template` and `grafel_docgen_apply kind=enrichments` no longer silently return empty — the umbrella `kind` discriminator collided with an absorbed handler's own `kind` filter (fixed by rewriting the inner filter param); `grafel_diff` now stamps the `aspect` key on all five aspects (it was dropped for four that route through the deferred-marshal path); and `grafel_subgraph mode` now validates its discriminator instead of silently falling back to the default on a typo.
+- **`grafel_orient view=overview` no longer overflows the response limit (#5783):** the overview is now bounded against the real serialized wire body (it previously capped an intermediate array that under-counted the TOON-encoded response, so the default still shipped ~74 KB), scaling per-repo detail so every repo still appears; the `token_budget` param (default 12000) is a hard cap on the delivered body, with a bounded truncation marker as the last resort.
+- **Windows status-file read reliability:** `statusfile.Read` retries on the transient `ERROR_SHARING_VIOLATION` that can occur during the tmp+rename publish window on NTFS; POSIX behavior is unchanged.
+- **CI/test hardening:** restored the `gofmt` gate; fixed four Windows-only test bugs (home isolation, JSON fixture path escaping, mmap handle release before temp-dir cleanup, POSIX-only `chmod` assumption); hardened three timing-fragile tests (volatile-timestamp comparison, a too-tight per-repo rebuild timeout, and a channel-length completion race); and self-scoped the `cmd/grafel` `#2083` leak-detector to an isolated home so a concurrent package's store write can no longer false-fail it under parallel `go test ./...`.
+
+---
+
+## [0.1.8] — 2026-07-16
+
+**Stable consolidation cut: decouple MCP serving from the indexing engine, plus
+a polished first-index experience.** grafel v0.1.8 splits `serve` (MCP + query)
+from `engine` (indexing) into separate, supervised processes (ADR-0024) and
+turns that split **on by default** — so a heavy reindex can no longer stall MCP
+query traffic. On top of the split it delivers a first-index experience that is
+finally honest in both the TUI and a new browser wizard: live per-repo and
+per-module progress, distinct indexing-vs-enhancing status, and "safe to
+navigate" gating so you know exactly when the graph is queryable. The rest of
+the release is a large batch of daemon/index correctness and corpus-dashboard
+fixes that harden the split under real monorepos.
+
+### Added
+
+- **Serve/engine split (ADR-0024, #5732):** carve separate serve/engine
+  entrypoints + config seam (#5741), serve supervises the engine child (#5744),
+  serve reads the engine status-plane instead of in-process scheduler memory
+  (#5748), and a serve→engine request-file queue drives reindex triggers (#5749).
+- **Status-plane foundation (#5734):** an `indexed_commit` SHA plus a poll-safe
+  heartbeat/status file that both the CLI and MCP read.
+- **Split-mode progress bridge:** an NDJSON progress-sidecar data-plane (#5760)
+  wired as an engine sidecar tee + serve tailer (#5761), surfacing live indexing
+  progress across the process boundary.
+- **Web index wizard:** a `GET /api/v2/groups/{group}/index-status` API (#47
+  phase 1) powering a browser wizard with TUI parity — gated view-graph, files
+  metric, safe-to-navigate gating, enhancing bar, and nested module rows (#47).
+- **Index TUI polish:** live engine CPU%/RSS readout beside the progress bar
+  (#5768); readable module labels, live timer, commafied counts, and
+  queryable/Enter-or-wait completion (#5771); a frozen-at-"Done" timer with a
+  secondary background-enhancement bar (#5776).
+- **`grafel statusline` (#5767):** explainer for surfacing index status in a
+  shell statusline (no auto-install).
+- **fastapi `APIRouter(prefix=)` route folding (#5750):** the mount prefix is
+  folded into extracted routes.
+- **grafel.app landing site:** a modular Astro static site for Cloudflare Pages
+  with a sticky navbar, merged Get Started, and engine cards.
+- **Graph/engine capabilities:** synthesize `DELIVERS_TO` async-trigger edges so
+  callers/impact/trace cross the async boundary (#5706); `DataAccess`→physical-
+  table data-lineage links (#5704); a real warming/readiness signal in `whoami`
+  + status (#5703); per-phase `extract_ms`/`link_ms` index timings (#5699); a
+  grafel-feedback Findings & Interpretation synthesis phase (#5694); and
+  self-gating personal `~/.claude/CLAUDE.md` guidance on install (#5708).
+
+### Changed
+
+- **Default serve/engine split ON** with a `GRAFEL_SPLIT_MODE=0` escape hatch
+  (#5755); install retargets the OS service unit daemon→serve with a
+  monolith-aware doctor + safe engine reaper (#5746).
+- **First-index routing:** the wizard/rebuild first index now runs through the
+  subprocess-indexer — fast, flat daemon heap, per-module bars preserved (#5769)
+  — and completes at "graph queryable" (~6 min) rather than the full enrichment
+  ack (#5770).
+- **Defer enrichment** to a silent, bounded, cancellable background worker off
+  the critical path (#5736).
+- **UI polish:** drop the MODULES sidebar, add an instant-layout toggle, and show
+  group-card Modules/Repos counts (#53, #55); migrate the standalone landing to
+  a modular Astro static site (#5780).
+- **CI:** pin setup-go to go-version 1.26 across all workflows (#5756); gate
+  workflows to release tags + dispatch to conserve free-tier Actions minutes
+  (#5728).
+
+### Fixed
+
+- **Wizard/TUI progress correctness:** real per-module progress + completion in
+  split mode with no fake instant Done and no false-fail (#5766); one progress
+  row per module for monorepos (#5759); independent per-module extraction ticks
+  (#5762); seed a row for every selected repo so an indexed repo can't render
+  invisibly (#5773); drive per-repo rows live from the status plane (#5774);
+  propagate repo-level Done to monorepo module rows (#43); always write the
+  `graph-stats.json` sidecar, not only when Pass 4 ran (#5772).
+- **False "index failed":** split indexing/enhancing flags to kill a false
+  wizard "Failed" on the enrichment tail (#45, #46); ask the AI-tools selection
+  once, dropping the redundant MCP screen (#44); the wizard waits for queryable
+  and lets the user click "View graph" instead of auto-navigating (#52).
+- **Corpus dashboard graph load:** surface graph warm/load failures instead of
+  an infinite spinner (#5737); non-blocking corpus graph load — serve
+  immediately, compute Pass-4 off-path (#50) and stop the recompute→evict spin
+  when the sidecar write fails (#50 follow-up); stream cold large graphs instead
+  of hanging, gzip the SSE stream, add a high-LoD cap knob (#48, #49); clear
+  `warmErrs` on Invalidate/InvalidateAll (#5743).
+- **Delete / cancellation:** cancel in-flight indexing/enrichment on group delete
+  (#57); `grafel delete` full cleanup + wizard stale-manifest (#51).
+- **Split-mode daemon hardening:** harden the split against orphaned engines
+  (#5757); serialize foreground group-rebuild with the scheduler per-repo
+  (#5758); single-flight group rebuild + engine-RSS memory bench (#5763); bound
+  rebuild-drain crash-resume + engine-side single-flight (#5765); unblock the
+  request-drain via a background rebuild worker + safe coalescing (refs #29);
+  surface foreground-rebuild indexing in the status plane (#5777); split-mode-
+  gate `Service.Rebuild` + GC request acks (#5751); engine child inherits serve
+  env so store roots agree (#5753); MCP bridge fail-fast on a dead serve vs
+  ride-out engine restart + ctx-cancel retries (#5752); shutdown watchdog +
+  pidfile reclaim for a wedged rebuild (#5715).
+- **macOS TCC permission prompts:** stop the wizard fs listing from triggering
+  prompts (#58) and stop `ClassifyPath($HOME)` from descending into TCC-protected
+  home children (#58 follow-up).
+- **Index/watch correctness:** HEAD-gate the watch poll so unchanged repos no-op,
+  stopping a perpetual re-index loop (#5764); reindex circuit-breaker so an
+  over-2GiB repo stops hot-looping (#5742); resolve an empty ref to HEAD in
+  `SchedulerIncremental` (#5724); the incremental indexer no longer serves a
+  stale/empty graph silently (#5716); re-stamp a reparsed repo on the read path
+  when overlay mtime is unchanged (#5740); restore the conservative background
+  concurrency cap (#5709); register monorepos as one repo with Modules, not N
+  flat repos (#5714).
+- **php/enrichment:** Lumen framework attribution + Slim group/map exclusion +
+  enrichment orphan-temp cleanup (#5745); synthesize `http_endpoint_definition`
+  for Slim routes and guard route-shaped ops from pruning (#5738); version/
+  prefix-aware HTTP joins + an honest orphan metric (#5735).
+- **MCP/status/misc:** `grafel_index_status` disk fallback so it agrees with CLI
+  status (#5718); `index_status` errors on an unresolved group instead of empty
+  repos (#5696); recover MCP tool-handler panics + widen the bridge reconnect
+  budget (#5731); fail-soft on an oversized-graph marshal panic + scheduler
+  recover so the daemon survives (#5730); doctor live-graph counts in a single
+  O(E) pass + relabel optional enrichment (#5698); `get_source` resolves nested-
+  module-relative `source_file` paths (#5700); subgraph locality-first ranking +
+  hub-aware stop for expand (#5697); feedback collector maps to real FB-loaded
+  fields (#5695); de-flake `TestBulkDetection` with a deterministic clock +
+  distinct filenames (#5754); focus name/docs text inputs so keystrokes are
+  accepted (#5713); capture the wizard tool selection so only chosen adapters are
+  scaffolded (#5707); cap betweenness on large graphs + scale background extract
+  fan-out (#5705).
+
+---
+
 ## [0.1.7.3] — 2026-06-27
 
 **Hotfix: fully reconcile the manifest on the incremental fallback.** The

@@ -272,7 +272,7 @@ func effectConfidence(kinds []string) float64 {
 	conf := 0.7
 	for _, k := range kinds {
 		switch k {
-		case "db_write", "http_out", "mutation", "fs_write":
+		case "db_write", "http_out", "mutation", "fs_write", "message_publish":
 			conf = 0.95
 		}
 	}

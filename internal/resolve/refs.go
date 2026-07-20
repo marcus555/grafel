@@ -1554,7 +1554,7 @@ var (
 //
 // Honest scoping: edge kinds whose BOTH endpoints are synthetic stubs
 // (helm BINDS template→values_key, MODIFIES_TABLE/ACCESSES_TABLE/QUERIES →
-// table key, PUBLISHES_TO/SUBSCRIBES_TO → MessageTopic, JOINS_COLLECTION →
+// table key, SUBSCRIBES_TO → MessageTopic, JOINS_COLLECTION →
 // collection key, DEPENDS_ON_CONFIG → SCOPE.Config, SHARES_DATA →
 // Module, TRANSITIONS_TO → SCOPE.State, GATED_BY's flag end) are NOT hinted
 // here for the stub side — those resolve via byQualifiedName / structural
@@ -1563,6 +1563,16 @@ var (
 // is dual-use (Helm + DI); the Helm `helm_values:<path>` stub matches by
 // QualifiedName first, so the component hint only ever affects the DI
 // token→impl class case, which is exactly the target.
+//
+// PUBLISHES_TO is the one exception to "both endpoints are stubs": its ToID
+// (synthetic EventType/MessageTopic) is a stub resolved by QualifiedName,
+// but its FromID (the producer call-site's enclosing function) is a REAL
+// operation-shaped endpoint since the RC-A precision fix — emitted as a
+// location-qualified structural-ref (extractor.BuildOperationStructuralRef)
+// rather than a bare unqualified name. It is hinted below alongside CALLS so
+// an ambiguous bare producer name still narrows to the operation family;
+// SUBSCRIBES_TO is intentionally NOT included — its FromID remains a bare
+// caller name with no per-file qualification.
 //
 // Tie-break note (#3936): preferring the real source-bearing entity over a
 // synthetic/spec stub is handled by lookupByKindHint's tier-1
@@ -1575,7 +1585,7 @@ func hintKinds(relKind string) []string {
 	switch strings.ToUpper(relKind) {
 	case "EXTENDS", "IMPLEMENTS":
 		return componentKindFamily
-	case "CALLS":
+	case "CALLS", "PUBLISHES_TO":
 		return operationKindFamily
 	// #3930: component-shaped semantic edges — both real endpoints are
 	// classes/components (DI provider/consumer, graph @Node owner/target,
@@ -2643,6 +2653,17 @@ func (idx Index) rewriteOne(ref, relKind string) (string, int) {
 func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir string) (string, int) {
 	if ref == "" || isHexID(ref) {
 		return ref, 0
+	}
+	// #5782 (ADR-0025) — BINDS_CHANNEL edges are resolved EXCLUSIVELY by the
+	// dedicated ResolveChannelBindings pass (join on the `channel` property +
+	// direction). They must never enter the generic bare-name resolver: the
+	// channel token is a bare name that the unique-byName fallback (or the
+	// hintKinds→componentKindFamily bias) would otherwise mis-bind to a
+	// coincidentally-named component, creating a phantom edge. Leaving an
+	// unmatched channel ref untouched keeps it available for orphan detection.
+	// Resolved refs are already hex and short-circuit above.
+	if strings.EqualFold(relKind, string(types.RelationshipKindBindsChannel)) {
+		return ref, statusUnmatched
 	}
 	id, st := idx.LookupStatusHint(ref, relKind)
 	if st == statusRewritten {
@@ -5583,6 +5604,37 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 
 	stats.finalizeDispositions()
 	return stats
+}
+
+// DropUnresolvedPublishesTo is the RC-A safety net: it removes any
+// PUBLISHES_TO relationship whose FromID (the producer call-site's
+// enclosing-function endpoint) is non-empty but failed to resolve to a
+// 16-char hex entity ID after References/ReferencesWithAllowlist has run.
+//
+// Callers must invoke this AFTER resolution (References /
+// ReferencesWithAllowlist mutate rels in place and cannot themselves drop
+// entries — many callers depend on their "same length in, same length out,
+// mutate in place" contract). This is a separate, explicit post-pass so a
+// PUBLISHES_TO edge whose source could not be pinned to a real operation
+// (e.g. the enclosing function genuinely doesn't exist in the graph, or the
+// producerSourceRef helper's own sentinel-caller guard already dropped it to
+// "") never survives into the final document with a dangling/stub source —
+// independent of how good or bad the structural-ref resolution itself is.
+//
+// Edges with an EMPTY FromID are left alone here (that shape means "no
+// caller could be identified at all" and is handled by the emitter itself
+// refusing to emit); this pass only targets the case where a FromID was
+// populated (a structural-ref or bare name was emitted) but resolution
+// still failed to land on a real entity.
+func DropUnresolvedPublishesTo(rels []types.RelationshipRecord) []types.RelationshipRecord {
+	out := rels[:0]
+	for _, r := range rels {
+		if r.Kind == "PUBLISHES_TO" && r.FromID != "" && !isHexID(r.FromID) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // isHexID reports whether s is a 16-char lower-hex string — the shape of

@@ -164,6 +164,13 @@ func childGitRepoNames(dir string) []string {
 		if !e.IsDir() {
 			continue
 		}
+		// Never Stat INTO a macOS TCC-protected child of $HOME (Documents/
+		// Downloads/Pictures/Music/…): probing each child's .git here fired a
+		// batch of permission prompts when the classified dir was $HOME itself
+		// (v0.1.8 bug). No-op off darwin.
+		if isProtectedHomeChild(dir, e.Name()) {
+			continue
+		}
 		if dirHasGit(filepath.Join(dir, e.Name())) {
 			out = append(out, e.Name())
 		}
@@ -176,6 +183,13 @@ func childGitRepoNames(dir string) []string {
 // parent directory (excluding repo itself), sorted. Returns nil when none.
 func siblingGitRepos(repo string) []string {
 	parent := filepath.Dir(repo)
+	// Skip when the parent is the home dir or a macOS TCC-protected folder:
+	// enumerating it and probing each child's .git reads INTO protected folders
+	// and fires a permission prompt during normal wizard use (v0.1.8 bug). A
+	// repo cloned straight into ~ has no meaningful "siblings" to offer anyway.
+	if isProtectedScanParent(parent) {
+		return nil
+	}
 	entries, err := os.ReadDir(parent)
 	if err != nil {
 		return nil

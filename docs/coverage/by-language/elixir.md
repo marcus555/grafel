@@ -97,9 +97,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Brokers
 
-| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
-|---|---|---|---|---|
-| [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | |
+| Name | Config binding | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🔴 | 🟢 | 🟢 | 🟢 | |
 
 
 ### Realtime Channels

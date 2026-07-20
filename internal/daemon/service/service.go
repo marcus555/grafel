@@ -172,6 +172,24 @@ func Status(opts Options) (StatusInfo, error) {
 	return status(opts)
 }
 
+// Restart forces an already-installed OS service back to a converged
+// loaded+ready state (unload→load→wait-ready) even if it is currently
+// running. Unlike Install — which fast-paths to a no-op when the service is
+// already running and connectable — Restart always re-converges.
+//
+// This is the entry point `grafel start`/`grafel restart` route through when
+// they detect an OS service registered for this root, instead of forking a
+// manual `exec.Command(bin, "daemon")` child. A manual fork is launchd/
+// systemd-blind: it races the OS service manager's own KeepAlive/Restart
+// respawn over the pidfile and socket, and the pidfile's wedged-daemon
+// reclaim can then SIGKILL one of the two mid-startup (issue #5789).
+func Restart(opts Options) (StatusInfo, error) {
+	if err := resolveOptions(&opts); err != nil {
+		return StatusInfo{}, fmt.Errorf("resolve options: %w", err)
+	}
+	return restartService(opts)
+}
+
 // RegisteredRoot returns the daemon root directory recorded in the currently
 // installed OS service unit (the HOME baked into the launchd plist / systemd
 // unit at install time, or the root derived from the installed task's socket on

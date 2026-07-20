@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 2
+- **Capability cells:** 3
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🔴 `missing` | — | 3828 | — | No producer/consumer extraction yet for this broker variant; tracked in #3828. |
 | Producer extraction | 🔴 `missing` | — | 3828 | — | No producer/consumer extraction yet for this broker variant; tracked in #3828. |
 

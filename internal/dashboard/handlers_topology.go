@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/mcp"
+	"github.com/cajasmota/grafel/internal/resolve"
+	"github.com/cajasmota/grafel/internal/types"
 )
 
 // Broker entity kinds (suffix after stripping the optional "SCOPE." prefix).
@@ -73,6 +75,15 @@ type topologyResponse struct {
 	FunctionsLowConfidence []map[string]any `json:"functions_low_confidence"`
 	NoiseRejectedCount     int              `json:"noise_rejected_count"`
 	ConfidenceFloor        float64          `json:"confidence_floor"`
+
+	// #5782 (ADR-0025). ChannelBinding is folded as edge metadata rather than
+	// a standalone topology node, but its orphan flags are surfaced here: an
+	// outgoing/incoming binding whose channel has no @Outgoing/@Incoming code
+	// operation (producer-less / consumer-less), or a binding whose topic has
+	// no synthesized SCOPE.MessageTopic (dangling). Each element carries
+	// binding_id, channel, direction, topic, kind. Gives the #5781 broker
+	// orphan scans config-side ground truth. Always non-nil ([] not null).
+	ChannelBindingOrphans []map[string]any `json:"channel_binding_orphans"`
 }
 
 // brokerServiceStat holds per-service aggregated counts inside a broker group.
@@ -217,19 +228,20 @@ type brokerAccum struct {
 // groupName and docgenState are optional (pass "" / nil to skip enrichment).
 func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.DocgenState) topologyResponse {
 	resp := topologyResponse{
-		Topics:               []map[string]any{},
-		Queues:               []map[string]any{},
-		Channels:             []map[string]any{},
-		NatsSubjects:         []map[string]any{},
-		GraphQLSubscriptions: []map[string]any{},
-		Transforms:           []map[string]any{},
-		Functions:            []map[string]any{},
-		BrokerGroups:         []brokerGroup{},
-		TopicsRejected:       []map[string]any{},
-		QueuesRejected:       []map[string]any{},
-		ChannelsRejected:     []map[string]any{},
-		FunctionsRejected:    []map[string]any{},
-		EnrichmentGroups:     []EnrichmentGroupSummary{},
+		Topics:                []map[string]any{},
+		Queues:                []map[string]any{},
+		Channels:              []map[string]any{},
+		NatsSubjects:          []map[string]any{},
+		GraphQLSubscriptions:  []map[string]any{},
+		Transforms:            []map[string]any{},
+		Functions:             []map[string]any{},
+		BrokerGroups:          []brokerGroup{},
+		TopicsRejected:        []map[string]any{},
+		QueuesRejected:        []map[string]any{},
+		ChannelsRejected:      []map[string]any{},
+		FunctionsRejected:     []map[string]any{},
+		EnrichmentGroups:      []EnrichmentGroupSummary{},
+		ChannelBindingOrphans: []map[string]any{},
 	}
 
 	// brokerAccums accumulates data keyed by broker_canonical for the top-level
@@ -735,7 +747,54 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 				len(resp.FunctionsLowConfidence)
 	}
 
+	// #5782 (ADR-0025) — surface ChannelBinding orphan flags. Aggregated
+	// across every repo in the group so a binding in one repo can still join
+	// an @Incoming/@Outgoing op or a kafka: topic synthesized in a sibling
+	// repo (the cross-repo topic join intent). Folded as metadata, not nodes.
+	resp.ChannelBindingOrphans = collectChannelBindingOrphans(grp)
+
 	return resp
+}
+
+// collectChannelBindingOrphans adapts the group's graph entities into the
+// resolver's ChannelBinding orphan detector and returns wire-shape rows
+// (binding_id, channel, direction, topic, kind). Always non-nil. See
+// ADR-0025 §1.4 / §3.4.
+func collectChannelBindingOrphans(grp *DashGroup) []map[string]any {
+	out := []map[string]any{}
+	if grp == nil {
+		return out
+	}
+	var ents []types.EntityRecord
+	for _, r := range sortedRepos(grp) {
+		if r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			switch e.Kind {
+			case string(types.EntityKindChannelBinding),
+				string(types.EntityKindOperation),
+				string(types.EntityKindMessageTopic):
+				ents = append(ents, types.EntityRecord{
+					ID:         e.ID,
+					Name:       e.Name,
+					Kind:       e.Kind,
+					Properties: e.Properties,
+				})
+			}
+		}
+	}
+	for _, o := range resolve.DetectChannelBindingOrphans(ents) {
+		out = append(out, map[string]any{
+			"binding_id": o.BindingID,
+			"channel":    o.Channel,
+			"direction":  o.Direction,
+			"topic":      o.Topic,
+			"kind":       string(o.Kind),
+		})
+	}
+	return out
 }
 
 // brokerEdges returns producers, consumers, and TRANSFORMS targets for a

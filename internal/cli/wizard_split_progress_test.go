@@ -175,15 +175,47 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 	}
 	evCh := make(chan progress.Event, n)
 
-	// Ack (complete) only once all n events have been forwarded into evCh.
+	// runSplitIndexCore's forwardSSEUntilCancel goroutine forwards the parsed SSE
+	// events onto the channel we pass in as evCh — here forwardCh. The probe below
+	// drains forwardCh SYNCHRONOUSLY, one BLOCKING receive per poll, into the real
+	// evCh the assertions read, and only reports the rebuild acked
+	// (RequestPending:false) once all n events are provably in evCh.
+	//
+	// Why this is deterministic BY CONSTRUCTION (not merely "less flaky"):
+	// awaitSplitCompletion's poll loop advances VIRTUAL time via clk.Sleep, which
+	// on the fake clock never really blocks. The pollFn here BLOCKS on <-forwardCh
+	// until the forwarder actually delivers the next event, so the poll loop
+	// cannot iterate — and therefore virtual time cannot advance — until an event
+	// has been delivered. The number of Sleeps is thus bounded by n, so virtual
+	// elapsed (n*interval = 30ms) can never reach cfg.timeout (5m) regardless of
+	// how long the forwarder goroutine is starved.
+	//
+	// The previous version drained forwardCh in a SEPARATE monitor goroutine and
+	// gated completion on an allForwarded channel. That left the poll loop free to
+	// busy-spin the non-blocking fake Sleep and burn virtual time straight past
+	// cfg.timeout BEFORE the monitor goroutine was ever scheduled on a
+	// slow/contended (Windows) runner — surfacing a spurious real "timed out"
+	// error. Blocking the poll on delivery removes that scheduling race entirely:
+	// no monitor goroutine, no allForwarded, no reliance on goroutine scheduling
+	// racing the clock.
+	forwardCh := make(chan progress.Event, n)
+	forwarded := 0
 	probe := &fakeProbe{
-		pollFn:   func(int) splitPoll { return splitPoll{RequestPending: len(evCh) < n, EngineAlive: true} },
+		// pollFn is only ever called from awaitSplitCompletion's single poll
+		// goroutine, so blocking here (and the plain int counter) is safe.
+		pollFn: func(int) splitPoll {
+			if forwarded < n {
+				evCh <- <-forwardCh // block until the forwarder delivers the next event
+				forwarded++
+			}
+			return splitPoll{RequestPending: forwarded < n, EngineAlive: true}
+		},
 		classify: splitResult{Entities: 1, Rels: 1},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), true, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, forwardCh, probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}

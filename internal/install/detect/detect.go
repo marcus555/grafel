@@ -313,6 +313,15 @@ func scanPolyglotModules(repo string) (containerMods, manifestedTop, sourceOnlyT
 				continue
 			}
 			name := e.Name()
+			// Never ReadDir INTO a macOS TCC-protected child of $HOME
+			// (Documents/Downloads/Pictures/Music/…): the manifest/source probes
+			// below (hasEcosystemManifest, hasSourceFiles) open each child and
+			// fired a batch of permission prompts when `repo` was $HOME itself
+			// (v0.1.8 bug). No-op off darwin; explicit classify of a protected
+			// folder still descends (its children's parent isn't $HOME).
+			if isProtectedHomeChild(repo, name) {
+				continue
+			}
 			// Skip the container dirs themselves; their children were scanned.
 			if isContainer(name) {
 				continue

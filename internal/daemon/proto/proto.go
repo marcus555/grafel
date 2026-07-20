@@ -226,6 +226,22 @@ type RebuildArgs struct {
 	// Defaults to false so an unset caller is treated as background — the safe,
 	// throttled classification.
 	Interactive bool `json:"interactive,omitempty"`
+	// WaitForCompletion asks the daemon to BLOCK this RPC until the group
+	// rebuild has actually finished, then return — restoring "err==nil means the
+	// rebuild really ran" for callers that need it (e.g. `grafel group add
+	// --index`, which reports "indexed": true off this call). See #5790.
+	//
+	// It only changes behavior in SPLIT MODE, where Service.Rebuild otherwise
+	// enqueues a KindRebuild request onto the engine queue and returns
+	// immediately (fire-and-forget) — so a nil error meant "enqueue acked", NOT
+	// "rebuild done". When set, the serve-side handler enqueues the request and
+	// then waits for the engine to drain+ack it (the same request-ack signal the
+	// wizard uses via daemon.RebuildRequestPending), returning nil only on real
+	// completion and an error on engine-death / never-alive / timeout. In
+	// MONOLITH mode Rebuild is already synchronous, so this flag is a harmless
+	// no-op there. Defaults to false to preserve the fire-and-forget fast path
+	// for callers (watchers, background triggers) that do not await completion.
+	WaitForCompletion bool `json:"wait_for_completion,omitempty"`
 }
 
 // RebuildReply lists the repos that were rebuilt and any warning that

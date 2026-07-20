@@ -43,6 +43,7 @@ import { useCoverageKind } from "@/hooks/use-coverage-kind";
 import { CoverageKindIndicator } from "@/components/ui";
 import { useGraphJarvisReplay } from "@/hooks/use-graph-jarvis-replay";
 import { buildUndirectedAdjacency, bfsEgo as bfsEgoOver } from "@/lib/ego-bfs";
+import { deriveGraphLoading } from "@/lib/graph-loading-state";
 
 /**
  * #1386 — derive the entity-level "module key" from a node's source file.
@@ -147,18 +148,26 @@ export default function GraphScreen() {
 
   // Unified view-model: the stream is the source of truth until it fails, then
   // the fallback fetch takes over. `data` is the accumulating (or complete)
-  // payload; `isLoading` is true only while we have nothing renderable yet.
-  const streaming = stream.phase === "warming" || stream.phase === "streaming";
+  // payload. #48 — the loading/progress derivation is a PURE, unit-tested seam
+  // (lib/graph-loading-state) so the screen NEVER sits at a blank "loading"
+  // forever: isLoading clears the instant ANYTHING is renderable (first
+  // streamed nodes, or the fallback blob's first data — not "whole blob
+  // parsed"), and a cold group shows a warming affordance instead of a dead
+  // blank / TTFB=0 hang.
   const data = streamFailed ? fallback.data : stream.state.payload;
-  const isLoading = streamFailed
-    ? fallback.isLoading
-    : // We're still loading until at least meta + the first nodes have landed.
-      !stream.state.hasMeta || stream.state.payload.nodes.length === 0;
+  const loadingState = deriveGraphLoading({
+    streamPhase: stream.phase,
+    streamHasMeta: stream.state.hasMeta,
+    streamNodeCount: stream.state.payload.nodes.length,
+    fallbackActive: streamFailed,
+    fallbackIsLoading: fallback.isLoading,
+    fallbackNodeCount: fallback.data?.nodes.length ?? 0,
+  });
+  const isLoading = loadingState.isLoading;
   const isError = streamFailed && fallback.isError;
   // Progress affordance state for the "building graph… N / total" overlay.
-  const showStreamProgress =
-    !streamFailed && (streaming || (stream.phase === "done" && stream.state.payload.nodes.length === 0));
-  const isWarming = stream.phase === "warming";
+  const showStreamProgress = loadingState.showProgress;
+  const isWarming = loadingState.isWarming;
   // #5147 coverage-kind overlay. The cosmos.gl WebGL engine renders nodes from
   // Float32 color buffers with NO per-node DOM/sprite layer, so a per-node tone
   // ring (as on the React-Flow surfaces) is genuinely infeasible here without a
@@ -770,6 +779,7 @@ export default function GraphScreen() {
                 edges={egoEdges}
                 isFocusView={focusActive}
                 streaming={stream.phase === "streaming" && !focusActive}
+                instantLayout={s.instantLayout}
                 selectedNodeId={s.selectedNodeId}
                 hoveredNodeId={s.hoveredNodeId}
                 isDark={isDark}

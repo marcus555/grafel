@@ -34,7 +34,11 @@ import (
 func (s *Server) handleAnalysisDebt(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("kind", argString(req, "kind", ""),
 		[]string{"dead_code", "find_dead_code", "unwired", "cycles", "import_cycles", "stubs", "stub", "impure", "pure", "pure_functions", "license", "licenses"},
-		[]string{"dead_code", "cycles", "stubs", "impure", "license"}); e != nil {
+		// #5784 Category 2: find_dead_code and import_cycles are distinct
+		// handlers/response shapes (not aliases of dead_code/cycles) — advertise
+		// them so agents can discover the analysis instead of only reaching it
+		// via undocumented probing.
+		[]string{"dead_code", "find_dead_code", "cycles", "import_cycles", "stubs", "impure", "license"}); e != nil {
 		return e, nil
 	}
 	switch argString(req, "kind", "dead_code") {
@@ -110,6 +114,14 @@ func (s *Server) handleAnalysisTest(ctx context.Context, req mcpapi.CallToolRequ
 //	code (default) → handlePatterns         (agent-learned pattern store)
 //	graph          → handleGraphPatterns    (indexer-extracted patterns)
 //	template       → handleTemplatePatterns (i18n/log_format/sql literals)
+//
+// #5784 bug 1: handleTemplatePatterns reads its OWN `kind` param as a
+// literal-type filter (i18n/log_format/sql). The outer discriminator shares
+// that exact param name, so passed through unmodified `kind=template` always
+// clobbers the inner filter with the literal string "template" — which never
+// matches a real entry, so `patterns` silently comes back empty. Canonical
+// callers filter by literal kind via `literal_kind`; relocate it into the
+// inner `kind` slot (blanking the umbrella value) before dispatch.
 func (s *Server) handleAnalysisPatterns(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("kind", argString(req, "kind", ""),
 		[]string{"code", "graph", "graph_patterns", "template", "templates", "template_patterns"},
@@ -125,7 +137,11 @@ func (s *Server) handleAnalysisPatterns(ctx context.Context, req mcpapi.CallTool
 		}
 		return s.handleGraphPatterns(ctx, req)
 	case "template", "templates", "template_patterns":
-		return s.handleTemplatePatterns(ctx, req)
+		var literalKind any
+		if lk := argString(req, "literal_kind", ""); lk != "" {
+			literalKind = lk
+		}
+		return s.handleTemplatePatterns(ctx, reqWithArgs(req, map[string]any{"kind": literalKind}))
 	default: // "code"
 		return s.handlePatterns(ctx, req)
 	}
@@ -219,9 +235,24 @@ func (s *Server) handleAnalysisDiff(ctx context.Context, req mcpapi.CallToolRequ
 // result is not a JSON object (an error result, a JSON array, or plain text) it
 // is returned unchanged — the dispatch must never corrupt an absorbed handler's
 // payload.
+//
+// #5784 bug 3: jsonResult (tools.go) stashes the structured value on
+// res.StructuredContent — the "deferred" marshal-once-at-the-wire path
+// (deferred_payload.go). wrap() (server.go) rebuilds the FINAL response bytes
+// straight from that deferred value when present, discarding any edit made
+// only to res.Content — which is exactly what this function used to do. So
+// the aspect key survived a bare handler call (tests call the handler
+// directly and read res.Content) but was silently dropped for every real,
+// wrap()-routed call whose handler used jsonResult — i.e. every aspect except
+// "refs" (handleDiffRefs builds its result via mcpapi.NewToolResultText, no
+// deferred value). Stamp the deferred value too, mirroring the res.Content
+// edit below, so the key survives wrap()'s rebuild.
 func stampAspect(res *mcpapi.CallToolResult, aspect string) *mcpapi.CallToolResult {
 	if res == nil || res.IsError {
 		return res
+	}
+	if m, ok := res.StructuredContent.(map[string]any); ok {
+		m["aspect"] = aspect
 	}
 	for i, c := range res.Content {
 		tc, ok := c.(mcpapi.TextContent)

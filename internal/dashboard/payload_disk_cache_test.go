@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -37,11 +38,32 @@ func TestGraphPayloadCacheRestoresDiskSnapshot(t *testing.T) {
 
 func TestGraphPayloadCacheRejectsStaleSourceVersion(t *testing.T) {
 	cache := newGraphPayloadCacheAt(t.TempDir())
+	t.Cleanup(func() { waitForDiskPayloadWrites(t, cache.disk) })
 	key := "assessment::default"
 	cache.Set(key, []byte(`{"version":1}`), `"etag-1"`, "graph-v1")
 
 	if _, ok := cache.Get(key, "graph-v2"); ok {
 		t.Fatal("stale in-memory or disk payload was served for a changed graph")
+	}
+}
+
+func waitForDiskPayloadWrites(t *testing.T, cache *diskPayloadCache) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		pending := false
+		cache.writes.Range(func(_, _ any) bool {
+			pending = true
+			return false
+		})
+		if !pending {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Error("timed out waiting for asynchronous payload-cache write")
+			return
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

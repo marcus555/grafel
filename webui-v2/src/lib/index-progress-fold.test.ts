@@ -5,6 +5,7 @@ import {
   finalizeRows,
   fold,
   groupPhase,
+  nestRows,
   overallPhaseLabel,
   rowFraction,
   rowKey,
@@ -14,7 +15,7 @@ import {
   statusRank,
   streamTerminal,
 } from "./index-progress-fold";
-import type { ProgressEvent, ProgressRow } from "@/data/types";
+import type { ProgressEvent, ProgressRow, RepoNesting } from "@/data/types";
 
 /** Minimal ProgressRow builder for the aggregate/label tests. */
 function row(p: Partial<ProgressRow>): ProgressRow {
@@ -601,5 +602,121 @@ describe("finalizeRows — mark stuck rows Done on completion (#5348/#5340)", ()
     let m = new Map<string, ProgressRow>();
     m = fold(m, ev({ repo_slug: "backend", phase: "done", ts: 1 }), "g");
     expect(finalizeRows(m)).toBe(m);
+  });
+});
+
+/* ----------------------------------------------------------------------------
+   #47 phase 2 — nested per-module rows for monorepos. Each monorepo package is
+   registered as its own repo_slug, so nestRows GROUPS the sibling package rows
+   under a synthesized monorepo parent (mirroring the TUI's per-module nesting),
+   while related-repo (non-monorepo) groups stay flat. When the parent reaches
+   Done, any child still mid-phase is lifted to Done (mirrors fold.go's repo-
+   scoped PhaseDone lifting sibling module rows).
+   -------------------------------------------------------------------------- */
+
+/** A two-package monorepo nesting descriptor keyed by child repo slug. */
+function monorepoNesting(): RepoNesting {
+  return {
+    "shop-api": { repoSlug: "shop-api", parentSlug: "shop", parentLabel: "shop", moduleLabel: "packages/api" },
+    "shop-web": { repoSlug: "shop-web", parentSlug: "shop", parentLabel: "shop", moduleLabel: "packages/web" },
+  };
+}
+
+describe("nestRows — nested per-module rows for monorepos (#47 phase 2)", () => {
+  it("nests sibling package rows under a single monorepo parent group", () => {
+    const rows = [
+      row({ repoSlug: "shop-api", phase: "extracting_ast", filesDone: 5, filesTotal: 10, ts: 3 }),
+      row({ repoSlug: "shop-web", phase: "resolving_refs", ts: 3 }),
+    ];
+    const groups = nestRows(rows, monorepoNesting());
+    expect(groups).toHaveLength(1);
+    const g = groups[0];
+    expect(g.kind).toBe("monorepo");
+    expect(g.label).toBe("shop");
+    expect(g.children.map((c) => c.repoSlug).sort()).toEqual(["shop-api", "shop-web"]);
+    // The child rows carry the module label for display.
+    expect(g.children.find((c) => c.repoSlug === "shop-api")!.module).toBe("packages/api");
+    // Parent phase reflects the least-advanced active child (extracting_ast).
+    expect(g.phase).toBe("extracting_ast");
+  });
+
+  it("child module rows flip to Done when the parent reaches Done", () => {
+    // shop-api finished; shop-web froze mid-phase (its final events were dropped).
+    const rows = [
+      row({ repoSlug: "shop-api", phase: "done", ts: 5 }),
+      row({ repoSlug: "shop-web", phase: "building_communities", ts: 5 }),
+    ];
+    // complete = the job/parent reached Done → lift the stragglers.
+    const groups = nestRows(rows, monorepoNesting(), true);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].phase).toBe("done");
+    expect(groups[0].children.every((c) => c.phase === "done")).toBe(true);
+  });
+
+  it("a monorepo parent is Done once every child is terminal (no complete flag needed)", () => {
+    const rows = [
+      row({ repoSlug: "shop-api", phase: "done", ts: 5 }),
+      row({ repoSlug: "shop-web", phase: "done", ts: 5 }),
+    ];
+    const groups = nestRows(rows, monorepoNesting());
+    expect(groups[0].phase).toBe("done");
+  });
+
+  it("keeps related-repo (non-monorepo) rows FLAT — one repo group each", () => {
+    const rows = [
+      row({ repoSlug: "backend", phase: "extracting_ast", ts: 3 }),
+      row({ repoSlug: "frontend", phase: "done", ts: 3 }),
+    ];
+    const groups = nestRows(rows, {}); // no nesting → all flat
+    expect(groups.map((g) => g.kind)).toEqual(["repo", "repo"]);
+    expect(groups.map((g) => g.label).sort()).toEqual(["backend", "frontend"]);
+    expect(groups.every((g) => g.children.length === 0)).toBe(true);
+    expect(groups.find((g) => g.label === "backend")!.row!.repoSlug).toBe("backend");
+  });
+
+  it("mixes a monorepo group with standalone repos in the same feed", () => {
+    const rows = [
+      row({ repoSlug: "shop-api", phase: "extracting_ast", ts: 3 }),
+      row({ repoSlug: "shop-web", phase: "extracting_ast", ts: 3 }),
+      row({ repoSlug: "standalone", phase: "done", ts: 3 }),
+    ];
+    const nesting: RepoNesting = {
+      "shop-api": { repoSlug: "shop-api", parentSlug: "shop", parentLabel: "shop", moduleLabel: "packages/api" },
+      "shop-web": { repoSlug: "shop-web", parentSlug: "shop", parentLabel: "shop", moduleLabel: "packages/web" },
+    };
+    const groups = nestRows(rows, nesting);
+    const mono = groups.find((g) => g.kind === "monorepo")!;
+    const repo = groups.find((g) => g.kind === "repo")!;
+    expect(mono.children).toHaveLength(2);
+    expect(repo.label).toBe("standalone");
+  });
+
+  it("no nesting arg → every row is its own flat repo group (back-compat)", () => {
+    const rows = [row({ repoSlug: "solo", phase: "done", ts: 1 })];
+    const groups = nestRows(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].kind).toBe("repo");
+    expect(groups[0].label).toBe("solo");
+  });
+
+  it("preserves each child's file/entity counts when lifting to Done", () => {
+    const rows = [
+      row({ repoSlug: "shop-api", phase: "done", ts: 5 }),
+      row({ repoSlug: "shop-web", phase: "writing_graph", filesDone: 9, filesTotal: 9, entitiesSoFar: 42, ts: 5 }),
+    ];
+    const groups = nestRows(rows, monorepoNesting(), true);
+    const web = groups[0].children.find((c) => c.repoSlug === "shop-web")!;
+    expect(web.phase).toBe("done");
+    expect(web.entitiesSoFar).toBe(42);
+    expect(web.filesDone).toBe(9);
+  });
+
+  it("surfaces group-level enhancing when any child is enhancing", () => {
+    const rows = [
+      row({ repoSlug: "shop-api", phase: "done", enhancing: true, ts: 5 }),
+      row({ repoSlug: "shop-web", phase: "done", ts: 5 }),
+    ];
+    const groups = nestRows(rows, monorepoNesting());
+    expect(groups[0].enhancing).toBe(true);
   });
 });

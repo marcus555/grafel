@@ -417,8 +417,31 @@ type Scheduler struct {
 	// scheduled to fire, so a re-arm never pushes a pending fire later (#5450).
 	// Guarded by mu.
 	groupAlgoFireAt map[string]time.Time
-	indexedRepos    map[string]repoStats
-	recentLog       []LogEntry
+	// linkCancel holds a TOKEN for an IN-FLIGHT link pass, keyed by group. Set by
+	// scheduleLinks' AfterFunc before runLinks (deriving a per-group ctx from
+	// shutdownCtx), cleared when runLinks returns. Lets CancelGroup (a group
+	// delete) interrupt an in-flight phantom-edge/link pass for JUST that group
+	// without waiting for daemon shutdown.
+	//
+	// The value is a pointer TOKEN (not the bare CancelFunc) so a completing pass
+	// only clears the entry when it is still ITS OWN token: link passes are NOT
+	// single-flight (the debounce timer deletes linkTimers[group] when it fires,
+	// so a scheduleLinks arriving during an in-flight runLinks arms a fresh timer
+	// → a second, overlapping runLinks). Without the identity check, pass-1's
+	// completion would blind-delete pass-2's still-live cancel entry, and a
+	// CancelGroup landing in that window would find nothing to cancel and let the
+	// deleted group's link pass run to completion — the exact re-leak. Guarded by
+	// mu.
+	linkCancel map[string]*linkPassCancel
+	// indexCancel holds the cancel func for an IN-FLIGHT per-repo index job,
+	// keyed by repo path. Set by runIndex before the index runs (deriving a
+	// per-repo ctx from shutdownCtx), cleared when the job completes. Lets
+	// CancelGroup cancel the in-flight reindexes of a deleted group's repos
+	// (SIGKILLing the subprocess indexer child) rather than letting them run to
+	// completion after the group is gone. Guarded by mu.
+	indexCancel  map[string]context.CancelFunc
+	indexedRepos map[string]repoStats
+	recentLog    []LogEntry
 
 	// deadManAt tracks when the pending queue became non-empty with no
 	// admitted jobs. The dead-man goroutine force-admits a job when this
@@ -563,6 +586,8 @@ func New(cfg Config) *Scheduler {
 		groupAlgoCancel:  map[string]context.CancelFunc{},
 		groupAlgoArmedAt: map[string]time.Time{},
 		groupAlgoFireAt:  map[string]time.Time{},
+		linkCancel:       map[string]*linkPassCancel{},
+		indexCancel:      map[string]context.CancelFunc{},
 		indexedRepos:     map[string]repoStats{},
 		shutdownCtx:      shutdownCtx,
 		shutdownCancel:   shutdownCancel,
@@ -1292,11 +1317,21 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		//
 		// On success (res.Done=true) we skip the full reindex.
 		// On fallback (res.Done=false) we log the reason and fall through normally.
-		// Use shutdownCtx for all child-process-spawning calls so that when
-		// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
-		// subprocess indexer receives SIGTERM via exec.CommandContext and the
-		// daemon can exit cleanly without leaving zombie processes (issue #2176).
-		jobCtx := s.shutdownCtx
+		// Derive a PER-REPO cancel context from shutdownCtx (issue #2176 still
+		// holds: rooted at shutdownCtx so daemon Stop() cancels it too). Storing
+		// the per-repo cancel lets CancelGroup interrupt the in-flight reindexes
+		// of a DELETED group's repos — SIGKILLing the subprocess indexer child —
+		// instead of letting them burn CPU to completion after the group is gone.
+		jobCtx, jobCancel := context.WithCancel(s.shutdownCtx)
+		s.mu.Lock()
+		s.indexCancel[repoPath] = jobCancel
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			delete(s.indexCancel, repoPath)
+			s.mu.Unlock()
+			jobCancel()
+		}()
 
 		incrementalDone := false
 		// Issue #5726 / epic #5729 — defense in depth. An index can panic for
@@ -1510,12 +1545,43 @@ func (s *Scheduler) scheduleLinks(group string) {
 		s.mu.Lock()
 		s.linkPending[group] = false
 		delete(s.linkTimers, group)
+		// Derive a PER-GROUP cancel context from shutdownCtx (not shutdownCtx
+		// directly) so that a group delete can interrupt THIS group's in-flight
+		// link pass via CancelGroup without waiting for daemon Stop(). Still
+		// rooted at shutdownCtx so daemon shutdown also cancels it. Stored so
+		// CancelGroup can reach it; cleared once runLinks returns.
+		ctx, cancel := context.WithCancel(s.shutdownCtx)
+		tok := &linkPassCancel{cancel: cancel}
+		// Supersede any still-registered predecessor by CANCELLING it before
+		// overwriting the entry — do NOT just drop it. runLinks executes on this
+		// timer AfterFunc goroutine (not the worker pool), so when a link pass
+		// outlasts LinkDebounce and a repo reindex re-arms scheduleLinks, pass-1
+		// and pass-2 run CONCURRENTLY. Without this cancel, only pass-2's token is
+		// in the map, so a later CancelGroup reaches only pass-2 and pass-1 (the
+		// long betweenness/phantom pass) runs to completion for a deleted group.
+		// Cancelling the predecessor makes link passes single-flight for
+		// cancellation: at any moment only the newest pass is live, so CancelGroup
+		// always reaches it and NO pass survives a delete. The superseded pass
+		// aborts at its next ctx checkpoint (RunLinksForGroupCtx); its output is
+		// harmless — the newer pass rewrites everything from the latest graphs.
+		if prev, ok := s.linkCancel[group]; ok {
+			prev.cancel()
+		}
+		s.linkCancel[group] = tok
 		s.mu.Unlock()
-		// Pass shutdownCtx so that if Stop() is called while the link pass is
-		// running (or if it ever spawns subprocesses in the future), the
-		// cancellation signal propagates correctly — matching the fix applied to
-		// runIndex in issue #2176/#2491. Fixes issue #2493.
-		s.runLinks(s.shutdownCtx, group)
+
+		s.runLinks(ctx, group)
+
+		s.mu.Lock()
+		// Only clear the entry if it is still OUR token. An overlapping second
+		// link pass (this group's timer re-armed while we ran) or a CancelGroup
+		// may have already replaced/removed it; blind-deleting here would drop
+		// the newer pass's live cancel and re-open the leak.
+		if s.linkCancel[group] == tok {
+			delete(s.linkCancel, group)
+		}
+		s.mu.Unlock()
+		cancel()
 	})
 	s.mu.Unlock()
 }
@@ -1715,6 +1781,81 @@ func (s *Scheduler) cancelGroupAlgoLocked(group string) {
 	// superseding pass) ends the window so the next arm starts a fresh budget.
 	delete(s.groupAlgoArmedAt, group)
 	delete(s.groupAlgoFireAt, group)
+}
+
+// linkPassCancel is a per-in-flight-link-pass identity token wrapping its cancel
+// func, so a completing pass can distinguish ITS OWN registry entry from a
+// newer, overlapping pass's entry (link passes are not single-flight). See the
+// Scheduler.linkCancel field doc.
+type linkPassCancel struct {
+	cancel context.CancelFunc
+}
+
+// CancelGroup cancels ALL of a group's in-flight and pending background work:
+// the debounced/in-flight group-algorithm pass, the debounced/in-flight
+// cross-repo link pass, and the in-flight per-repo reindexes of the group's
+// member repos. It is invoked when a group is deleted (Service.DeleteGroup) so
+// the enrichment goroutines the group kicked off stop within seconds instead of
+// running to completion after the group is gone (the leak: a deleted group's
+// betweenness/phantom-edge/link passes kept a multi-core machine pinned).
+//
+// Cancellation is SCOPED to `group` only: another group's in-flight passes and
+// reindexes are untouched (their timers/cancels live under different map keys,
+// and a repo shared with a surviving group is left running because it still has
+// a live group in GroupsForRepo — see the membership check below).
+//
+// It never blocks: it signals the relevant cancel funcs (which unblock ctx.Done
+// consumers and SIGKILL subprocess children) and returns. It does NOT await the
+// cancelled work — DeleteGroup must not deadlock behind an 11-minute pass.
+func (s *Scheduler) CancelGroup(group string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Group-algo pass (pending timer + in-flight run) — already per-group.
+	s.cancelGroupAlgoLocked(group)
+
+	// Link pass: stop a pending debounce timer and cancel an in-flight run.
+	if t, ok := s.linkTimers[group]; ok {
+		t.Stop()
+		delete(s.linkTimers, group)
+		s.linkPending[group] = false
+	}
+	if tok, ok := s.linkCancel[group]; ok {
+		tok.cancel()
+		delete(s.linkCancel, group)
+	}
+
+	// In-flight per-repo reindexes whose repo belongs ONLY to this group (or to
+	// this group among others that are also being torn down). A repo still
+	// referenced by a surviving group reports that group via GroupsForRepo and is
+	// therefore left running — we must not strip a live group's reindex.
+	for repoPath, cancel := range s.indexCancel {
+		if s.repoBelongsOnlyToLocked(repoPath, group) {
+			cancel()
+			delete(s.indexCancel, repoPath)
+			s.logEventLocked("index_cancelled_group_delete", repoPath, group)
+		}
+	}
+
+	s.logEventLocked("group_cancelled", "", group+": cancelled in-flight enrichment on group delete")
+}
+
+// repoBelongsOnlyToLocked reports whether repoPath's only owning group is
+// `group` (i.e. it is safe to cancel its in-flight reindex on a delete of that
+// group). When GroupsForRepo is not wired (tests / degenerate config) it errs
+// toward cancelling — a group delete is an explicit teardown, and the reindex
+// context is rooted at shutdownCtx so worst case matches shutdown semantics.
+// MUST be called with s.mu held.
+func (s *Scheduler) repoBelongsOnlyToLocked(repoPath, group string) bool {
+	if s.cfg.GroupsForRepo == nil {
+		return true
+	}
+	for _, g := range s.cfg.GroupsForRepo(repoPath) {
+		if g != group {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {

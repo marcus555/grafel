@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | 🟢 `partial` | `2026-05-31` | 3558 | `internal/engine/rabbitmq_edges.go`<br>`internal/engine/rabbitmq_edges_test.go` | lapin channel.basic_publish("exchange","routing_key",...) -> PUBLISHES_TO (routing_key as queue identity, exchange recorded as edge prop) and basic_consume("queue",...) -> SUBSCRIBES_TO, plus queue_declare("queue",...) node; SCOPE.Queue keyed rabbitmq:<name> joins cross-repo, attributed to the enclosing fn. Partial: only literal exchange/queue/routing-key string args are resolved; dynamic/expression args and cross-file fn attribution are not modelled. |
 | Producer extraction | 🟢 `partial` | `2026-05-31` | 3558 | `internal/engine/rabbitmq_edges.go`<br>`internal/engine/rabbitmq_edges_test.go` | lapin channel.basic_publish("exchange","routing_key",...) -> PUBLISHES_TO (routing_key as queue identity, exchange recorded as edge prop) and basic_consume("queue",...) -> SUBSCRIBES_TO, plus queue_declare("queue",...) node; SCOPE.Queue keyed rabbitmq:<name> joins cross-repo, attributed to the enclosing fn. Partial: only literal exchange/queue/routing-key string args are resolved; dynamic/expression args and cross-file fn attribution are not modelled. |
 | Topic attribution | 🟢 `partial` | `2026-05-31` | 3558 | `internal/engine/rabbitmq_edges.go`<br>`internal/engine/rabbitmq_edges_test.go` | lapin channel.basic_publish("exchange","routing_key",...) -> PUBLISHES_TO (routing_key as queue identity, exchange recorded as edge prop) and basic_consume("queue",...) -> SUBSCRIBES_TO, plus queue_declare("queue",...) node; SCOPE.Queue keyed rabbitmq:<name> joins cross-repo, attributed to the enclosing fn. Partial: only literal exchange/queue/routing-key string args are resolved; dynamic/expression args and cross-file fn attribution are not modelled. |

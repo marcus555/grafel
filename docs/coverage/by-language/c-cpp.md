@@ -116,11 +116,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Brokers
 
-| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
-|---|---|---|---|---|
-| [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🟢 | 🟢 | 🟢 | |
-| [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | |
-| [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | |
+| Name | Config binding | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|---|
+| [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🔴 | 🟢 | 🟢 | 🟢 | |
+| [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🔴 | 🟢 | 🟢 | 🟢 | |
+| [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🔴 | 🟢 | 🟢 | 🟢 | |
 
 
 ### Validation

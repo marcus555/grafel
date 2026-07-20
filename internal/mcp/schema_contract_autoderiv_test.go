@@ -35,16 +35,32 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
 
-// buildFuncToToolFromAST parses server.go to auto-derive the handler→tool mapping,
-// then parses all handler files to derive the dispatch sub-tree, and returns the
-// complete funcName→toolName map (direct + transitive).
+// buildFuncToToolFromAST parses server.go to auto-derive the handler→tool
+// mapping, then parses all handler files to derive the dispatch sub-tree, and
+// returns the complete funcName→[]toolName map (direct + transitive).
 //
 // It is the replacement for the hardcoded handlerToTool + dispatchTree combo.
-func buildFuncToToolFromAST(t *testing.T, mcpDir string) map[string]string {
+//
+// #5784: a handler can be reachable from MORE THAN ONE registered tool — e.g.
+// handleAuthCoverage is both directly wrapped as the standalone (now-hidden-
+// alias) grafel_auth_coverage AND reachable transitively via the
+// grafel_security(kind=auth_coverage) dispatcher. Returning only the FIRST
+// tool found (the old single-string map) let an umbrella dispatcher's own
+// schema go completely unchecked whenever its sub-handler already had a
+// direct wrap() elsewhere — which is exactly how only_missing/token_budget/
+// verbose (and a dozen similar params across grafel_security/grafel_debt/
+// grafel_test_analysis/grafel_diff/grafel_cross_links) went undeclared on the
+// canonical umbrella tools without TestSchemaContract_AllHandlerArgsDeclared
+// ever flagging it: the arg usage was silently attributed only to the
+// standalone alias, which already declared it. Returning ALL reaching tools
+// per handler closes that hole — every tool that can dispatch to a handler
+// must declare (or allow-list) every arg the handler reads.
+func buildFuncToToolFromAST(t *testing.T, mcpDir string) map[string][]string {
 	t.Helper()
 
 	serverFile := filepath.Join(mcpDir, "server.go")
@@ -74,34 +90,62 @@ func buildFuncToToolFromAST(t *testing.T, mcpDir string) map[string]string {
 		t.Fatalf("buildFuncToToolFromAST: build dispatch tree: %v", err)
 	}
 
-	// Step 5: propagate tool names transitively.
-	out := make(map[string]string, len(directMap)+64)
-	for fn, tool := range directMap {
-		out[fn] = tool
+	// Step 5: propagate tool names transitively, accumulating EVERY tool that
+	// can reach a given handler (not just the first one found).
+	out := make(map[string]map[string]bool, len(directMap)+64)
+	addTool := func(fn, tool string) bool {
+		set, ok := out[fn]
+		if !ok {
+			set = make(map[string]bool)
+			out[fn] = set
+		}
+		if set[tool] {
+			return false
+		}
+		set[tool] = true
+		return true
 	}
-	// BFS propagation — handles arbitrary depth (currently one hop).
+	for fn, tool := range directMap {
+		addTool(fn, tool)
+	}
+	// BFS propagation until fixpoint — handles arbitrary dispatch depth and
+	// handlers reachable from multiple parents/tools.
 	changed := true
 	for changed {
 		changed = false
 		for parent, children := range dispTree {
-			tool, ok := out[parent]
+			tools, ok := out[parent]
 			if !ok {
 				continue
 			}
-			for _, child := range children {
-				if _, already := out[child]; !already {
-					out[child] = tool
-					changed = true
+			for tool := range tools {
+				for _, child := range children {
+					if addTool(child, tool) {
+						changed = true
+					}
 				}
 			}
 		}
 	}
 
-	// Log the transitive sub-handler count for diagnostics.
-	subCount := len(out) - len(directMap)
-	t.Logf("auto-derived %d sub-handler entries from dispatch tree (total: %d)", subCount, len(out))
+	result := make(map[string][]string, len(out))
+	subCount := 0
+	for fn, set := range out {
+		names := make([]string, 0, len(set))
+		for tool := range set {
+			names = append(names, tool)
+		}
+		sort.Strings(names)
+		result[fn] = names
+		if _, direct := directMap[fn]; !direct {
+			subCount++
+		}
+	}
 
-	return out
+	// Log the transitive sub-handler count for diagnostics.
+	t.Logf("auto-derived %d sub-handler entries from dispatch tree (total: %d)", subCount, len(result))
+
+	return result
 }
 
 // extractPackageConsts returns a map of const-name → string-value for all

@@ -154,9 +154,17 @@ func (s *Server) handleV2FsList(w http.ResponseWriter, r *http.Request) {
 			if de.Type()&os.ModeSymlink == 0 {
 				continue
 			}
-			target, terr := os.Stat(filepath.Join(abs, de.Name()))
-			if terr != nil || !target.IsDir() {
-				continue
+			// Never FOLLOW a symlink into a macOS TCC-protected home folder just
+			// to confirm it is a directory: on iCloud setups ~/Desktop and
+			// ~/Documents are symlinks into ~/Library/Mobile Documents, and that
+			// Stat fires a permission prompt on the very first default listing
+			// (v0.1.8 bug). List it by name; the one legitimate prompt happens
+			// only if the user explicitly clicks into it.
+			if !protectedHomeChild(home, abs, de.Name()) {
+				target, terr := os.Stat(filepath.Join(abs, de.Name()))
+				if terr != nil || !target.IsDir() {
+					continue
+				}
 			}
 		}
 		name := de.Name()
@@ -215,6 +223,14 @@ func homeShortcuts(home string) []v2FsShortcut {
 	}
 	out := make([]v2FsShortcut, 0, len(candidates))
 	for _, c := range candidates {
+		// Do not Stat-probe a candidate that lives in (or under) a macOS
+		// TCC-protected folder — that probe fires a permission prompt on the
+		// default home view before the user has navigated anywhere (v0.1.8 bug).
+		// On macOS this drops the Documents/Projects shortcuts; the folders are
+		// still reachable by name in the listing and via explicit navigation.
+		if protectedProbePath(home, c.Path) {
+			continue
+		}
 		if info, err := os.Stat(c.Path); err == nil && info.IsDir() {
 			out = append(out, c)
 		}

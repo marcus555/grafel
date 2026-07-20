@@ -23,13 +23,7 @@ import { useMeta } from "@/hooks/use-meta";
 import type { Group } from "@/data/types";
 import { cn } from "@/lib/utils";
 import { healthDisplay, healthTooltip } from "@/lib/health";
-
-function fidelityColor(f: number | null): string {
-  if (f == null) return "var(--text-4)";
-  if (f >= 0.8) return "var(--success)";
-  if (f >= 0.5) return "var(--warning)";
-  return "var(--danger)";
-}
+import { groupUnitLabel } from "@/lib/group-unit";
 
 function relativeTime(ms: number | null): string {
   if (!ms) return "never indexed";
@@ -49,9 +43,9 @@ function relativeTime(ms: number | null): string {
 const ENTITIES_TIP =
   "Every function, class, hook, component, endpoint and module Grafel extracted — the nodes of the graph.";
 const REPOS_TIP =
-  "Top-level git repositories in this group. Monorepos count as one; open the group to see sub-packages.";
-const FIDELITY_TIP =
-  "Confidence that the graph matches your codebase. Drops with stale, orphaned, or low-confidence entities.";
+  "Top-level git repositories in this group. Open the group to explore each one.";
+const MODULES_TIP =
+  "Module packages of this monorepo — the sub-projects Grafel indexed under a single repo root.";
 
 /* ---------- group card ---------- */
 
@@ -59,6 +53,7 @@ function GroupCard({ group, onPick, onManage }: { group: Group; onPick: () => vo
   const isEmpty = group.health === "unindexed";
   const health = healthDisplay(group.health);
   const tip = healthTooltip(group.health, group.fidelity);
+  const unit = groupUnitLabel(group);
 
   return (
     <Card className="group relative p-0 overflow-hidden text-left transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[var(--shadow-3)] focus-within:-translate-y-0.5">
@@ -103,7 +98,7 @@ function GroupCard({ group, onPick, onManage }: { group: Group; onPick: () => vo
             </div>
           ) : (
             <>
-              <dl className="mt-3 grid grid-cols-3 gap-2">
+              <dl className="mt-3 grid grid-cols-2 gap-2">
                 <div>
                   <dt className="text-xs text-text-3">
                     <InfoLabel label="Entities" hint={ENTITIES_TIP} />
@@ -114,20 +109,12 @@ function GroupCard({ group, onPick, onManage }: { group: Group; onPick: () => vo
                 </div>
                 <div>
                   <dt className="text-xs text-text-3">
-                    <InfoLabel label="Repos" hint={REPOS_TIP} />
+                    <InfoLabel
+                      label={unit.label}
+                      hint={unit.label === "Modules" ? MODULES_TIP : REPOS_TIP}
+                    />
                   </dt>
-                  <dd className="font-mono text-lg text-text-2 tabular-nums">{group.repos.length}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-text-3">
-                    <InfoLabel label="Fidelity" hint={FIDELITY_TIP} />
-                  </dt>
-                  <dd
-                    className="font-mono text-lg tabular-nums"
-                    style={{ color: fidelityColor(group.fidelity) }}
-                  >
-                    {group.fidelity == null ? "—" : `${Math.round(group.fidelity * 100)}%`}
-                  </dd>
+                  <dd className="font-mono text-lg text-text-2 tabular-nums">{unit.count}</dd>
                 </div>
               </dl>
 

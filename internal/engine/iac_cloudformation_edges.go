@@ -577,6 +577,14 @@ func applyCloudFormationEdges(args DetectorPassArgs) DetectorPassResult {
 		if r.typ == "AWS::Serverless::Function" {
 			cfnApplySAMFunction(r, fromID, knownIDs, resourceRef, emitEntity, emitEdge)
 		}
+
+		// Standalone AWS::Lambda::EventSourceMapping — #5801 Path B. SAM's
+		// inline Events: block (cfnApplySAMFunction above) already models the
+		// source→handler trigger for AWS::Serverless::Function; this handles
+		// the decoupled, non-SAM shape where the mapping is its own resource.
+		if r.typ == "AWS::Lambda::EventSourceMapping" {
+			cfnApplyEventSourceMapping(r, resources, knownIDs, emitEdge)
+		}
 	}
 
 	// --- Outputs.Export → producing-side export node. -----------------------
@@ -685,6 +693,93 @@ func cfnApplySAMFunction(
 				cfnTriggersEdgeKind, map[string]string{"iac_tool": "sam", "schedule": expr})
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Standalone AWS::Lambda::EventSourceMapping (#5801 Path B)
+// ---------------------------------------------------------------------------
+//
+// SAM's inline `Events:` block on an AWS::Serverless::Function (Path A, see
+// cfnApplySAMFunction above) already emits a handler --SUBSCRIBES_TO--> queue
+// trigger edge. A standalone `AWS::Lambda::EventSourceMapping` resource
+// decouples the same relationship — `EventSourceArn` names the queue/stream
+// and `FunctionName` names the handler — and, unhandled, produced only two
+// generic USES/DEPENDS_ON edges into the mapping resource itself (no
+// source→handler edge at all). This mirrors Path A's edge shape exactly
+// (same fromID=handler / toID=source / SUBSCRIBES_TO convention) so
+// ApplyAsyncTriggerEdges (#5686) synthesises the SAME inbound DELIVERS_TO
+// (source → handler) for both paths, and both render identically in
+// topology/impact/trace.
+//
+// Conservative / same-template only: EventSourceArn and FunctionName are
+// resolved via !Ref / !GetAtt X.<Attr> to a logical id declared in THIS
+// template. A logical id that isn't declared here (cross-stack, imported
+// ARN, etc.) is skipped — no guessed edge is emitted.
+var (
+	// EventSourceArn: !GetAtt OrdersStream.Arn | !GetAtt Table.StreamArn
+	cfnESMEventSourceArnGetAttRe = regexp.MustCompile(`EventSourceArn:\s*!GetAtt\s+([A-Za-z0-9]+)\.[\w.]+`)
+	// EventSourceArn: !Ref SomeQueue  (Ref of a queue resource yields its ARN
+	// for some resource types in practice; treated the same as GetAtt here).
+	cfnESMEventSourceArnRefRe = regexp.MustCompile(`EventSourceArn:\s*!Ref\s+([A-Za-z0-9]+)`)
+	// FunctionName: !Ref StreamHandlerFn
+	cfnESMFunctionNameRefRe = regexp.MustCompile(`FunctionName:\s*!Ref\s+([A-Za-z0-9]+)`)
+)
+
+// cfnApplyEventSourceMapping resolves a standalone AWS::Lambda::EventSourceMapping
+// resource's EventSourceArn and FunctionName intrinsics to logical ids declared
+// in the same template and, when both resolve, emits the handler-->source
+// SUBSCRIBES_TO edge matching the SAM inline-Events convention.
+func cfnApplyEventSourceMapping(
+	r cfnResource,
+	resources []cfnResource,
+	knownIDs map[string]string,
+	emitEdge func(fromID, toID, kind string, props map[string]string),
+) {
+	sourceLogical := ""
+	if m := cfnESMEventSourceArnGetAttRe.FindStringSubmatch(r.body); m != nil {
+		sourceLogical = m[1]
+	} else if m := cfnESMEventSourceArnRefRe.FindStringSubmatch(r.body); m != nil {
+		sourceLogical = m[1]
+	}
+	handlerLogical := ""
+	if m := cfnESMFunctionNameRefRe.FindStringSubmatch(r.body); m != nil {
+		handlerLogical = m[1]
+	}
+	if sourceLogical == "" || handlerLogical == "" {
+		return
+	}
+	sourceEID, ok := knownIDs[sourceLogical]
+	if !ok {
+		return // logical id not declared in this template — honest skip, no guess.
+	}
+	handlerEID, ok := knownIDs[handlerLogical]
+	if !ok {
+		return
+	}
+	// Default to cfnSchemaEntityKind (SCOPE.Schema): the only way a knownIDs
+	// hit is absent from `resources` is that it's a CFN Parameter, which the
+	// Parameters emission (and the generic Ref/GetAtt loop) records with
+	// cfnSchemaEntityKind — NOT cfnConfigEntityKind (reserved for cfn_export).
+	// Using SCOPE.Config here would produce a dangling edge endpoint under a
+	// Kind no entity was emitted with (#5801 Bug 1).
+	sourceKind := cfnSchemaEntityKind
+	handlerKind := cfnSchemaEntityKind
+	for _, rr := range resources {
+		switch rr.logicalID {
+		case sourceLogical:
+			sourceKind = cfnResourceKind(rr.typ)
+		case handlerLogical:
+			handlerKind = cfnResourceKind(rr.typ)
+		}
+	}
+	handlerFromID := cfnResourceKindFromID(handlerKind, handlerEID)
+	sourceToID := cfnResourceKindFromID(sourceKind, sourceEID)
+	emitEdge(handlerFromID, sourceToID, cfnSubscribesToKind,
+		map[string]string{
+			"iac_tool":      "cloudformation",
+			"trigger":       "EventSourceMapping",
+			"resource_type": r.typ,
+		})
 }
 
 // ---------------------------------------------------------------------------

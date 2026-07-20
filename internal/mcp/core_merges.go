@@ -65,11 +65,11 @@ func (s *Server) handleCoreOrient(ctx context.Context, req mcpapi.CallToolReques
 	case "clusters", "communities":
 		return s.handleListCommunities(ctx, req)
 	case "topology":
-		// handleTopology requires action=; default to orphan publishers scan
-		// when the caller did not pass one through the orient surface.
-		if argString(req, "action", "") == "" {
-			req = reqWithArgs(req, map[string]any{"action": "orphan_publishers"})
-		}
+		// #5781: handleTopology now defaults action to "channels" (the full topic
+		// listing with publisher/consumer counts) when none is supplied, so
+		// `orient view=topology` shows the message topics the caller expects
+		// rather than only the orphan-publisher subset. Explicit action=... still
+		// routes to the orphan/detail scans.
 		return s.handleTopology(ctx, req)
 	case "modules", "module_analysis":
 		return s.handleModuleAnalysis(ctx, req)
@@ -107,19 +107,47 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 //
 //	callers (default) → handleFindCallers   (inbound callers)
 //	callees           → handleFindCallees   (outbound callees)
-//	neighbors         → handleNeighbors(direction=both)
+//	neighbors         → handleNeighbors(direction=both), messaging-aware
 //	uses              → handleNavigates(direction=outgoing)  (NAVIGATES_TO out)
 //	used_by           → handleNavigates(direction=incoming)  (NAVIGATES_TO in)
+//	messaging         → handleMessagingRelated (topic pub/sub/delivery, cross-repo)
+//
+// #5782: direction=messaging surfaces a SCOPE.MessageTopic's producers
+// (PUBLISHES_TO), consumers (SUBSCRIBES_TO) and delivery handlers (DELIVERS_TO)
+// ACROSS every repo that touches the topic. The generic caller/callee handlers
+// dead-end on the first repo holding the resolved entity, so a topic whose
+// counterparts live in sibling repos surfaced nothing; the messaging case folds
+// both the per-repo adjacency and the cross-repo lg.Links topic joins.
+//
+// #5782 ask #3 (agent-facing gap): direction=messaging is the DISCOVERABLE
+// value now (documented in the tool schema), but an agent asking the generic
+// "what's connected to this?" question naturally omits direction and gets the
+// default neighbors/both — which, for a SCOPE.MessageTopic or
+// SCOPE.ChannelBinding, used to return an empty {callees:[],callers:[]} because
+// those kinds have no CALLS edges. neighbors now resolves the entity first: a
+// MessageTopic routes to the same cross-repo messaging traversal as
+// direction=messaging, and a ChannelBinding routes to its bound
+// channel/topic (BINDS_CHANNEL/BINDS_TOPIC). Anything else falls through to
+// the unchanged generic neighbors handler.
 func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	if e := validateDiscriminator("direction", argString(req, "direction", ""),
-		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by"},
-		[]string{"callers", "callees", "neighbors", "uses", "used_by"}); e != nil {
+		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by", "messaging", "msg", "topic", "pubsub"},
+		[]string{"callers", "callees", "neighbors", "uses", "used_by", "messaging"}); e != nil {
 		return e, nil
 	}
 	switch argString(req, "direction", "callers") {
 	case "callees":
 		return s.handleFindCallees(ctx, req)
+	case "messaging", "msg", "topic", "pubsub":
+		// "msg" is the abbreviation advertised in the tool's top-level
+		// description (server.go, trimmed to fit the 80-char budget); it must
+		// resolve identically to "messaging" so an agent copying the summary
+		// value does not hit a validation error (#5782 follow-up 1).
+		return s.handleMessagingRelated(ctx, req)
 	case "neighbors", "both":
+		if res := s.tryMessagingNeighbors(req); res != nil {
+			return res, nil
+		}
 		// handleNeighbors reads its OWN `direction` (in|out|both); the outer
 		// discriminator value "neighbors" is not a valid inner value, so rewrite.
 		return s.handleNeighbors(ctx, reqWithArgs(req, map[string]any{"direction": "both"}))
@@ -139,6 +167,11 @@ func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolReque
 //	hops (default) → handleSubgraph     (nodes+edges within N hops)
 //	expand         → handleGetNeighbors (immediate neighbours, both directions)
 func (s *Server) handleCoreSubgraph(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("mode", argString(req, "mode", ""),
+		[]string{"hops", "expand", "neighbors"},
+		[]string{"hops", "expand"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "mode", "hops") {
 	case "expand", "neighbors":
 		return s.handleGetNeighbors(ctx, req)
@@ -200,6 +233,13 @@ func (s *Server) handleCoreEndpoints(ctx context.Context, req mcpapi.CallToolReq
 	}
 	switch argString(req, "detail", "list") {
 	case "contract":
+		// #5784 Category 3: entity_id/qualified_name are conditionally required
+		// (one of the two) only for detail=contract; a pre-flight check here
+		// gives an aspect-aware message instead of a downstream hard-fail,
+		// mirroring grafel_diff's requireArgs pattern.
+		if argString(req, "entity_id", "") == "" && argString(req, "qualified_name", "") == "" {
+			return mcpapi.NewToolResultError("detail=contract requires entity_id or qualified_name"), nil
+		}
 		return s.handleEffectiveContract(ctx, req)
 	case "posture":
 		return s.handleEndpointPosture(ctx, req)

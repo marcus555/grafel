@@ -187,6 +187,9 @@ var frameworkEntryKindsMCP = map[string]bool{
 	"SCOPE.Endpoint":           true,
 	"SCOPE.Route":              true,
 	"SCOPE.MessageTopic":       true,
+	// #5782 (ADR-0025): a ChannelBinding is a config-side messaging
+	// declaration with no callers by design — never report it as dead code.
+	"SCOPE.ChannelBinding":     true,
 	"SCOPE.GrpcMethod":         true,
 	"SCOPE.ServerlessFunction": true,
 	"SCOPE.EventBusEvent":      true,

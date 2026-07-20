@@ -107,7 +107,7 @@ func TestRebuild_SubprocessReroute_RepublishesProgressAndCompletes(t *testing.T)
 		return nil
 	}
 	var linkCalls int32
-	linksFn := func(_ string) error { atomic.AddInt32(&linkCalls, 1); return nil }
+	linksFn := func(_ context.Context, _ string) error { atomic.AddInt32(&linkCalls, 1); return nil }
 
 	rebuilt, warning, err := daemonRebuildFuncCore(
 		1, proto.RebuildArgs{Group: group, Interactive: true}, inProcessIndexFn, linksFn)

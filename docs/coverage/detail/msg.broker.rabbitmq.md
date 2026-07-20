@@ -6,12 +6,13 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [message_broker](../by-category/message_broker.md)
 - **Subcategory:** Brokers
-- **Capability cells:** 3
+- **Capability cells:** 4
 
 ## Capabilities
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Config binding | 🔴 `missing` | — | 5782 | — | — |
 | Consumer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rabbitmq_edges.go` | — |
 | Producer extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rabbitmq_edges.go` | — |
 | Topic attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/rabbitmq_edges.go`<br>`internal/links/topic_pass.go` | rabbitmq:<queue/exchange> SCOPE.Queue node; topic_pass.go joins a PUBLISHES_TO producer (exchange 'orders') to a SUBSCRIBES_TO consumer of queue/exchange 'orders' sharing the node Name into a cross-repo producer->consumer topology edge (channel=rabbitmq). |
@@ -24,7 +25,7 @@ one is a separate detail page.
 
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
-| [`lang.rust.framework.lapin`](./lang.rust.framework.lapin.md) | rust | framework | 3 partial |
+| [`lang.rust.framework.lapin`](./lang.rust.framework.lapin.md) | rust | framework | 3 partial, 1 missing |
 
 ## Provenance
 

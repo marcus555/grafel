@@ -331,7 +331,7 @@ func TestDrainOnce_CoalescedTokensFlipOnlyOnSurvivorCompletion(t *testing.T) {
 	}
 	now := time.Now()
 	writeReb("TA", now.Add(-time.Second)) // older
-	writeReb("TB", now)                    // newer (survivor)
+	writeReb("TB", now)                   // newer (survivor)
 
 	block := make(chan struct{})
 	started := make(chan struct{})

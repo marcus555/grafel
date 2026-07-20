@@ -943,9 +943,12 @@ func TestImpactRadius_AmbiguousName_ReturnsCandidates(t *testing.T) {
 	}
 }
 
-// TestImpactRadius_HighDegree_TruncatesHonestly verifies #3925: a node with
-// more dependents than the cap returns a bounded result with an honest
-// truncation marker (no error, no unbounded payload).
+// TestImpactRadius_HighDegree_TruncatesHonestly verifies #3925/#5793: a node
+// with more dependents than the 500-cap returns a bounded result with an honest
+// truncation marker (no error, no unbounded payload). Post-#5793 the full
+// per-entity list is opt-in (detail=full) and the 500-cap is only the binding
+// constraint under a budget large enough not to shrink further, so this test
+// exercises that verbose path explicitly.
 func TestImpactRadius_HighDegree_TruncatesHonestly(t *testing.T) {
 	entities := []graph.Entity{
 		{ID: "ent-hub", Name: "hub", Kind: "Function", SourceFile: "hub.go"},
@@ -963,8 +966,10 @@ func TestImpactRadius_HighDegree_TruncatesHonestly(t *testing.T) {
 	srv := newTestServer(t, minDoc(entities, rels))
 
 	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
-		"entity_id": "ent-hub",
-		"hops":      float64(1),
+		"entity_id":    "ent-hub",
+		"hops":         float64(1),
+		"detail":       "full",
+		"token_budget": float64(400000), // large enough that the 500-cap binds, not bytes
 	})
 	if out["resolved"] != true {
 		t.Errorf("expected resolved=true, got %v", out["resolved"])

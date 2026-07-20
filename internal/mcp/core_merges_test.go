@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -47,28 +48,76 @@ func callBare(t *testing.T, fn func(context.Context, mcpapi.CallToolRequest) (*m
 	return resultText(res)
 }
 
-// normalizeForCompare makes a tool payload order-insensitive for comparison.
-// Several absorbed handlers (handleGetNeighbors, handleQueryGraph, …) build
-// their result from map iteration and emit rows in nondeterministic order; two
-// independent calls return the same SET shuffled. We parse the payload and, if
-// it is a JSON array, sort its elements by their canonical serialization so the
-// dispatch comparison checks content equivalence, not row order. Non-JSON or
-// non-array payloads are returned unchanged.
+// normalizeForCompare makes a tool payload order-insensitive AND
+// volatile-field-insensitive for comparison. Several absorbed handlers
+// (handleGetNeighbors, handleQueryGraph, …) build their result from map
+// iteration and emit rows in nondeterministic order; two independent calls
+// return the same SET shuffled. We parse the payload and, if it is a JSON
+// array, sort its elements by their canonical serialization so the dispatch
+// comparison checks content equivalence, not row order. Before comparing, any
+// "ts" field is stripped recursively (see stripVolatileFields) — some
+// handlers (e.g. handleFeedbackEvent, handleMetaEvent) stamp
+// time.Now().UTC().Format(time.RFC3339) independently on each call, and
+// RFC3339's 1-second resolution means a second-boundary crossing between the
+// canonical and absorbed-handler calls in assertSameDispatch would otherwise
+// make an identical payload compare unequal (TestMetaEventDispatch flake).
+// Non-JSON payloads are returned unchanged.
 func normalizeForCompare(s string) string {
-	var arr []json.RawMessage
-	if err := json.Unmarshal([]byte(s), &arr); err != nil {
-		return s // not a JSON array — compare verbatim
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return s // not JSON — compare verbatim
 	}
-	keys := make([]string, len(arr))
-	for i, e := range arr {
-		keys[i] = string(e)
+	v = stripVolatileFields(v)
+
+	if arr, ok := v.([]any); ok {
+		keys := make([]string, len(arr))
+		for i, e := range arr {
+			b, err := json.Marshal(e)
+			if err != nil {
+				return s
+			}
+			keys[i] = string(b)
+		}
+		sort.Strings(keys)
+		out, err := json.Marshal(keys)
+		if err != nil {
+			return s
+		}
+		return string(out)
 	}
-	sort.Strings(keys)
-	out, err := json.Marshal(keys)
+
+	out, err := json.Marshal(v)
 	if err != nil {
 		return s
 	}
 	return string(out)
+}
+
+// stripVolatileFields recursively removes any object key named "ts" — a
+// timestamp stamped independently by each of the two calls
+// assertSameDispatch makes, which legitimately differs run-to-run (or across
+// a second boundary) without indicating a real dispatch mismatch. All other
+// fields are preserved unchanged.
+func stripVolatileFields(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			if k == "ts" {
+				continue
+			}
+			out[k] = stripVolatileFields(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = stripVolatileFields(e)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // assertSameDispatch asserts the canonical dispatcher (with discriminator args)
@@ -102,11 +151,11 @@ func TestCoreOrientDispatch(t *testing.T) {
 	assertSameDispatch(t, "view=clusters", srv.handleCoreOrient, with(map[string]any{"view": "clusters"}), srv.handleListCommunities, base)
 	assertSameDispatch(t, "view=modules", srv.handleCoreOrient, with(map[string]any{"view": "modules"}), srv.handleModuleAnalysis, base)
 	assertSameDispatch(t, "view=stats", srv.handleCoreOrient, with(map[string]any{"view": "stats"}), srv.handleGraphStats, base)
-	// topology: dispatcher defaults action=orphan_publishers; compare with the
+	// topology: dispatcher defaults action=channels (#5781); compare with the
 	// same explicit action against the absorbed handler.
 	assertSameDispatch(t, "view=topology", srv.handleCoreOrient,
 		with(map[string]any{"view": "topology"}),
-		srv.handleTopology, with(map[string]any{"action": "orphan_publishers"}))
+		srv.handleTopology, with(map[string]any{"action": "channels"}))
 }
 
 // 2. grafel_find search= → query_graph (bm25) / search_entities (substring).
@@ -156,6 +205,34 @@ func TestCoreSubgraphDispatch(t *testing.T) {
 	assertSameDispatch(t, "mode=expand", srv.handleCoreSubgraph, map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "expand"}, srv.handleGetNeighbors, ent)
 }
 
+// 4b. Regression for #5784 bug 4: unlike every other CORE canonical tool
+// (trace kind=, related direction=, impact_radius scope=, find search=),
+// handleCoreSubgraph's mode= switch has no validateDiscriminator call — a
+// bogus mode= silently falls through the switch's default branch (the hops
+// path) instead of erroring. mode=neighbors (the accepted alias for expand)
+// must keep working post-fix.
+func TestCoreSubgraphModeValidation(t *testing.T) {
+	srv := coreTestServer(t)
+	ent := map[string]any{"group": "g", "entity_id": "r1::a2"}
+
+	bogus := map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "bogus"}
+	res, err := srv.handleCoreSubgraph(context.Background(), mcpapi.CallToolRequest{Params: mcpapi.CallToolParams{Arguments: bogus}})
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res == nil || !res.IsError {
+		t.Fatalf("mode=bogus should return a validation error, got: %v", res)
+	}
+	msg := resultText(res)
+	if !strings.Contains(msg, "hops") || !strings.Contains(msg, "expand") {
+		t.Errorf("mode=bogus error should name the valid modes (hops, expand), got: %s", msg)
+	}
+
+	// mode=neighbors (the expand alias) must still route to handleGetNeighbors.
+	assertSameDispatch(t, "mode=neighbors", srv.handleCoreSubgraph,
+		map[string]any{"group": "g", "entity_id": "r1::a2", "mode": "neighbors"}, srv.handleGetNeighbors, ent)
+}
+
 // 5. grafel_trace kind= → path/data/control/def_use/effects/flows/process.
 func TestCoreTraceDispatch(t *testing.T) {
 	srv := coreTestServer(t)
@@ -189,6 +266,38 @@ func TestCoreEndpointsDispatch(t *testing.T) {
 	ent := map[string]any{"group": "g", "entity_id": "r1::a3"}
 	assertSameDispatch(t, "detail=contract", srv.handleCoreEndpoints, map[string]any{"group": "g", "detail": "contract", "entity_id": "r1::a3"}, srv.handleEffectiveContract, ent)
 	assertSameDispatch(t, "detail=posture", srv.handleCoreEndpoints, map[string]any{"group": "g", "detail": "posture", "entity_id": "r1::a3"}, srv.handleEndpointPosture, ent)
+}
+
+// TestCoreEndpointsContractRequiresEntityID asserts detail=contract fails
+// with a clear, aspect-aware message when neither entity_id nor
+// qualified_name is supplied — the #5784 pre-flight check mirroring
+// grafel_diff's requireArgs pattern (core_merges.go handleCoreEndpoints).
+func TestCoreEndpointsContractRequiresEntityID(t *testing.T) {
+	srv := coreTestServer(t)
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "g", "detail": "contract"}
+	res, err := srv.handleCoreEndpoints(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handleCoreEndpoints: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected an error result when entity_id/qualified_name are both missing, got: %s", resultText(res))
+	}
+	if msg := resultText(res); !strings.Contains(msg, "entity_id") || !strings.Contains(msg, "qualified_name") {
+		t.Errorf("error message should mention both entity_id and qualified_name, got: %s", msg)
+	}
+
+	// qualified_name alone should satisfy the pre-flight check (may still
+	// fail downstream if it doesn't resolve, but must not hit our guard).
+	req2 := mcpapi.CallToolRequest{}
+	req2.Params.Arguments = map[string]any{"group": "g", "detail": "contract", "qualified_name": "r1.a3"}
+	res2, err := srv.handleCoreEndpoints(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("handleCoreEndpoints: %v", err)
+	}
+	if res2.IsError && strings.Contains(resultText(res2), "requires entity_id or qualified_name") {
+		t.Errorf("qualified_name alone should satisfy the pre-flight check, got: %s", resultText(res2))
+	}
 }
 
 // 7. grafel_impact_radius scope= → entity / changeset.

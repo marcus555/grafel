@@ -331,6 +331,74 @@ func TestV2DetectMCPTools(t *testing.T) {
 	}
 }
 
+// scanInspectAlreadyRegistered POSTs a scan/inspect for repoDir and returns the
+// AlreadyRegistered field of the reply.
+func scanInspectAlreadyRegistered(t *testing.T, ts *httptest.Server, repoDir string) string {
+	t.Helper()
+	body := `{"path":` + jsonQuote(repoDir) + `}`
+	resp, err := http.Post(ts.URL+"/api/v2/scan/inspect", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST scan/inspect: %v", err)
+	}
+	defer resp.Body.Close()
+	var env struct {
+		OK   bool               `json:"ok"`
+		Data v2ScanInspectReply `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !env.OK || !env.Data.Valid {
+		t.Fatalf("scan should be valid: %+v", env)
+	}
+	return env.Data.AlreadyRegistered
+}
+
+// writeManifest lays down a .grafel/group.json naming group under repoDir.
+func writeManifest(t *testing.T, repoDir, group string) {
+	t.Helper()
+	dir := filepath.Join(repoDir, ".grafel")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "group.json"), []byte(`{"group":`+jsonQuote(group)+`}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestV2ScanInspect_StaleManifestIgnored verifies Bug 2: a manifest naming a
+// group that no longer exists in the registry must NOT report AlreadyRegistered
+// (a deleted group's lingering manifest is a stale artifact, not a live
+// registration).
+func TestV2ScanInspect_StaleManifestIgnored(t *testing.T) {
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	repoDir := t.TempDir()
+	writeManifest(t, repoDir, "deleted-group")
+
+	if got := scanInspectAlreadyRegistered(t, ts, repoDir); got != "" {
+		t.Fatalf("AlreadyRegistered = %q; want empty (stale manifest for a deleted group)", got)
+	}
+}
+
+// TestV2ScanInspect_LiveManifestReported verifies the positive case: when the
+// manifest names a group that STILL exists, AlreadyRegistered is set.
+func TestV2ScanInspect_LiveManifestReported(t *testing.T) {
+	ts, s := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	if _, err := s.registry.CreateGroup("live-group"); err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	repoDir := t.TempDir()
+	writeManifest(t, repoDir, "live-group")
+
+	if got := scanInspectAlreadyRegistered(t, ts, repoDir); got != "live-group" {
+		t.Fatalf("AlreadyRegistered = %q; want %q", got, "live-group")
+	}
+}
+
 // jsonQuote quotes a string for safe embedding in a JSON literal.
 func jsonQuote(s string) string {
 	b, _ := json.Marshal(s)

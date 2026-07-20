@@ -48,6 +48,7 @@ import {
   JARVIS_GLOW,
 } from "@/lib/graph-colors";
 import { saveLayout, loadLayout, isDegenerateLayout, isLayoutHealthy } from "@/lib/graph-layout-cache";
+import { presettleToConvergence } from "@/lib/graph-presettle";
 import { isRenderableGraph, shouldStreamGrow } from "@/lib/graph-render-guard";
 import { shouldFitReplayStep } from "@/lib/replay-glow-visibility";
 import { shouldTrackSettleFit, isGenuineUserCameraMove } from "@/lib/settle-fit-follow";
@@ -252,6 +253,13 @@ export interface GraphCanvasProps {
    * non-streaming (full-payload / focus / reset) paths are unchanged.
    */
   streaming?: boolean;
+  /**
+   * "Instant layout" — when true, a fresh settle pre-runs the force simulation
+   * to convergence SYNCHRONOUSLY (no painted ticks) and pins the final layout in
+   * one frame, skipping the animated explode/settle. Default false keeps the
+   * animated path unchanged.
+   */
+  instantLayout?: boolean;
   onNodeClick: (node: GraphNode | null) => void;
   onNodeHover: (node: GraphNode | null) => void;
   onSettled: () => void;
@@ -327,6 +335,7 @@ function GraphCanvasInner(
     isFocusView,
     relayoutNonce,
     streaming = false,
+    instantLayout = false,
     onNodeClick,
     onNodeHover,
     onSettled,
@@ -372,6 +381,10 @@ function GraphCanvasInner(
   // #5455 — live streaming flag for the mount-only data-push / settle handlers.
   const streamingRef = useRef(streaming);
   streamingRef.current = streaming;
+  // "Instant layout" flag in a ref so the mount-stable kickFreshSettle reads the
+  // current preference without re-creating the settle callback.
+  const instantLayoutRef = useRef(instantLayout);
+  instantLayoutRef.current = instantLayout;
   // #5455 — number of points the engine currently holds laid-out positions for.
   // Used by the streaming data-push to detect which trailing nodes are NEW (just
   // arrived in this chunk) so it can seed them near a placed neighbor and re-heat
@@ -1383,6 +1396,19 @@ function GraphCanvasInner(
     g.setPointClusterStrength(p.clusterStrength);
     g.render();
     g.create();
+
+    // "Instant layout" — run the simulation to convergence SYNCHRONOUSLY (the
+    // render loop is paused inside presettleToConvergence, so no intermediate
+    // tick is ever painted) and pin the settled positions in one frame via
+    // doSettle. This skips the animated explode/settle entirely. The animated
+    // path below is preserved unchanged when the toggle is OFF.
+    if (instantLayoutRef.current) {
+      placedCountRef.current = p.positions.length / 2;
+      presettleToConvergence(g);
+      doSettleRef.current();
+      return;
+    }
+
     g.start(1);
     // #5462 — ARM the auto-follow window: this is a PROGRAMMATIC re-settle (the
     // user pressed Reset / changed group-by / a deep-link re-explode), so the
