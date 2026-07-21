@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -96,8 +97,13 @@ func knownRefsForGroup(groupName string) []string {
 			if ref == "" {
 				continue // skip _unknown sentinel
 			}
-			// Only count refs that have an actual graph.
-			if _, ferr := os.Stat(filepath.Join(refsDir, e.Name(), "graph.fb")); ferr != nil {
+			// Only count refs that have an actual graph. #5891: resolve the
+			// active generation (graph.<gen>.fb via the `current` pointer); a
+			// fresh repo has no flat graph.fb, so the hardcoded stat dropped the
+			// ref → ?ref=<branch> 400s. Mirror allRefsForRepo; keep the graph.json
+			// fallback so a json-only ref dir is still included (CurrentGraphPath
+			// returns the non-existent flat graph.fb path for a json-only dir).
+			if _, ferr := os.Stat(graph.CurrentGraphPath(filepath.Join(refsDir, e.Name()))); ferr != nil {
 				if _, ferr2 := os.Stat(filepath.Join(refsDir, e.Name(), "graph.json")); ferr2 != nil {
 					continue
 				}
@@ -134,7 +140,7 @@ func allRefsForRepo(repoPath string) []string {
 		if ref == "" {
 			continue
 		}
-		if _, ferr := os.Stat(filepath.Join(refsDir, e.Name(), "graph.fb")); ferr != nil {
+		if _, ferr := os.Stat(graph.CurrentGraphPath(filepath.Join(refsDir, e.Name()))); ferr != nil { // #5891
 			if _, ferr2 := os.Stat(filepath.Join(refsDir, e.Name(), "graph.json")); ferr2 != nil {
 				continue
 			}
