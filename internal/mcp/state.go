@@ -580,7 +580,20 @@ func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 			return
 		}
 		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
+		// ADR-0027: only when GRAFEL_SERVE_FROM_MMAP is ON does getByID source each
+		// row from the Reader + overlay side-table via LabelIndex.at (byte-equal to
+		// the overlaid Doc row), removing the Doc VALUE dependence. On the flag-off
+		// default path this stays the PR2 live-Doc heap copy — GC-safe, with NO
+		// handler-path mmap read. mmapSourced also short-circuits to the Doc copy
+		// whenever at() cannot serve an index (nil LabelIndex/Reader, JSON load).
+		mmapSourced := serveFromMMap() && lr.LabelIndex != nil
 		for i := range lr.Doc.Entities {
+			if mmapSourced {
+				if ent := lr.LabelIndex.at(int32(i)); ent != nil {
+					m[ent.ID] = ent
+					continue
+				}
+			}
 			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
 			m[ent.ID] = &ent
 		}
@@ -698,9 +711,14 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 		}
 		// ADR-0027 Cutover PR1: source the build from the resident mmap Reader
 		// when present (byte-identical to the Document build — same rows, same
-		// order). Falls back to the Document only when no graph.fb is mapped
-		// (JSON-only load / Open failure). Not flag-gated.
-		if lr.Reader != nil {
+		// order), ELSE the Document. Gated behind GRAFEL_SERVE_FROM_MMAP (default
+		// OFF): this getter runs on the HANDLER path (idxMu only), and a
+		// concurrent reload retire()s+munmaps the old Reader WITHOUT idxMu (F1's
+		// borrow protocol is inert → refs==0 → immediate munmap), so an
+		// unconditional Reader iteration here is a read-after-unmap SIGBUS (latent
+		// PR1 #5865). OFF → the GC-safe Document build; ON is DARK until the borrow
+		// protocol is wired into the read path. Nil-Reader always uses the Document.
+		if lr.Reader != nil && serveFromMMap() {
 			lr.adjacency = buildAdjacencyFromReader(lr.Reader, lr.Repo)
 		} else {
 			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
@@ -721,8 +739,10 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 			lr.callsAdj = &callsAdjacency{}
 			return
 		}
-		// ADR-0027 Cutover PR1: prefer the resident mmap Reader (see getAdjacency).
-		if lr.Reader != nil {
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
+		// Document. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency.
+		if lr.Reader != nil && serveFromMMap() {
 			lr.callsAdj = buildCallsAdjacencyFromReader(lr.Reader)
 		} else {
 			lr.callsAdj = buildCallsAdjacency(lr.Doc)
@@ -740,8 +760,10 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 			lr.stepAdj = map[string][]stepEdge{}
 			return
 		}
-		// ADR-0027 Cutover PR1: prefer the resident mmap Reader (see getAdjacency).
-		if lr.Reader != nil {
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
+		// Document. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency.
+		if lr.Reader != nil && serveFromMMap() {
 			lr.stepAdj = buildStepAdjacencyFromReader(lr.Reader)
 		} else {
 			lr.stepAdj = buildStepAdjacency(lr.Doc)
@@ -1162,10 +1184,12 @@ func (s *State) reloadLocked() (int, bool, error) {
 					//
 					// ADR-0027 Cutover PR1: count TESTS-kind edges off the freshly
 					// opened mmap Reader (Kind() read directly) rather than the
-					// materialized Document. Byte-neutral (Reader == Document's rows);
-					// falls back to doc.Relationships only when no graph.fb is mapped.
+					// materialized Document. Byte-neutral (Reader == Document's rows).
+					// Gated behind GRAFEL_SERVE_FROM_MMAP (default OFF) so the whole
+					// cutover shares ONE switch and no mmap read happens off the flag;
+					// falls back to doc.Relationships when OFF or no graph.fb is mapped.
 					testsCount := 0
-					if newRdr != nil {
+					if newRdr != nil && serveFromMMap() {
 						newRdr.IterateRelationships(func(rel *fb.Relationship) bool {
 							if string(rel.Kind()) == "TESTS" {
 								testsCount++
@@ -1734,6 +1758,20 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			continue
 		}
 		ents := lr.Doc.Entities
+		// ADR-0027 overlay SIDE-TABLE (built ONLY when GRAFEL_SERVE_FROM_MMAP is
+		// ON): a fresh entity-INDEX-keyed table of the 5 overlay fields alongside
+		// the (transitional) in-place Doc stamp, so the Reader-materialized read
+		// path (LabelIndex.at/getByID) can merge them without depending on lr.Doc
+		// for VALUES. Keyed by vector index i (== the LabelIndex/Reader position),
+		// resolved here because this loop already visits every entity by index and
+		// matches it to the overlay by ID. On the flag-off default path the table
+		// is left nil — the read path reads the overlaid Doc — so no resident cost
+		// is paid pre-flip.
+		buildSideTable := serveFromMMap()
+		var table map[int32]entityOverlay
+		if buildSideTable {
+			table = make(map[int32]entityOverlay)
+		}
 		for i := range ents {
 			eo, has := ov.Results[ents[i].ID]
 			if !has {
@@ -1747,6 +1785,28 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			ents[i].Centrality = &cen
 			ents[i].IsGodNode = eo.IsGodNode
 			ents[i].IsArticulationPt = eo.IsArticulationPoint
+			if buildSideTable {
+				// Independent heap copies (distinct pointers from the Doc stamp
+				// above) so the side-table remains valid after the PR7 Doc drop.
+				tcid := eo.CommunityID
+				tpr := eo.PageRank
+				tcen := eo.Centrality
+				table[int32(i)] = entityOverlay{
+					CommunityID:      &tcid,
+					PageRank:         &tpr,
+					Centrality:       &tcen,
+					IsGodNode:        eo.IsGodNode,
+					IsArticulationPt: eo.IsArticulationPoint,
+				}
+			}
+		}
+		// Publish the side-table onto the current LabelIndex generation BEFORE
+		// re-arming the lazy indexes below, so the next getByID build merges it.
+		// resetIndexes does NOT touch LabelIndex, so the table persists for the
+		// life of this generation and is reassigned on the next re-stamp. Only on
+		// the flag-on path; flag-off leaves lr.LabelIndex.overlay nil.
+		if buildSideTable && lr.LabelIndex != nil {
+			lr.LabelIndex.overlay = table
 		}
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo

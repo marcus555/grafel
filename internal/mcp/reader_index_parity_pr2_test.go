@@ -219,7 +219,11 @@ func docEntityByID(doc *graph.Document, id string) *graph.Entity {
 }
 
 // TestLabelIndexSurfacesOverlayStampedFields_PR2 is the load-bearing invariant
-// test for "values come from the overlaid Doc, NEVER the Reader".
+// test for "values come from the overlaid Doc, NEVER the Reader" on the DEFAULT
+// (GRAFEL_SERVE_FROM_MMAP OFF) serve path — which is what production runs and
+// what the ADR-0027 overlay side-table leaves byte-identical until PR7 turns the
+// flag on. (The flag-ON Reader+side-table flip path is covered separately by
+// TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc.)
 //
 // The other PR2 value-parity tests compare two DOC-sourced indexes over a
 // fixture that stamps NO overlay-only fields, so they would pass even if at()
@@ -231,10 +235,10 @@ func docEntityByID(doc *graph.Document, id string) *graph.Entity {
 // <group>-algo.json overlay, NOT in graph.fb, so the resident Reader carries
 // only sentinels/zero for them — then asserts LabelIndex.ByID / Lookup / getByID
 // SURFACE the stamped values. Mutation check (verified once, then reverted):
-// flipping LabelIndex.at() to materialize from the Reader
+// flipping the DEFAULT LabelIndex.at() path to materialize from the Reader
 // (graph.MaterializeEntity(l.reader, idx)) makes this test FAIL — ByID(id::a)
 // surfaces the graph.fb sentinel CommunityID, not the stamped 80 — proving the
-// Doc value-source is load-bearing.
+// Doc value-source is load-bearing for the flag-off path.
 func TestLabelIndexSurfacesOverlayStampedFields_PR2(t *testing.T) {
 	t.Parallel()
 	doc, r := loadParityIndexFixture(t)

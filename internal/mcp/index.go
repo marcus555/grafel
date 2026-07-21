@@ -38,14 +38,55 @@ import (
 // the value source to the Reader is a PR7 concern gated on re-plumbing the
 // overlay off the in-place Doc mutation.
 type LabelIndex struct {
-	// doc is the value-materialization source: at() copies doc.Entities[idx].
-	// It is the LIVE per-repo Document, so lookups observe post-load in-place
-	// overlay stamps (behavior-neutral, see the type doc).
+	// doc is retained as the JSON-only (nil-reader) value-materialization source
+	// and the bounds oracle. When reader != nil, at() materializes the BASE
+	// entity from the mmap Reader (graph.MaterializeEntity) instead and merges
+	// the 5 group-algo overlay fields from the side-table below — so the index
+	// path no longer depends on doc.Entities for VALUES (the PR7 prerequisite).
 	doc *graph.Document
+
+	// reader is the resident mmap Reader whose entity rows back this index
+	// generation (set by BuildLabelIndexFromReader). Nil on the JSON-only /
+	// no-graph.fb fallback, where at() reads doc.Entities directly. Reads happen
+	// on the same s.mu-serialized read path that today reads lr.Doc; a reload
+	// rebuilds the whole LabelIndex (fresh reader), so at() never dereferences a
+	// reader across its own generation.
+	reader *fbreader.Reader
+
+	// overlay is the ADR-0027 overlay SIDE-TABLE: entity INDEX (int32 vector
+	// position) -> the 5 group-algo values that are NOT authoritative in graph.fb
+	// (per-repo Pass-4 was removed, so graph.fb carries permanent sentinels for
+	// them). Populated by applyGroupAlgoOverlay from the SAME <group>-algo.json
+	// data it stamps onto lr.Doc, keyed by resolving each overlay entity ID to
+	// its vector index via byID. at() merges these onto the Reader-materialized
+	// base so a lookup is byte-equal to today's overlaid Doc row. Only entities
+	// WITH an overlay entry are present; a miss leaves the fb sentinel.
+	//
+	// Built ONLY when GRAFEL_SERVE_FROM_MMAP is ON — the flag-off default path
+	// reads the overlaid Doc and never consults this table, so the ~single-digit
+	// MB of resident memory is not paid until the flip is enabled. Rebuilt/
+	// invalidated with the LabelIndex itself on every reload and reassigned on
+	// every overlay re-stamp. nil on the flag-off path and until an overlay is
+	// applied.
+	overlay map[int32]entityOverlay
 
 	byID    map[string]int32
 	byLabel map[string][]int32
 	byQName map[string]int32
+}
+
+// entityOverlay holds the 5 group-algo fields that live in the
+// <group>-algo.json overlay rather than in graph.fb (CommunityID / PageRank /
+// Centrality are pointers so nil distinguishes "no overlay value" from a real
+// zero, matching graph.Entity's own representation; the two flags are plain
+// bools). Independent heap copies (distinct from the Doc stamp's pointers) so
+// the table remains a valid source after the PR7 Doc drop.
+type entityOverlay struct {
+	CommunityID      *int
+	PageRank         *float64
+	Centrality       *float64
+	IsGodNode        bool
+	IsArticulationPt bool
 }
 
 // keyInterner canonicalizes repeated map-key strings built during a single
@@ -142,6 +183,7 @@ func BuildLabelIndex(doc *graph.Document) *LabelIndex {
 func BuildLabelIndexFromReader(r *fbreader.Reader, doc *graph.Document) *LabelIndex {
 	idx, ki := newLabelIndex(r.EntityCount())
 	idx.doc = doc
+	idx.reader = r
 	var i int32
 	r.IterateEntities(func(e *fb.Entity) bool {
 		idx.add(ki, i, string(e.Id()), string(e.Name()), string(e.QualifiedName()))
@@ -151,13 +193,42 @@ func BuildLabelIndexFromReader(r *fbreader.Reader, doc *graph.Document) *LabelIn
 	return idx
 }
 
-// at materializes a fresh heap-copy entity for the given vector index by copying
-// the LIVE doc.Entities[idx] row. Each call returns a DISTINCT pointer (see the
-// LabelIndex pointer-instability contract). Only ever called with an index that
-// came from one of the maps, so the bounds/nil guards are defensive.
+// at materializes a fresh heap-copy entity for the given vector index. Each call
+// returns a DISTINCT pointer (see the LabelIndex pointer-instability contract).
+// Only ever called with an index that came from one of the maps, so the
+// bounds/nil guards are defensive.
+//
+// Value source is gated by GRAFEL_SERVE_FROM_MMAP (default OFF; read once at
+// package load, per ADR-0027 §F3):
+//
+//   - OFF (default / production): copy the LIVE doc.Entities[idx] row, exactly as
+//     PR2 does — GC-safe, byte-identical, and with NO handler-path mmap read. The
+//     mmap Reader is NOT dereferenced here on the OFF path.
+//   - ON (the PR7 flip, DARK until the F1/F2/F3 borrow protocol is wired into the
+//     read path): decode the BASE entity from the resident graph.fb via
+//     graph.MaterializeEntity (byte-identical to the Document row for the same
+//     bytes) and merge the 5 group-algo overlay fields from the side-table — so
+//     the value source is the Reader + side-table, NOT lr.Doc. Byte-equal to
+//     today's overlaid Doc row (TestOverlaySideTable_ReaderMaterializeByteEqualsOverlaidDoc).
+//
+// The ON path reads the mmap on the handler path; it MUST NOT be enabled in
+// production until a borrow is held across the read (else a concurrent reload's
+// munmap is a read-after-unmap). That wiring + flipping the flag is a later step.
+// The nil-Reader case (JSON-only / no graph.fb) always uses the Doc copy.
 func (l *LabelIndex) at(idx int32) *graph.Entity {
 	if l == nil || l.doc == nil || idx < 0 || int(idx) >= len(l.doc.Entities) {
 		return nil
+	}
+	if l.reader != nil && serveFromMMap() {
+		e := graph.MaterializeEntity(l.reader, int(idx))
+		if ov, ok := l.overlay[idx]; ok {
+			e.CommunityID = ov.CommunityID
+			e.PageRank = ov.PageRank
+			e.Centrality = ov.Centrality
+			e.IsGodNode = ov.IsGodNode
+			e.IsArticulationPt = ov.IsArticulationPt
+		}
+		return &e
 	}
 	e := l.doc.Entities[idx] // heap copy — a fresh pointer, not an alias into Doc
 	return &e
