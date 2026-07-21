@@ -62,18 +62,17 @@ func (f fastAPIContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
-				continue
+				return true
 			}
 			if !isFastAPIEndpoint(e) {
-				continue
+				return true
 			}
 			handler := frameworkHandlerEntity(r, e)
 			grp := fastapiGroupLeaf(e, handler)
 			if grp == "" || strings.ToLower(grp) != wantLeaf {
-				continue
+				return true
 			}
 			c := composeFastAPIContract(r, e, handler)
 			key := groupKey{repo: r.Repo, group: grp}
@@ -84,7 +83,8 @@ func (f fastAPIContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf strin
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-		}
+			return true
+		})
 	}
 	if len(groups) == 0 {
 		return nil, false
@@ -112,7 +112,7 @@ func isFastAPIEndpoint(e *graph.Entity) bool {
 		return true
 	}
 	if fw == "python" {
-		p := e.Properties
+		p := e.PropsSnapshot()
 		if p["response_model"] != "" || p["status_code"] != "" ||
 			p["request_body_type"] != "" {
 			return true
@@ -136,10 +136,10 @@ func fastapiGroupLeaf(ep *graph.Entity, handler *graph.Entity) string {
 			return leaf
 		}
 	}
-	if c := ep.Properties["controller"]; c != "" {
+	if c := ep.PropGet("controller"); c != "" {
 		return leafAfterDot(c)
 	}
-	if m := ep.Properties["module"]; m != "" {
+	if m := ep.PropGet("module"); m != "" {
 		return leafAfterDot(m)
 	}
 	return moduleStemFromPath(ep.SourceFile)
@@ -165,8 +165,8 @@ func moduleStemFromPath(p string) string {
 func composeFastAPIContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity) effectiveContract {
 	c := effectiveContract{
 		Framework: "fastapi",
-		Verb:      strings.ToUpper(ep.Properties["verb"]),
-		Path:      ep.Properties["path"],
+		Verb:      strings.ToUpper(ep.PropGet("verb")),
+		Path:      ep.PropGet("path"),
 		Kind:      "explicit",
 	}
 	if handler != nil {
@@ -180,7 +180,7 @@ func composeFastAPIContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Enti
 
 	c.RequestFields = composeFrameworkRequestFields(r, ep, handler)
 	c.ResponseBranches = composeFastAPIResponseBranches(r, ep, handler)
-	if rm := ep.Properties["response_model"]; rm != "" {
+	if rm := ep.PropGet("response_model"); rm != "" {
 		c.Serializer = rm
 	}
 	applyFrameworkAuthPosture(r, "fastapi", ep, handler, &c)
@@ -197,7 +197,7 @@ func composeFastAPIContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Enti
 func composeFastAPIResponseBranches(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity) []contractResponseBranch {
 	branches := composeFrameworkResponseBranches(r, handler)
 
-	if sc := strings.TrimSpace(ep.Properties["status_code"]); sc != "" {
+	if sc := strings.TrimSpace(ep.PropGet("status_code")); sc != "" {
 		if code, err := strconv.Atoi(sc); err == nil && code > 0 {
 			present := false
 			for _, b := range branches {
@@ -207,7 +207,7 @@ func composeFastAPIResponseBranches(r *LoadedRepo, ep *graph.Entity, handler *gr
 				}
 			}
 			if !present {
-				shape := ep.Properties["response_model"]
+				shape := ep.PropGet("response_model")
 				branches = append(branches, contractResponseBranch{
 					Status:  code,
 					Shape:   shape,

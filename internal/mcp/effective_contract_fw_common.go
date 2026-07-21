@@ -50,12 +50,11 @@ import (
 // nestHandlerEntity but is framework-neutral.
 func frameworkHandlerEntity(r *LoadedRepo, ep *graph.Entity) *graph.Entity {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	for _, ed := range adj.Incoming(ep.ID) {
 		if !strings.EqualFold(ed.kind, "IMPLEMENTS") {
 			continue
 		}
-		if h := byID[ed.target]; h != nil {
+		if h, _ := r.getByIDOne(ed.target); h != nil {
 			return h
 		}
 	}
@@ -78,10 +77,10 @@ func frameworkControllerLeaf(ep *graph.Entity, handler *graph.Entity) string {
 			return leafAfterDot(owning)
 		}
 	}
-	if c := ep.Properties["controller"]; c != "" {
+	if c := ep.PropGet("controller"); c != "" {
 		return leafAfterDot(c)
 	}
-	if sh := ep.Properties["source_handler"]; sh != "" {
+	if sh := ep.PropGet("source_handler"); sh != "" {
 		if i := strings.LastIndex(sh, ":"); i >= 0 {
 			sh = sh[i+1:]
 		}
@@ -106,16 +105,15 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 	}
 	prefix := dtoType + "."
 	var out []contractField
-	for i := range r.Doc.Entities {
-		e := &r.Doc.Entities[i]
+	r.forEachEntity(func(e *graph.Entity) bool {
 		if !strings.EqualFold(e.Kind, "SCOPE.Schema") || e.Subtype != "field" {
-			continue
+			return true
 		}
-		owner := strings.TrimSpace(e.Properties["parent_class"])
+		owner := strings.TrimSpace(e.PropGet("parent_class"))
 		if owner == "" {
-			owner = strings.TrimSpace(e.Properties["owner_class"])
+			owner = strings.TrimSpace(e.PropGet("owner_class"))
 		}
-		name := strings.TrimSpace(e.Properties["field_name"])
+		name := strings.TrimSpace(e.PropGet("field_name"))
 		switch {
 		case owner != "" && owner == dtoType:
 			// matched by parent_class property — preferred.
@@ -124,15 +122,15 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 				name = strings.TrimSuffix(strings.TrimPrefix(e.Name, prefix), "?")
 			}
 		default:
-			continue
+			return true
 		}
 		if name == "" {
 			name = strings.TrimSuffix(strings.TrimPrefix(e.Name, prefix), "?")
 		}
 		if name == "" {
-			continue
+			return true
 		}
-		typ := strings.TrimSpace(e.Properties["field_type"])
+		typ := strings.TrimSpace(e.PropGet("field_type"))
 		if typ == "" {
 			typ = fieldTypeFromSignature(e.Signature)
 		}
@@ -142,7 +140,8 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 			Required: fieldRequiredFromProps(e),
 			Source:   "dto_field",
 		})
-	}
+		return true
+	})
 	return out
 }
 
@@ -150,10 +149,10 @@ func dtoFieldsByProperty(r *LoadedRepo, dtoType string) []contractField {
 // stamped props: an explicit optional="true" wins (optional), else required is
 // the default unless the entity name carries the JS `?` optional marker.
 func fieldRequiredFromProps(e *graph.Entity) bool {
-	if strings.EqualFold(strings.TrimSpace(e.Properties["optional"]), "true") {
+	if strings.EqualFold(strings.TrimSpace(e.PropGet("optional")), "true") {
 		return false
 	}
-	if strings.EqualFold(strings.TrimSpace(e.Properties["required"]), "true") {
+	if strings.EqualFold(strings.TrimSpace(e.PropGet("required")), "true") {
 		return true
 	}
 	if strings.HasSuffix(e.Name, "?") {
@@ -184,8 +183,8 @@ func scalarParamsFromProps(ep *graph.Entity) []contractField {
 			})
 		}
 	}
-	add(ep.Properties["path_params"], "param")
-	add(ep.Properties["query_params"], "query")
+	add(ep.PropGet("path_params"), "param")
+	add(ep.PropGet("query_params"), "query")
 	return out
 }
 
@@ -334,7 +333,7 @@ func composeFrameworkRequestFields(r *LoadedRepo, ep *graph.Entity, handler *gra
 		fields = append(fields, f)
 	}
 
-	if dtoType := ep.Properties["request_body_type"]; dtoType != "" {
+	if dtoType := ep.PropGet("request_body_type"); dtoType != "" {
 		for _, mf := range dtoFieldsByProperty(r, dtoType) {
 			mf.In = "body"
 			mf.DTO = dtoType

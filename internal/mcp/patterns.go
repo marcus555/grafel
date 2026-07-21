@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cajasmota/grafel/internal/agentpatterns"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 	"math"
@@ -541,18 +542,18 @@ func deriveScopeFromExemplars(exemplars []string, lg *LoadedGroup) agentpatterns
 				if r.Doc == nil {
 					continue
 				}
-				if e := r.LabelIndex.ByID[local]; e != nil {
+				if e := r.LabelIndex.ByID(local); e != nil {
 					infos = append(infos, eInfo{repo: r.Repo, srcFile: e.SourceFile, language: e.Language})
 					break
 				}
-				if e := r.LabelIndex.ByID[eid]; e != nil {
+				if e := r.LabelIndex.ByID(eid); e != nil {
 					infos = append(infos, eInfo{repo: r.Repo, srcFile: e.SourceFile, language: e.Language})
 					break
 				}
 			}
 		} else {
 			if r, ok := lg.Repos[rName]; ok && r.Doc != nil {
-				if e := r.LabelIndex.ByID[local]; e != nil {
+				if e := r.LabelIndex.ByID(local); e != nil {
 					infos = append(infos, eInfo{repo: rName, srcFile: e.SourceFile, language: e.Language})
 				}
 			}
@@ -727,11 +728,12 @@ func repoLanguages(r *LoadedRepo) []string {
 		return nil
 	}
 	set := map[string]bool{}
-	for i := range r.Doc.Entities {
-		if lang := r.Doc.Entities[i].Language; lang != "" {
+	r.forEachEntity(func(e *graph.Entity) bool {
+		if lang := e.Language; lang != "" {
 			set[lang] = true
 		}
-	}
+		return true
+	})
 	return sortedKeys(set)
 }
 

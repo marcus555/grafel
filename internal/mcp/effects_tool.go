@@ -135,7 +135,7 @@ func (s *Server) handleEffects(_ context.Context, req mcpapi.CallToolRequest) (*
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if e, ok := r.LabelIndex.ByID[local]; ok {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				out := buildEffectsPayload(r.Repo, e, sidecar)
 				attachBranchesFacet(out, r, e, wantBranches)
 				attachEffectContextsFacet(out, r, e, wantEffectCtx)
@@ -388,8 +388,8 @@ func buildEffectsPayload(repo string, e *graph.Entity, sidecar map[string]effect
 
 	// Fallback: in-memory properties (populated only during a live link run).
 	rawEffs := ""
-	if e.Properties != nil {
-		rawEffs = e.Properties[links.EffectPropertyKeyList]
+	if e.PropLen() > 0 {
+		rawEffs = e.PropGet(links.EffectPropertyKeyList)
 	}
 	if rawEffs == "" {
 		out["effects"] = []string{}
@@ -400,15 +400,15 @@ func buildEffectsPayload(repo string, e *graph.Entity, sidecar map[string]effect
 		return out
 	}
 	effs := splitNonEmpty(rawEffs)
-	confs := parseConfidences(e.Properties[links.EffectPropertyKeyConfidence])
+	confs := parseConfidences(e.PropGet(links.EffectPropertyKeyConfidence))
 	out["effects"] = effs
-	out["effect_source"] = e.Properties[links.EffectPropertyKeySource]
+	out["effect_source"] = e.PropGet(links.EffectPropertyKeySource)
 	out["confidences"] = confs
 	out["confidence"] = maxConfidence(confs)
-	if sinks := parseSinks(e.Properties[links.EffectPropertyKeySinks]); len(sinks) > 0 {
+	if sinks := parseSinks(e.PropGet(links.EffectPropertyKeySinks)); len(sinks) > 0 {
 		out["sinks"] = sinks
 	}
-	out["explanation"] = explanationFor(effs, e.Properties[links.EffectPropertyKeySource])
+	out["explanation"] = explanationFor(effs, e.PropGet(links.EffectPropertyKeySource))
 	return out
 }
 

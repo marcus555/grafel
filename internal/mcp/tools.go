@@ -680,9 +680,8 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			if qHave && len(qVec) == r.Semantic.Dims {
 				semIDs := r.Semantic.Search(qVec, 10)
 				semHits := make([]Hit, 0, len(semIDs))
-				byID := r.getByID()
 				for _, s := range semIDs {
-					if e, ok := byID[s.ID]; ok {
+					if e, ok := r.getByIDOne(s.ID); ok {
 						semHits = append(semHits, Hit{Entity: e, Score: s.Score, Source: "semantic"})
 					}
 				}
@@ -904,7 +903,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					expandTruncated = true
 					break
 				}
-				if e, ok := sc.repo.LabelIndex.ByID[nid]; ok {
+				if e := sc.repo.LabelIndex.ByID(nid); e != nil {
 					add(sc.repo.Repo, e, sc.hit.Score/float64(d+1))
 				}
 			}
@@ -918,7 +917,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					expandTruncated = true
 					break
 				}
-				from := sc.repo.LabelIndex.ByID[nid]
+				from := sc.repo.LabelIndex.ByID(nid)
 				if from == nil {
 					continue
 				}
@@ -933,7 +932,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 					if !seen[prefixedID(sc.repo.Repo, e.target)] {
 						continue
 					}
-					to := sc.repo.LabelIndex.ByID[e.target]
+					to := sc.repo.LabelIndex.ByID(e.target)
 					if to == nil {
 						continue
 					}
@@ -1028,7 +1027,7 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 		// Fast path: use pre-sorted cache (built lazily on first ranking use).
 		if topK := r.getTopKPageRank(); len(topK) > 0 {
 			topID := topK[0]
-			e := r.getByID()[topID]
+			e, _ := r.getByIDOne(topID)
 			if e == nil {
 				continue
 			}
@@ -1043,8 +1042,7 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 			continue
 		}
 		// Slow path fallback (no cache — e.g. unit tests without buildTopKPageRank).
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			pr := 0.0
 			if e.PageRank != nil {
 				pr = *e.PageRank
@@ -1053,7 +1051,8 @@ func pickFallback(repos []*LoadedRepo) *fallbackPick {
 				bestPR = pr
 				best = &fallbackPick{repo: r, entity: e}
 			}
-		}
+			return true
+		})
 	}
 	return best
 }
@@ -1126,24 +1125,29 @@ func enumerateByKind(all []scored, repos []*LoadedRepo, kindFilter string, inclu
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
+		capReached := false
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if len(out) >= foldCap {
-				return out
+				capReached = true
+				return false
 			}
-			e := &r.Doc.Entities[i]
 			if !matchesKindFilter(e, kindFilter) {
-				continue
+				return true
 			}
 			if seen[r] != nil && seen[r][e.ID] {
-				continue
+				return true
 			}
 			if !includeNoise && isNoise(e) {
-				continue
+				return true
 			}
 			if !entityPassesConfidence(e, minConfidence) {
-				continue
+				return true
 			}
 			out = append(out, scored{repo: r, hit: Hit{Entity: e, Score: 0.0001, Source: "kind_filter"}})
+			return true
+		})
+		if capReached {
+			return out
 		}
 	}
 	return out
@@ -1276,7 +1280,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if e, ok := r.LabelIndex.ByID[local]; ok {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				scopeIsOne := len(repos) == 1
 				out := serializeEntity(r.Repo, e, scopeIsOne, verbose)
 				if includeAlgo {
@@ -1425,7 +1429,7 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 			continue
 		}
 		r := &rels[e.relIdx]
-		if r.Properties["resolved_by"] != "agent-repair" {
+		if r.PropGet("resolved_by") != "agent-repair" {
 			continue
 		}
 		toID := r.ToID
@@ -1437,10 +1441,10 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 			"target":      toID,
 			"resolved_by": "agent-repair",
 		}
-		if v := r.Properties["resolved_by_agent"]; v != "" {
+		if v := r.PropGet("resolved_by_agent"); v != "" {
 			entry["resolved_by_agent"] = v
 		}
-		if v := r.Properties["repair_reasoning"]; v != "" {
+		if v := r.PropGet("repair_reasoning"); v != "" {
 			entry["repair_reasoning"] = v
 		}
 		out = append(out, entry)
@@ -1501,7 +1505,6 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 	}
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
-	byID := lr.getByID()
 	for _, ed := range lr.getAdjacency().Outgoing(e.ID) {
 		if !strings.EqualFold(ed.kind, "CALLS") {
 			continue
@@ -1515,7 +1518,7 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 			"target_path": "",
 		}
 		// Resolve target path from entity index.
-		if tgt := byID[ed.target]; tgt != nil {
+		if tgt, _ := lr.getByIDOne(ed.target); tgt != nil {
 			entry["target_path"] = tgt.SourceFile
 			entry["target"] = tgt.Name
 			if !scopeIsOne {
@@ -1532,12 +1535,12 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		// Line number from relationship properties.
 		lineNum := 0
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
 			}
-			if v := rels[ed.relIdx].Properties["via"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("via"); v != "" {
 				entry["via"] = v
 			}
 		}
@@ -1621,7 +1624,6 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
-	byID := lr.getByID()
 	for _, ed := range lr.getAdjacency().Incoming(e.ID) {
 		// #5686: besides direct CALLS callers, surface the async trigger of an
 		// event-driven handler. A DELIVERS_TO edge (topic → handler) is the
@@ -1635,7 +1637,7 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 			continue
 		}
 		callerID := ed.target // Incoming: ed.target is the FromID (the caller)
-		callerEntity := byID[callerID]
+		callerEntity, _ := lr.getByIDOne(callerID)
 
 		sourceID := callerID
 		sourcePath := ""
@@ -1658,7 +1660,7 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 
 		lineNum := 0
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
@@ -1713,12 +1715,12 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 		}
 		r := &rels[ed.relIdx]
 		line := 0
-		if v := r.Properties["line"]; v != "" {
+		if v := r.PropGet("line"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
 				line = n
 			}
 		}
-		literal := r.Properties["literal"]
+		literal := r.PropGet("literal")
 		other := ed.target
 		if !scopeIsOne {
 			// Synthetic "var:<name>" stubs are not prefixed (they are not
@@ -1888,7 +1890,7 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 			"line":      0,
 		}
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+			if v := rels[ed.relIdx].PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					entry["line"] = n
 				}
@@ -2121,8 +2123,8 @@ func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool, verbose ...b
 		// god-node/articulation flags are added here so a verbose inspect is a
 		// superset of include= (#5396).
 		addAlgoFields(out, e)
-		if len(e.Properties) > 0 {
-			out["properties"] = e.Properties
+		if e.PropLen() > 0 {
+			out["properties"] = e.PropsSnapshot()
 		}
 	}
 	return out
@@ -2180,7 +2182,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	var startRepo *LoadedRepo
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			start = r.LabelIndex.ByID[local]
+			start = r.LabelIndex.ByID(local)
 			startRepo = r
 		}
 	}
@@ -2216,7 +2218,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 		if nid == start.ID {
 			continue
 		}
-		e := startRepo.LabelIndex.ByID[nid]
+		e := startRepo.LabelIndex.ByID(nid)
 		if e == nil {
 			continue
 		}
@@ -2325,7 +2327,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 		out := []edge{}
 		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
 			a := r.getAdjacency()
-			for _, e := range a.out[local] {
+			for _, e := range a.Outgoing(local) {
 				out = append(out, edge{
 					target: prefixedID(repo, e.target),
 					kind:   e.kind,
@@ -2409,7 +2411,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 func normalizePrefixed(lg *LoadedGroup, s string) string {
 	if r, l := splitPrefixed(s); r != "" {
 		if rr, ok := lg.Repos[r]; ok && rr.Doc != nil {
-			if _, ok := rr.LabelIndex.ByID[l]; ok {
+			if rr.LabelIndex.HasID(l) {
 				return s
 			}
 		}
@@ -2433,12 +2435,18 @@ func normalizePrefixed(lg *LoadedGroup, s string) string {
 			if r.Doc == nil {
 				continue
 			}
-			for i := range r.Doc.Entities {
-				for _, me := range mroOutboundEdges(r, r.Doc.Entities[i].ID) {
+			found := false
+			r.forEachEntity(func(e *graph.Entity) bool {
+				for _, me := range mroOutboundEdges(r, e.ID) {
 					if me.External && me.Target == s {
-						return prefixedID(r.Repo, s)
+						found = true
+						return false
 					}
 				}
+				return true
+			})
+			if found {
+				return prefixedID(r.Repo, s)
 			}
 		}
 	}
@@ -2521,10 +2529,10 @@ func groupCommunities(lg *LoadedGroup, repoFilter []string, minSize, topLimit in
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			cid := r.Doc.Entities[i].CommunityID
+		r.forEachEntity(func(e *graph.Entity) bool {
+			cid := e.CommunityID
 			if cid == nil {
-				continue
+				return true
 			}
 			m := reposByCommunity[*cid]
 			if m == nil {
@@ -2532,7 +2540,8 @@ func groupCommunities(lg *LoadedGroup, repoFilter []string, minSize, topLimit in
 				reposByCommunity[*cid] = m
 			}
 			m[r.Repo] = struct{}{}
-		}
+			return true
+		})
 	}
 
 	// repo_filter membership: a community surfaces if any of its repos is named.
@@ -3264,13 +3273,14 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 				continue
 			}
 			seen := map[int]struct{}{}
-			for i := range r.Doc.Entities {
-				cid := r.Doc.Entities[i].CommunityID
+			r.forEachEntity(func(e *graph.Entity) bool {
+				cid := e.CommunityID
 				if cid == nil || *cid < 0 {
-					continue
+					return true
 				}
 				seen[*cid] = struct{}{}
-			}
+				return true
+			})
 			overlayCommByRepo[n] = len(seen)
 		}
 	}

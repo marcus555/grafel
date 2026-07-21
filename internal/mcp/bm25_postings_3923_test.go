@@ -24,24 +24,42 @@ func (b *BM25Index) bruteSearch(query string, limit int) []Hit {
 		di    int
 		score float64
 	}
+	// After the #5871 L1 compaction the per-doc tf lives inline in the postings
+	// list, so reconstruct a per-(term,doc) tf lookup for the brute-force scan.
+	// #5871 L2: postings is indexed by interned term ID, so resolve via
+	// b.terms first.
+	tfByTermDoc := make(map[string]map[int32]float32)
+	for term, id := range b.terms {
+		plist := b.postings[id]
+		m := make(map[int32]float32, len(plist))
+		for _, p := range plist {
+			m[p.doc] = p.tf
+		}
+		tfByTermDoc[term] = m
+	}
 	res := []sd{}
-	for i, d := range b.docs {
+	for i := 0; i < b.totalDocs; i++ {
+		di := int32(i)
 		score := 0.0
 		for _, t := range terms {
-			tf, ok := d.tf[t]
-			if !ok {
+			id, ok := b.terms[t]
+			df := 0
+			if ok {
+				df = len(b.postings[id])
+			}
+			if df == 0 {
 				continue
 			}
-			df := b.df[t]
-			if df == 0 {
+			tf, ok := tfByTermDoc[t][di]
+			if !ok {
 				continue
 			}
 			idf := math.Log(1.0 + (float64(b.totalDocs)-float64(df)+0.5)/(float64(df)+0.5))
 			lenNorm := 1.0
 			if b.avgLen > 0 {
-				lenNorm = 1 - bm25B + bm25B*(d.length/b.avgLen)
+				lenNorm = 1 - bm25B + bm25B*(float64(b.docLen[di])/b.avgLen)
 			}
-			score += idf * (tf * (bm25K1 + 1)) / (tf + bm25K1*lenNorm)
+			score += idf * (float64(tf) * (bm25K1 + 1)) / (float64(tf) + bm25K1*lenNorm)
 		}
 		if score > 0 {
 			res = append(res, sd{i, score})
@@ -59,7 +77,9 @@ func (b *BM25Index) bruteSearch(query string, limit int) []Hit {
 	}
 	out := make([]Hit, len(res))
 	for i, r := range res {
-		out[i] = Hit{Entity: b.entities[r.di], Score: r.score}
+		// #5871 L4: entities holds vector indices, resolved to *graph.Entity
+		// via b.resolve (set by BuildBM25 to a live-Document heap-copy closure).
+		out[i] = Hit{Entity: b.resolve(b.entities[r.di]), Score: r.score}
 	}
 	return out
 }
@@ -91,7 +111,10 @@ func TestBM25SearchMatchesBruteForce(t *testing.T) {
 				t.Fatalf("q=%q lim=%d length mismatch: got=%d want=%d", q, lim, len(got), len(want))
 			}
 			for i := range got {
-				if got[i].Entity != want[i].Entity {
+				// #5871 L4: entities are resolved to FRESH heap copies on demand
+				// (b.resolve), so identity is by ID, not pointer — every resolve
+				// call returns a distinct *graph.Entity for the same logical row.
+				if got[i].Entity.ID != want[i].Entity.ID {
 					t.Fatalf("q=%q lim=%d pos=%d entity mismatch: got=%s want=%s",
 						q, lim, i, got[i].Entity.ID, want[i].Entity.ID)
 				}
@@ -115,7 +138,11 @@ func TestBM25PostingsSelective(t *testing.T) {
 	// A common token appears in (nearly) every doc; a rare numeric token in a
 	// small subset. The rare term's postings list must be a small fraction of
 	// the corpus — that is what bounds Search to the matching subset.
-	rare := idx.postings["1234"]
+	rareID, ok := idx.terms["1234"]
+	if !ok {
+		t.Fatalf("expected rare token '1234' to be interned")
+	}
+	rare := idx.postings[rareID]
 	if len(rare) == 0 {
 		t.Fatalf("expected rare token '1234' to have postings")
 	}
@@ -125,8 +152,8 @@ func TestBM25PostingsSelective(t *testing.T) {
 	// Postings indices must be strictly ascending (built in doc order) so the
 	// ascending tie-break holds without re-sorting.
 	for i := 1; i < len(rare); i++ {
-		if rare[i] <= rare[i-1] {
-			t.Fatalf("postings not strictly ascending at %d: %d <= %d", i, rare[i], rare[i-1])
+		if rare[i].doc <= rare[i-1].doc {
+			t.Fatalf("postings not strictly ascending at %d: %d <= %d", i, rare[i].doc, rare[i-1].doc)
 		}
 	}
 }

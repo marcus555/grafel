@@ -131,7 +131,7 @@ func (s *Server) handleEndpointPosture(_ context.Context, req mcpapi.CallToolReq
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
-			if e, ok := r.LabelIndex.ByID[local]; ok {
+			if e := r.LabelIndex.ByID(local); e != nil {
 				return jsonResult(buildPosturePayload(r, e)), nil
 			}
 		}
@@ -192,28 +192,28 @@ func (s *Server) endpointPostureScan(req mcpapi.CallToolRequest, repos []*Loaded
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			// Skip the synthetic convergence nodes themselves — they are the
 			// targets of the edges, never the subject of a posture query.
 			if strings.EqualFold(e.Kind, kindExceptionType) || strings.EqualFold(e.Kind, kindFeatureFlag) {
-				continue
+				return true
 			}
 			p := buildPosturePayload(r, e)
 			if !p.HasPosture {
-				continue
+				return true
 			}
 			if facet != "" && !postureHasFacet(p, facet) {
-				continue
+				return true
 			}
 			if pathContains != "" && !strings.Contains(strings.ToLower(p.Path), pathContains) {
-				continue
+				return true
 			}
 			if method != "" && !strings.EqualFold(p.Method, method) {
-				continue
+				return true
 			}
 			out = append(out, p)
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -277,9 +277,9 @@ func buildPosturePayload(r *LoadedRepo, e *graph.Entity) posturePayload {
 		SourceFile: e.SourceFile,
 		StartLine:  e.StartLine,
 	}
-	if e.Properties != nil {
-		p.Method = e.Properties["verb"]
-		p.Path = e.Properties["path"]
+	if e.PropLen() > 0 {
+		p.Method = e.PropGet("verb")
+		p.Path = e.PropGet("path")
 	}
 
 	// --- error_flow: resolve THROWS / CATCHES edge targets to type names. ---
@@ -294,9 +294,9 @@ func buildPosturePayload(r *LoadedRepo, e *graph.Entity) posturePayload {
 	}
 
 	// --- property-derived facets. ---
-	p.RateLimit = collectProps(e.Properties, postureRateLimitKeys)
-	p.Deprecation = collectProps(e.Properties, postureDeprecationKeys)
-	p.Auth = collectProps(e.Properties, postureAuthKeys)
+	p.RateLimit = collectProps(e.PropsSnapshot(), postureRateLimitKeys)
+	p.Deprecation = collectProps(e.PropsSnapshot(), postureDeprecationKeys)
+	p.Auth = collectProps(e.PropsSnapshot(), postureAuthKeys)
 
 	p.HasPosture = p.ErrorFlow != nil ||
 		len(p.FeatureGate) > 0 ||
@@ -312,7 +312,6 @@ func buildPosturePayload(r *LoadedRepo, e *graph.Entity) posturePayload {
 // sorted for stable output.
 func resolveErrorFlow(r *LoadedRepo, localID string) errorFlow {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	throws := map[string]bool{}
 	catches := map[string]bool{}
 	for _, ed := range adj.Outgoing(localID) {
@@ -325,7 +324,8 @@ func resolveErrorFlow(r *LoadedRepo, localID string) errorFlow {
 		default:
 			continue
 		}
-		name := exceptionTypeName(byID[ed.target], ed.target)
+		tgtEnt, _ := r.getByIDOne(ed.target)
+		name := exceptionTypeName(tgtEnt, ed.target)
 		if name != "" {
 			bucket[name] = true
 		}
@@ -349,13 +349,13 @@ func exceptionTypeName(e *graph.Entity, rawTarget string) string {
 // synthetic id/name prefix). De-duplicated and sorted.
 func resolveFeatureGates(r *LoadedRepo, localID string) []string {
 	adj := r.getAdjacency()
-	byID := r.getByID()
 	keys := map[string]bool{}
 	for _, ed := range adj.Outgoing(localID) {
 		if !strings.EqualFold(ed.kind, edgeGatedBy) {
 			continue
 		}
-		key := featureFlagKey(byID[ed.target], ed.target)
+		tgtEnt, _ := r.getByIDOne(ed.target)
+		key := featureFlagKey(tgtEnt, ed.target)
 		if key != "" {
 			keys[key] = true
 		}

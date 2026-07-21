@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -121,24 +120,6 @@ func PersistConfiguredRSSBudgetMB(mb int64) error {
 		return err
 	}
 	return nil
-}
-
-// WorkstationRSSBudgetMB returns the admission budget preset used when switching
-// to workstation mode. It scales with RAM and caps at 8 GB, matching the mode's
-// intent without making background installs heavy by default.
-func WorkstationRSSBudgetMB() int64 {
-	total := process.TotalMemoryMB()
-	if total <= 0 {
-		return 2048
-	}
-	budget := total / 8
-	if budget < 2048 {
-		budget = 2048
-	}
-	if budget > 8192 {
-		budget = 8192
-	}
-	return budget
 }
 
 func renameReplace(src, dst string) error {

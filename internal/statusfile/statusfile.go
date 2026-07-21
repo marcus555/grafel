@@ -97,6 +97,44 @@ type File struct {
 	// last completed index succeeded.
 	LastErr string `json:"last_err,omitempty"`
 
+	// ReindexRequired is true when the on-disk graph.fb this repo is CURRENTLY
+	// SERVING was written by an older grafel build than this engine's
+	// fbversion.Version supports (see graph.ReindexRequiredReason). Unlike
+	// LastErr (a snapshot of the most recent completed index ATTEMPT, which
+	// can go stale — the field isn't proactively cleared by the passage of
+	// time), this is recomputed fresh from the actual graph.fb bytes on EVERY
+	// status-plane write, so it is always the authoritative, up-to-the-second
+	// answer to "is the graph this repo is serving right now trustworthy?".
+	//
+	// #(reindex-required PR1): detection + state ONLY. Nothing in this slice
+	// auto-reindexes or prompts the user — a reader (statusline, `grafel
+	// status --json`) must render this as an explicit, non-green state
+	// instead of silently reporting "current"/idle, so the incompatibility is
+	// never hidden. Populating the prompt/auto-reindex flow is a later PR.
+	ReindexRequired bool `json:"reindex_required,omitempty"`
+	// ReindexReason is a human-readable explanation set whenever
+	// ReindexRequired is true — names both the found and required graph.fb
+	// format versions and points at the fix (`grafel index <repo>`). Empty
+	// when ReindexRequired is false.
+	ReindexReason string `json:"reindex_reason,omitempty"`
+
+	// LastRebuildFailure records the most recent FAILED `grafel rebuild` for
+	// this repo — e.g. the per-repo watchdog SIGKILL (#5143's
+	// defaultPerRepoRebuildTimeout) or any other hard rebuild failure — so a
+	// watchdog firing is never silent (#5822 sub-ask 3). Before this field
+	// existed, a watchdog timeout discarded the result entirely: nothing was
+	// persisted, so `grafel status` kept showing the PREVIOUS (stale) index
+	// with no error or warning, and the only trace was daemon.err.
+	//
+	// This is an ADDITIONAL marker, never a replacement for the last-good
+	// graph: a repo can have both a fresh, queryable graph.fb from an OLDER
+	// successful run AND a LastRebuildFailure from a more recent failed
+	// attempt. It is nil when no rebuild has ever failed, or once cleared by
+	// a subsequent SUCCESSFUL rebuild of this repo (see
+	// internal/daemon.ClearRebuildFailure) — a stale FAILED line must never
+	// persist after a good rebuild.
+	LastRebuildFailure *RebuildFailure `json:"last_rebuild_failure,omitempty"`
+
 	// State mirrors indexstate.RepoState.State (one of "current", "queued",
 	// "indexing", "dirty") — added #5729 PR3 so grafel_index_status can be
 	// reconstructed by a serve process with no in-process scheduler. Empty on
@@ -171,6 +209,25 @@ type File struct {
 	// implementation) — a reader must not treat 0 as "idle", only as
 	// "unknown", and should omit the CPU portion of the readout when zero.
 	CPUPct float64 `json:"cpu_pct,omitempty"`
+}
+
+// RebuildFailure is the "last rebuild FAILED" marker recorded onto a per-repo
+// File (see File.LastRebuildFailure) — #5822 sub-ask 3. It surfaces a hard
+// rebuild failure (most notably the per-repo watchdog SIGKILL, #5143) that
+// would otherwise be discarded silently, leaving `grafel status` showing a
+// stale index with no indication anything went wrong.
+type RebuildFailure struct {
+	// Reason is a short human-readable cause, e.g. "repo index timed out
+	// after 30m0s (still running in background)" — the same message surfaced
+	// to daemon.err at the moment the watchdog fired.
+	Reason string `json:"reason"`
+	// At is the wall-clock time the failure was recorded.
+	At time.Time `json:"at"`
+	// Ref is the git ref the failed rebuild was targeting, when known.
+	Ref string `json:"ref,omitempty"`
+	// Commit is the abbreviated commit SHA the failed rebuild was targeting,
+	// when known.
+	Commit string `json:"commit,omitempty"`
 }
 
 // statusSubdir is the directory name under GRAFEL_HOME holding one file per

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/coverage"
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // coverageFreshness is the freshness verdict for a group's ingested
@@ -83,14 +84,13 @@ func computeCoverageFreshness(lg *LoadedGroup) coverageFreshness {
 		if g := lr.Doc.GeneratedAt; g.After(f.indexedAt) {
 			f.indexedAt = g
 		}
-		for i := range lr.Doc.Entities {
-			e := &lr.Doc.Entities[i]
-			if len(e.Properties) == 0 {
-				continue
+		lr.forEachEntity(func(e *graph.Entity) bool {
+			if e.PropLen() == 0 {
+				return true
 			}
-			src := e.Properties[coverage.PropCoverageSource]
+			src := e.PropGet(coverage.PropCoverageSource)
 			if src == "" {
-				continue
+				return true
 			}
 			f.ingested = true
 			f.entities++
@@ -99,10 +99,11 @@ func computeCoverageFreshness(lg *LoadedGroup) coverageFreshness {
 			}
 			// RFC3339 timestamps sort lexicographically, so a string compare
 			// picks the most recent measurement without parsing.
-			if at := e.Properties[coverage.PropCoverageMeasAt]; at > f.measuredAt {
+			if at := e.PropGet(coverage.PropCoverageMeasAt); at > f.measuredAt {
 				f.measuredAt = at
 			}
-		}
+			return true
+		})
 	}
 
 	// Verdict only when both sides of the comparison exist.

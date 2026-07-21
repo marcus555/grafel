@@ -1405,8 +1405,8 @@ func serializeEntity(repo string, e *graph.Entity) map[string]any {
 	if e.CommunityID != nil {
 		out["community_id"] = *e.CommunityID
 	}
-	if len(e.Properties) > 0 {
-		out["properties"] = e.Properties
+	if e.PropLen() > 0 {
+		out["properties"] = e.PropsSnapshot()
 	}
 	return out
 }
@@ -1434,7 +1434,7 @@ func groupTopFrameworks(grp *DashGroup, cap int) []string {
 				kind != "Endpoint" && kind != "Route" {
 				continue
 			}
-			if fw := e.Properties["framework"]; fw != "" {
+			if fw := e.PropGet("framework"); fw != "" {
 				freq[fw]++
 			}
 		}

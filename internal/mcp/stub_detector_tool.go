@@ -156,19 +156,18 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 		callsAdj := r.getCallsAdj()
 		byID := r.getByID()
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDefinitionKind(e.Kind) {
-				continue
+				return true
 			}
-			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
-				continue
+			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
+				return true
 			}
-			method := strings.ToUpper(strings.TrimSpace(e.Properties["verb"]))
-			rawPath := e.Properties["path"]
+			method := strings.ToUpper(strings.TrimSpace(e.PropGet("verb")))
+			rawPath := e.PropGet("path")
 			key := newEndpointJoinKey(method, rawPath)
 			if filter != nil && (filter.method != key.method || filter.path != key.path) {
-				continue
+				return true
 			}
 
 			label := endpointLabel(method, rawPath)
@@ -176,7 +175,7 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 			oracleEntry, ok := oracleIdx[key]
 			if !ok {
 				unlinked = append(unlinked, label)
-				continue
+				return true
 			}
 
 			v3Eff := computeEndpointEffects(r.Repo, e, hres, callsAdj, byID, v3Effs, v3HasEffectData)
@@ -204,7 +203,8 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 			res.PartialStubSupported = supported
 
 			results = append(results, res)
-		}
+			return true
+		})
 	}
 
 	// Deterministic order: likely_stub first (highest confidence), then by
@@ -305,10 +305,9 @@ func buildStubHandlerResolution(r *LoadedRepo) *stubHandlerResolution {
 		e := byID[id]
 		return e != nil && !isDefinitionKind(e.Kind)
 	}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		if !stubHandlerResolveEdgeKinds[rel.Kind] {
-			continue
+			return true
 		}
 		switch {
 		case isDef(rel.ToID) && isHandler(rel.FromID): // handler --IMPLEMENTS--> def
@@ -316,7 +315,8 @@ func buildStubHandlerResolution(r *LoadedRepo) *stubHandlerResolution {
 		case isDef(rel.FromID) && isHandler(rel.ToID): // def --ROUTES_TO--> handler
 			res.handlerOf[rel.FromID] = appendUniqueStr(res.handlerOf[rel.FromID], rel.ToID)
 		}
-	}
+		return true
+	})
 	return res
 }
 
@@ -347,7 +347,7 @@ func computeEndpointEffects(
 	repoSlug string,
 	def *graph.Entity,
 	hres *stubHandlerResolution,
-	callsAdj map[string][]string,
+	callsAdj *callsAdjacency,
 	byID map[string]*graph.Entity,
 	sidecar map[string]effectsSidecarEntry,
 	groupHasEffectData bool,
@@ -383,7 +383,7 @@ func computeEndpointEffects(
 		// Depth is bounded by the node cap + visited guard; the dashboard uses a
 		// depth counter too, but a node cap alone bounds the walk and keeps this
 		// simpler. Stop expanding once the node budget is hit.
-		for _, to := range callsAdj[cur] {
+		for _, to := range callsAdj.Get(cur) {
 			if visited[to] {
 				continue
 			}
@@ -417,8 +417,8 @@ func effectsForLocalEntity(
 	if entry, ok := sidecar[pid]; ok {
 		return entry.Effects, true
 	}
-	if e := byID[local]; e != nil && e.Properties != nil {
-		if raw := strings.TrimSpace(e.Properties["effects"]); raw != "" {
+	if e := byID[local]; e != nil && e.PropLen() > 0 {
+		if raw := strings.TrimSpace(e.PropGet("effects")); raw != "" {
 			return splitNonEmpty(raw), true
 		}
 	}
@@ -438,22 +438,22 @@ func buildEndpointEffectsIndex(lg *LoadedGroup, sidecar map[string]effectsSideca
 		hres := buildStubHandlerResolution(r)
 		callsAdj := r.getCallsAdj()
 		byID := r.getByID()
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isDefinitionKind(e.Kind) {
-				continue
+				return true
 			}
-			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
-				continue
+			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
+				return true
 			}
-			key := newEndpointJoinKey(e.Properties["verb"], e.Properties["path"])
+			key := newEndpointJoinKey(e.PropGet("verb"), e.PropGet("path"))
 			eff := computeEndpointEffects(r.Repo, e, hres, callsAdj, byID, sidecar, groupHasEffectData)
 			if existing, ok := idx[key]; ok {
 				idx[key] = mergeStubEffects(existing, eff)
 			} else {
 				idx[key] = eff
 			}
-		}
+			return true
+		})
 	}
 	return idx
 }
@@ -502,11 +502,17 @@ func groupHasEffectProps(lg *LoadedGroup) bool {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			p := r.Doc.Entities[i].Properties
+		found := false
+		r.forEachEntity(func(e *graph.Entity) bool {
+			p := e.PropsSnapshot()
 			if p != nil && strings.TrimSpace(p["effects"]) != "" {
-				return true
+				found = true
+				return false
 			}
+			return true
+		})
+		if found {
+			return true
 		}
 	}
 	return false

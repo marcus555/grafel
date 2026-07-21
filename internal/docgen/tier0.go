@@ -388,7 +388,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 				neighbours = append(neighbours, *n)
 				neighbourKinds = append(neighbourKinds, rel.Kind)
 				neighbourDirections = append(neighbourDirections, dir)
-				neighbourProperties = append(neighbourProperties, rel.Properties)
+				neighbourProperties = append(neighbourProperties, rel.PropsSnapshot())
 			}
 		}
 	}
@@ -408,7 +408,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 		// dependencies on the class's neighbour_briefs. Cap the total
 		// expansion at classMethodHopCap so a god-class with hundreds of
 		// methods doesn't blow up the bundle.
-		if seed != nil && isClassSeedForMethodHop(seed) {
+		if seed != nil && isClassSeedForMethodHop(graph.EntityViewOf(seed)) {
 			classMethodHopExpand(seed.ID, allRels, byID,
 				&neighbours, &neighbourKinds, &neighbourDirections, &neighbourProperties, seen)
 		}
@@ -424,7 +424,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 		// surface on the Module's bundle. The first walk above already
 		// added the file entity itself as a neighbour (CONTAINS); this
 		// pass surfaces its outbound IMPORTS / inbound CALLS / etc.
-		if isPythonModuleEntity(seed) {
+		if isPythonModuleEntity(graph.EntityViewOf(seed)) {
 			for _, rel := range allRels {
 				if rel.Kind != "CONTAINS" || rel.FromID != seed.ID {
 					continue
@@ -451,14 +451,14 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 // surface the IMPORTS edges attached to the parallel file SCOPE.Component
 // (#2020). The check is intentionally narrow — only the python Module
 // emission has this dual-entity shape today.
-func isPythonModuleEntity(e *graph.Entity) bool {
+func isPythonModuleEntity(e graph.EntityView) bool {
 	if e == nil {
 		return false
 	}
-	if e.Kind != "Module" {
+	if e.Kind() != "Module" {
 		return false
 	}
-	return e.Language == "python" || e.Language == ""
+	return e.Language() == "python" || e.Language() == ""
 }
 
 // classMethodHopCap bounds the number of depth-2 neighbours added by
@@ -478,13 +478,13 @@ const classMethodHopCap = 25
 // Module / file / function / operation kinds are intentionally excluded
 // so the second-hop walk runs only where the dogfood evidence found
 // useful: per-class api/flows/patterns sections.
-func isClassSeedForMethodHop(seed *graph.Entity) bool {
+func isClassSeedForMethodHop(seed graph.EntityView) bool {
 	if seed == nil {
 		return false
 	}
-	switch seed.Kind {
+	switch seed.Kind() {
 	case "SCOPE.Component":
-		switch seed.Subtype {
+		switch seed.Subtype() {
 		case "class", "view", "viewset", "model", "controller", "service", "repository":
 			return true
 		}
@@ -580,9 +580,8 @@ func classMethodHopExpand(
 		// Preserve any existing per-edge Properties stamped by the
 		// extractor (#2018 carries cross_repo / import_alias / etc.).
 		props := map[string]string{"via_method_hop": "true"}
-		for k, v := range rel.Properties {
-			props[k] = v
-		}
+		rel.
+			PropRange(func(k, v string) bool { props[k] = v; return true })
 		*neighbourProperties = append(*neighbourProperties, props)
 		added++
 	}
@@ -709,12 +708,11 @@ func renderSection(section string, seed *graph.Entity, neighbours []graph.Entity
 			b.WriteString(fmt.Sprintf("- **PageRank:** %.6f\n", *seed.PageRank))
 		}
 		// Properties
-		if len(seed.Properties) > 0 {
+		if seed.PropLen() > 0 {
 			b.WriteString("\n**Properties:**\n\n")
 			b.WriteString("```\n")
-			for k, v := range seed.Properties {
-				b.WriteString(fmt.Sprintf("%s = %s\n", k, v))
-			}
+			seed.
+				PropRange(func(k, v string) bool { b.WriteString(fmt.Sprintf("%s = %s\n", k, v)); return true })
 			b.WriteString("```\n")
 		}
 	}

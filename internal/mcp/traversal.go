@@ -7,12 +7,131 @@ import (
 	"strconv"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
+	"github.com/cajasmota/grafel/internal/graph/fbreader"
 )
 
-// adjacency is a per-repo precomputed neighbor map.
+// adjacency is a per-repo precomputed neighbor index (#5852: CSR layout).
+//
+// Historically this was two map[string][]edge (out/in), ~290 MB resident at
+// corpus scale (~3.70M edge structs across ~753k distinct keys — 225,143 out
+// keys / 528,424 in keys — each edge{target string; kind string; weight
+// float64; relIdx int} costing 48 bytes plus map/slice overhead). That's
+// replaced here with a compressed-sparse-row (CSR) layout over a dense int32
+// node index: one shared map[string]int32 (nodes) instead of two
+// map[string][]edge, plus four parallel primitive-typed arrays per direction
+// (offsets/targets/kindCode/weight/relIdx) instead of 3.70M individually
+// heap-allocated-via-append edge structs. kind strings are dictionary-encoded
+// (small cardinality — extractors emit a few dozen relationship kinds) and
+// weight is stored as float32 (edgeWeight is a heuristic score; the values
+// observed in practice — small integers or simple decimals from
+// Properties["count"]/["weight"] — round-trip exactly through float32; see
+// TestCSR5852_WeightFallbackSemantics).
+//
+// The external contract is unchanged: Outgoing(id)/Incoming(id) still return
+// []edge in the original per-node relationship-append order, so none of the
+// ~20 reader call-sites change. The []edge slice is materialized on demand
+// from the CSR row inside the accessor.
 type adjacency struct {
-	out map[string][]edge
-	in  map[string][]edge
+	nodes nodeIndex
+	kinds kindDict
+	out   csrDir
+	in    csrDir
+}
+
+// nodeIndex assigns a dense int32 code to every string id encountered while
+// building adjacency (either side of a relationship). Codes are local to one
+// build (one adjacency instance) and index into `ids`. When ids coincide with
+// interned graph.Entity.ID / Relationship.FromID/ToID strings (the common
+// case post-#5847 interning), no new string backing is allocated here — only
+// the code slice/map.
+type nodeIndex struct {
+	ids  []string
+	code map[string]int32
+}
+
+func (n *nodeIndex) intern(id string) int32 {
+	if n.code == nil {
+		n.code = make(map[string]int32)
+	}
+	if c, ok := n.code[id]; ok {
+		return c
+	}
+	c := int32(len(n.ids))
+	n.ids = append(n.ids, id)
+	n.code[id] = c
+	return c
+}
+
+func (n *nodeIndex) lookup(id string) (int32, bool) {
+	c, ok := n.code[id]
+	return c, ok
+}
+
+// kindDict dictionary-encodes relationship-kind strings (CALLS, IMPORTS,
+// REFERENCES, ...) to a small integer code. Cardinality is a few dozen kinds
+// across all extractors, well within uint16 (and uint8) range; uint16 is used
+// for headroom without meaningfully changing the memory profile (2 bytes vs.
+// 1 is negligible against the string-per-edge cost it replaces).
+type kindDict struct {
+	names []string
+	code  map[string]uint16
+}
+
+func (k *kindDict) intern(name string) uint16 {
+	if k.code == nil {
+		k.code = make(map[string]uint16)
+	}
+	if c, ok := k.code[name]; ok {
+		return c
+	}
+	c := uint16(len(k.names))
+	k.names = append(k.names, name)
+	k.code[name] = c
+	return c
+}
+
+func (k *kindDict) name(c uint16) string {
+	if int(c) >= len(k.names) {
+		return ""
+	}
+	return k.names[c]
+}
+
+// csrDir is one direction (out or in) of the CSR adjacency: row i's edges are
+// the half-open slice [offsets[i], offsets[i+1]) into targets/kindCode/
+// weight/relIdx. len(offsets) == number of distinct nodes + 1.
+type csrDir struct {
+	offsets  []int32
+	targets  []int32 // node-index code of the edge's other endpoint
+	kindCode []uint16
+	weight   []float32
+	relIdx   []int32
+}
+
+// edges materializes the []edge row for node id, preserving the original
+// relationship-append order (rows are filled in doc.Relationships order
+// during build). Returns nil when id is unknown or has no edges in this
+// direction, matching the old map[string][]edge lookup-miss semantics.
+func (c *csrDir) edges(id string, nodes *nodeIndex, kinds *kindDict) []edge {
+	code, ok := nodes.lookup(id)
+	if !ok || int(code) >= len(c.offsets)-1 {
+		return nil
+	}
+	start, end := c.offsets[code], c.offsets[code+1]
+	if start == end {
+		return nil
+	}
+	out := make([]edge, end-start)
+	for i := start; i < end; i++ {
+		out[i-start] = edge{
+			target: nodes.ids[c.targets[i]],
+			kind:   kinds.name(c.kindCode[i]),
+			weight: float64(c.weight[i]),
+			relIdx: int(c.relIdx[i]),
+		}
+	}
+	return out
 }
 
 // edge is a typed neighbor reference; weight is for shortest-path scoring.
@@ -31,24 +150,25 @@ type edge struct {
 
 // Outgoing returns the out-edges from id (empty when id has none). Safe on a
 // nil receiver to simplify handler call sites that may run before reload. The
-// returned slice is owned by the adjacency index — callers must not mutate it.
-// (#2285)
+// returned slice is freshly materialized from the CSR row on each call —
+// callers must not mutate it, and hot-path callers should call this once per
+// node and reuse the result rather than re-invoking per-edge. (#2285, #5852)
 func (a *adjacency) Outgoing(id string) []edge {
 	if a == nil {
 		return nil
 	}
-	return a.out[id]
+	return a.out.edges(id, &a.nodes, &a.kinds)
 }
 
-// Incoming mirrors Outgoing for in-edges. (#2285)
+// Incoming mirrors Outgoing for in-edges. (#2285, #5852)
 func (a *adjacency) Incoming(id string) []edge {
 	if a == nil {
 		return nil
 	}
-	return a.in[id]
+	return a.in.edges(id, &a.nodes, &a.kinds)
 }
 
-// buildAdjacency constructs in/out neighbor lists for one repo.
+// buildAdjacency constructs the in/out CSR neighbor index for one repo.
 //
 // Built ONCE per reload, lazily on first use via repo.getAdjacency()
 // (#3367, formerly eager #1656). Handlers must NOT call this per-query — they
@@ -60,18 +180,153 @@ func (a *adjacency) Incoming(id string) []edge {
 // into a single CALLS edge with a numeric "count" property (e.g. "30" for a
 // file that calls a function 30 times) will have their frequency honoured by
 // any consumer that sums edge.weight instead of counting raw edges (#2591).
+//
+// Two-pass CSR build (#5852): pass 1 interns every FromID/ToID/Kind and
+// records per-relationship codes + degree counts; a prefix sum over degree
+// counts yields row offsets; pass 2 scatters each relationship into its row
+// using a per-row write cursor initialised from the offsets. Because pass 2
+// walks doc.Relationships in the same order as the old
+// `a.out[r.FromID] = append(...)` loop, and the write cursor only advances,
+// each row's edges land in the exact original append order.
 func buildAdjacency(doc *graph.Document, repo string) *adjacency {
-	a := &adjacency{
-		out: make(map[string][]edge, len(doc.Entities)),
-		in:  make(map[string][]edge, len(doc.Entities)),
-	}
+	n := len(doc.Relationships)
+	a := &adjacency{}
+	a.nodes.code = make(map[string]int32, len(doc.Entities))
+	a.kinds.code = make(map[string]uint16, 32)
+
+	fromCodes := make([]int32, n)
+	toCodes := make([]int32, n)
+	kindCodes := make([]uint16, n)
+	weights := make([]float32, n)
+
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
-		w := edgeWeight(r)
-		a.out[r.FromID] = append(a.out[r.FromID], edge{target: r.ToID, kind: r.Kind, weight: w, relIdx: i})
-		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, relIdx: i})
+		fromCodes[i] = a.nodes.intern(r.FromID)
+		toCodes[i] = a.nodes.intern(r.ToID)
+		kindCodes[i] = a.kinds.intern(r.Kind)
+		weights[i] = float32(edgeWeight(r))
 	}
+
+	a.assembleCSR(n, fromCodes, toCodes, kindCodes, weights)
 	return a
+}
+
+// buildAdjacencyFromReader is the mmap-sourced twin of buildAdjacency: it
+// reads FromId/ToId/Kind (and the count/weight properties feeding edgeWeight)
+// directly off the resident fbreader.Reader instead of a materialized
+// graph.Document, then runs the IDENTICAL CSR assembly (assembleCSR). Because
+// the Reader holds the same rows in the same vector order as
+// loadFBDocument produces for Document.Relationships, the resulting adjacency
+// is byte-identical to buildAdjacency's (proven by TestAdjacencyReaderParity_PR1).
+// ADR-0027 Cutover PR1: behavior-neutral re-sourcing of this primitive-only build.
+func buildAdjacencyFromReader(r *fbreader.Reader, repo string) *adjacency {
+	a := &adjacency{}
+	a.nodes.code = make(map[string]int32, r.EntityCount())
+	a.kinds.code = make(map[string]uint16, 32)
+
+	n := r.RelationshipCount()
+	fromCodes := make([]int32, 0, n)
+	toCodes := make([]int32, 0, n)
+	kindCodes := make([]uint16, 0, n)
+	weights := make([]float32, 0, n)
+	r.IterateRelationships(func(rel *fb.Relationship) bool {
+		fromCodes = append(fromCodes, a.nodes.intern(string(rel.FromId())))
+		toCodes = append(toCodes, a.nodes.intern(string(rel.ToId())))
+		kindCodes = append(kindCodes, a.kinds.intern(string(rel.Kind())))
+		weights = append(weights, float32(edgeWeightFB(rel)))
+		return true
+	})
+
+	a.assembleCSR(len(fromCodes), fromCodes, toCodes, kindCodes, weights)
+	return a
+}
+
+// assembleCSR builds the out/in CSR rows from the per-relationship code +
+// weight arrays. Shared by buildAdjacency (Document-sourced) and
+// buildAdjacencyFromReader (Reader-sourced) so the CSR layout can never
+// diverge between the two paths — parity reduces to the collection loop
+// (#5852 two-pass scatter; see buildAdjacency doc).
+func (a *adjacency) assembleCSR(n int, fromCodes, toCodes []int32, kindCodes []uint16, weights []float32) {
+	numNodes := len(a.nodes.ids)
+	outDeg := make([]int32, numNodes)
+	inDeg := make([]int32, numNodes)
+	for i := 0; i < n; i++ {
+		outDeg[fromCodes[i]]++
+		inDeg[toCodes[i]]++
+	}
+
+	a.out = newCSRDir(numNodes, n, outDeg)
+	a.in = newCSRDir(numNodes, n, inDeg)
+	outCursor := append([]int32(nil), a.out.offsets[:numNodes]...)
+	inCursor := append([]int32(nil), a.in.offsets[:numNodes]...)
+
+	for i := 0; i < n; i++ {
+		fc, tc, kc, w := fromCodes[i], toCodes[i], kindCodes[i], weights[i]
+
+		op := outCursor[fc]
+		outCursor[fc]++
+		a.out.targets[op] = tc
+		a.out.kindCode[op] = kc
+		a.out.weight[op] = w
+		a.out.relIdx[op] = int32(i)
+
+		ip := inCursor[tc]
+		inCursor[tc]++
+		a.in.targets[ip] = fc
+		a.in.kindCode[ip] = kc
+		a.in.weight[ip] = w
+		a.in.relIdx[ip] = int32(i)
+	}
+}
+
+// fbRelProp returns the value of relationship property key (and whether it
+// was present), reading directly off the mmap'd PropertyEntry vector. The
+// vector is written key-sorted by fbwriter and has unique keys, so a linear
+// scan returning the first key match is equivalent to graph.Relationship's
+// binary-search PropLookup. The returned string is copied out of the mmap.
+func fbRelProp(rel *fb.Relationship, key string) (string, bool) {
+	n := rel.PropertiesLength()
+	var pe fb.PropertyEntry
+	for i := 0; i < n; i++ {
+		if rel.Properties(&pe, i) && string(pe.Key()) == key {
+			return string(pe.Value()), true
+		}
+	}
+	return "", false
+}
+
+// edgeWeightFB is the fb.Relationship twin of edgeWeight: same "count" then
+// "weight" precedence, same <=0 / unparseable fallback to 1.0, reading the
+// properties off the mmap instead of a materialized graph.Relationship.
+func edgeWeightFB(rel *fb.Relationship) float64 {
+	if rel.PropertiesLength() == 0 {
+		return 1.0
+	}
+	for _, key := range []string{"count", "weight"} {
+		if v, ok := fbRelProp(rel, key); ok && v != "" {
+			if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return 1.0
+}
+
+// newCSRDir allocates a csrDir's row backing given per-node degree counts and
+// the total edge count for this direction (= len(doc.Relationships), since
+// every relationship contributes exactly one row entry per direction).
+func newCSRDir(numNodes, numEdges int, deg []int32) csrDir {
+	offsets := make([]int32, numNodes+1)
+	for i := 0; i < numNodes; i++ {
+		offsets[i+1] = offsets[i] + deg[i]
+	}
+	return csrDir{
+		offsets:  offsets,
+		targets:  make([]int32, numEdges),
+		kindCode: make([]uint16, numEdges),
+		weight:   make([]float32, numEdges),
+		relIdx:   make([]int32, numEdges),
+	}
 }
 
 // edgeWeight returns the numeric weight for a relationship edge. It reads
@@ -80,10 +335,10 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 // falling back to 1.0. Values <= 0 are treated as 1.0.
 func edgeWeight(r *graph.Relationship) float64 {
 	for _, key := range []string{"count", "weight"} {
-		if r.Properties == nil {
+		if r.PropLen() == 0 {
 			break
 		}
-		if v, ok := r.Properties[key]; ok && v != "" {
+		if v, ok := r.PropLookup(key); ok && v != "" {
 			if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
 				return n
 			}
@@ -114,8 +369,8 @@ func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
 			continue
 		}
 		idxStr := ""
-		if r.Properties != nil {
-			idxStr = r.Properties["step_index"]
+		if r.PropLen() > 0 {
+			idxStr = r.PropGet("step_index")
 		}
 		n, _ := strconv.Atoi(idxStr)
 		adj[r.FromID] = append(adj[r.FromID], stepEdge{toID: r.ToID, idx: n})
@@ -123,34 +378,168 @@ func buildStepAdjacency(doc *graph.Document) map[string][]stepEdge {
 	return adj
 }
 
+// buildStepAdjacencyFromReader is the mmap-sourced twin of buildStepAdjacency,
+// reading Kind/FromId/ToId and the step_index property directly off the
+// fbreader.Reader. Byte-identical to the Document-sourced build (same edge
+// order per FromID key; proven by TestStepAdjacencyReaderParity_PR1).
+// ADR-0027 Cutover PR1.
+func buildStepAdjacencyFromReader(r *fbreader.Reader) map[string][]stepEdge {
+	adj := make(map[string][]stepEdge)
+	r.IterateRelationships(func(rel *fb.Relationship) bool {
+		if string(rel.Kind()) != stepInProcessEdge {
+			return true
+		}
+		idxStr := ""
+		if v, ok := fbRelProp(rel, "step_index"); ok {
+			idxStr = v
+		}
+		n, _ := strconv.Atoi(idxStr)
+		from := string(rel.FromId())
+		adj[from] = append(adj[from], stepEdge{toID: string(rel.ToId()), idx: n})
+		return true
+	})
+	return adj
+}
+
+// callsAdjacency is the CALLS-only forward adjacency consumed by
+// traces.followCallsBFS and stub_detector_tool.go's effect-closure walk
+// (Tier-2b index mop-up, #5850). Historically this was a map[string][]string
+// — one independently heap-allocated []string per FromID key, each carrying
+// its own slice header + backing array on top of the map's own bucket
+// overhead. Mirrors the #5852 CSR treatment applied to the main adjacency
+// index: a single shared nodeIndex (map[string]int32, reused across FromID
+// and ToID) plus two parallel int32 arrays (offsets/targets) replace the
+// per-key slice allocations. Only nodes that participate in a CALLS edge are
+// interned here — this is a narrower, CALLS-only index, not a reuse of the
+// full adjacency's nodeIndex (built independently, lazily, on first use of
+// getCallsAdj()).
+type callsAdjacency struct {
+	nodes   nodeIndex
+	offsets []int32
+	targets []int32 // node-index code of the callee
+}
+
+// Get returns the sorted list of callee ids for id (nil when id is unknown or
+// has no outgoing CALLS edges), preserving the pre-CSR sorted-by-target-id
+// contract that followCallsBFS and computeEndpointEffects rely on. Safe on a
+// nil receiver.
+func (c *callsAdjacency) Get(id string) []string {
+	if c == nil {
+		return nil
+	}
+	code, ok := c.nodes.lookup(id)
+	if !ok || int(code) >= len(c.offsets)-1 {
+		return nil
+	}
+	start, end := c.offsets[code], c.offsets[code+1]
+	if start == end {
+		return nil
+	}
+	out := make([]string, end-start)
+	for i := start; i < end; i++ {
+		out[i-start] = c.nodes.ids[c.targets[i]]
+	}
+	return out
+}
+
 // buildCallsAdjacency precomputes the forward CALLS adjacency consumed by
 // traces.followCallsBFS. Built ONCE per reload, lazily on first use via
-// repo.getCallsAdj() (#3367, formerly eager #1656). Targets within each entry are pre-sorted so
-// callers don't need to sort.Strings on the hot path.
-func buildCallsAdjacency(doc *graph.Document) map[string][]string {
-	adj := make(map[string][]string)
+// repo.getCallsAdj() (#3367, formerly eager #1656). Targets within each row
+// are pre-sorted (by callee id, matching the pre-CSR sort.Strings behavior)
+// so callers don't need to sort on the hot path.
+//
+// Two-pass CSR build (mirrors buildAdjacency/#5852): pass 1 interns every
+// CALLS-edge FromID/ToID and records per-edge codes + per-node out-degree; a
+// prefix sum over degree counts yields row offsets; pass 2 scatters each
+// edge's callee code into its row via a per-row write cursor. Each row is
+// then sorted by callee id to match the old build's sort.Strings(adj[k]).
+func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
+	c := &callsAdjacency{}
+	c.nodes.code = make(map[string]int32)
+
+	fromCodes := make([]int32, 0, len(doc.Relationships))
+	toCodes := make([]int32, 0, len(doc.Relationships))
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
 		if r.Kind != "CALLS" {
 			continue
 		}
-		adj[r.FromID] = append(adj[r.FromID], r.ToID)
+		fromCodes = append(fromCodes, c.nodes.intern(r.FromID))
+		toCodes = append(toCodes, c.nodes.intern(r.ToID))
 	}
-	for k := range adj {
-		// Sort once at build time so query-time can copy directly.
-		sortStrings(adj[k])
-	}
-	return adj
+
+	c.assembleCSR(fromCodes, toCodes)
+	return c
 }
 
-// sortStrings is a tiny insertion sort wrapper to avoid pulling "sort" into
-// the hot path here (keeps the file self-contained). Lists are small (most
-// entries are <= 16 callees).
-func sortStrings(s []string) {
+// buildCallsAdjacencyFromReader is the mmap-sourced twin of
+// buildCallsAdjacency, reading Kind/FromId/ToId directly off the
+// fbreader.Reader and running the IDENTICAL CSR assembly + per-row sort
+// (assembleCSR). Byte-identical to the Document-sourced build (proven by
+// TestCallsAdjacencyReaderParity_PR1). ADR-0027 Cutover PR1.
+func buildCallsAdjacencyFromReader(r *fbreader.Reader) *callsAdjacency {
+	c := &callsAdjacency{}
+	c.nodes.code = make(map[string]int32)
+
+	fromCodes := make([]int32, 0, r.RelationshipCount())
+	toCodes := make([]int32, 0, r.RelationshipCount())
+	r.IterateRelationships(func(rel *fb.Relationship) bool {
+		if string(rel.Kind()) != "CALLS" {
+			return true
+		}
+		fromCodes = append(fromCodes, c.nodes.intern(string(rel.FromId())))
+		toCodes = append(toCodes, c.nodes.intern(string(rel.ToId())))
+		return true
+	})
+
+	c.assembleCSR(fromCodes, toCodes)
+	return c
+}
+
+// assembleCSR builds the CALLS forward CSR rows from the per-edge from/to code
+// arrays and sorts each row by callee id. Shared by buildCallsAdjacency
+// (Document-sourced) and buildCallsAdjacencyFromReader (Reader-sourced) so the
+// two paths cannot diverge — parity reduces to the collection loop.
+func (c *callsAdjacency) assembleCSR(fromCodes, toCodes []int32) {
+	numNodes := len(c.nodes.ids)
+	numEdges := len(fromCodes)
+	deg := make([]int32, numNodes)
+	for _, fc := range fromCodes {
+		deg[fc]++
+	}
+	offsets := make([]int32, numNodes+1)
+	for i := 0; i < numNodes; i++ {
+		offsets[i+1] = offsets[i] + deg[i]
+	}
+	targets := make([]int32, numEdges)
+	cursor := append([]int32(nil), offsets[:numNodes]...)
+	for i := 0; i < numEdges; i++ {
+		fc := fromCodes[i]
+		p := cursor[fc]
+		cursor[fc]++
+		targets[p] = toCodes[i]
+	}
+
+	// Sort each row by callee id string, matching the pre-CSR
+	// sort.Strings(adj[k]) build-time sort.
+	for i := 0; i < numNodes; i++ {
+		start, end := offsets[i], offsets[i+1]
+		sortInt32ByStringID(targets[start:end], c.nodes.ids)
+	}
+
+	c.offsets = offsets
+	c.targets = targets
+}
+
+// sortInt32ByStringID is an insertion sort of node-index codes by the string
+// value they resolve to via ids, mirroring sortStrings below but operating on
+// the CSR int32 codes directly (avoids materializing []string just to sort).
+// Rows are small (most entries are <= 16 callees).
+func sortInt32ByStringID(s []int32, ids []string) {
 	for i := 1; i < len(s); i++ {
 		v := s[i]
 		j := i - 1
-		for j >= 0 && s[j] > v {
+		for j >= 0 && ids[s[j]] > ids[v] {
 			s[j+1] = s[j]
 			j--
 		}
@@ -271,12 +660,12 @@ func bfsBoundedRanked(adj *adjacency, start string, depth int, contextFilter map
 				continue
 			}
 			if dir == bfsBoth || dir == bfsOut {
-				for _, e := range adj.out[n] {
+				for _, e := range adj.Outgoing(n) {
 					consider(&cands, candSeen, e, d)
 				}
 			}
 			if dir == bfsBoth || dir == bfsIn {
-				for _, e := range adj.in[n] {
+				for _, e := range adj.Incoming(n) {
 					consider(&cands, candSeen, e, d)
 				}
 			}

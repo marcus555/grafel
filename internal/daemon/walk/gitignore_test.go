@@ -307,6 +307,32 @@ func TestWalkRepo_InheritsParentGrafelIgnoreForMonorepoChild(t *testing.T) {
 	}
 }
 
+func TestWalkRepo_InheritsNestedGrafelIgnoreRelativeToItsDirectory(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+
+	mkfile(t, root, ".grafelignore", "apps/**/dist/\n")
+	mkfile(t, root, "apps/.grafelignore", "admin/generated/\n")
+	mkfile(t, root, "apps/admin/dist/bundle.js", "generated")
+	mkfile(t, root, "apps/admin/generated/client.ts", "generated")
+	mkfile(t, root, "apps/admin/src/main.ts", "source")
+
+	files, skipped, err := WalkRepo(filepath.Join(root, "apps", "admin"), nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	if fileSet["dist/bundle.js"] || fileSet["generated/client.ts"] {
+		t.Fatalf("nested inherited ignores were not applied; files=%v skipped=%v", files, skipped)
+	}
+	if !fileSet["src/main.ts"] {
+		t.Fatalf("source file missing; files=%v skipped=%v", files, skipped)
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)

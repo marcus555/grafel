@@ -217,23 +217,23 @@ func collectContractTargets(lg *LoadedGroup) []contractTarget {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isHTTPEndpointDefinition(e) && !isRouterExpandedRoute(e) {
-				continue
+				return true
 			}
 			owner := endpointOwningClass(e)
 			if owner == "" {
-				continue
+				return true
 			}
 			verb, path := endpointVerbPath(e)
 			key := strings.ToLower(owner)
 			if seen[key] {
-				continue
+				return true
 			}
 			seen[key] = true
 			out = append(out, contractTarget{target: owner, verb: verb, path: path})
-		}
+			return true
+		})
 	}
 	return out
 }
@@ -243,21 +243,21 @@ func collectContractTargets(lg *LoadedGroup) []contractTarget {
 // drf_view_method ("ViewSet.method"), controller / controller_class, or the
 // owning class encoded in a qualified handler name. Empty when no attribution.
 func endpointOwningClass(e *graph.Entity) string {
-	if e.Properties == nil {
+	if e.PropLen() == 0 {
 		return ""
 	}
-	if dvm := strings.TrimSpace(e.Properties["drf_view_method"]); dvm != "" {
+	if dvm := strings.TrimSpace(e.PropGet("drf_view_method")); dvm != "" {
 		if owning := prefixBeforeDot(dvm); owning != "" {
 			return leafAfterDot(owning)
 		}
 		return leafAfterDot(dvm)
 	}
 	for _, k := range []string{"controller", "controller_class", "owner_class", "view_class", "handler_class"} {
-		if v := strings.TrimSpace(e.Properties[k]); v != "" {
+		if v := strings.TrimSpace(e.PropGet(k)); v != "" {
 			return leafAfterDot(v)
 		}
 	}
-	if h := strings.TrimSpace(e.Properties["handler"]); h != "" {
+	if h := strings.TrimSpace(e.PropGet("handler")); h != "" {
 		if owning := prefixBeforeDot(h); owning != "" {
 			return leafAfterDot(owning)
 		}

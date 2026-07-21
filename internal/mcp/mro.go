@@ -241,13 +241,13 @@ func resolveMember(lr *LoadedRepo, e *graph.Entity) memberResolution {
 // ViewSet-qualified drf_view_method but no body and no EXTENDS edges of their
 // own — the inheritance fact lives entirely in their properties.
 func isInheritedEndpointEntity(e *graph.Entity) bool {
-	if e == nil || e.Properties == nil {
+	if e == nil || e.PropLen() == 0 {
 		return false
 	}
 	if !isEndpointEntity(e) {
 		return false
 	}
-	return e.Properties["provenance"] == drfRouteProvInherited
+	return e.PropGet("provenance") == drfRouteProvInherited
 }
 
 // isEndpointEntity reports whether e is an http_endpoint route entity,
@@ -257,7 +257,7 @@ func isEndpointEntity(e *graph.Entity) bool {
 	if isHTTPEndpointKind(e.Kind) {
 		return true
 	}
-	return e.Properties != nil && e.Properties["pattern_type"] == "drf_router_expanded"
+	return e.PropLen() > 0 && e.PropGet("pattern_type") == "drf_router_expanded"
 }
 
 // drfRouteProvInherited mirrors the engine's drfProvInherited route-provenance
@@ -289,8 +289,8 @@ func resolveInheritedEndpoint(lr *LoadedRepo, e *graph.Entity) (memberResolution
 	if !isInheritedEndpointEntity(e) {
 		return memberResolution{}, false
 	}
-	defining := e.Properties["defining_class"]
-	viewMethod := e.Properties["drf_view_method"]
+	defining := e.PropGet("defining_class")
+	viewMethod := e.PropGet("drf_view_method")
 	if defining == "" || viewMethod == "" {
 		// honest-partial: tagged inherited but no defining class / no handler
 		// to attribute. Fall through — never fabricate.
@@ -364,10 +364,10 @@ func classifyMember(e *graph.Entity) (member, owning string, bodyless bool) {
 	// Django class-based views (django_cbv_implicit_method, cbv_method_origin /
 	// cbv_class) carry the same shape and the same leak risk, so they share the
 	// override-aware bodyless logic.
-	switch e.Properties["pattern_type"] {
+	switch e.PropGet("pattern_type") {
 	case "drf_viewset_implicit_method":
-		m := e.Properties["drf_method_origin"]
-		o := e.Properties["viewset_class"]
+		m := e.PropGet("drf_method_origin")
+		o := e.PropGet("viewset_class")
 		if m == "" {
 			// Fall back to the dotted name leaf.
 			m = leafAfterDot(e.Name)
@@ -377,8 +377,8 @@ func classifyMember(e *graph.Entity) (member, owning string, bodyless bool) {
 		}
 		return m, o, !hasRealBody(e)
 	case "django_cbv_implicit_method":
-		m := e.Properties["cbv_method_origin"]
-		o := e.Properties["cbv_class"]
+		m := e.PropGet("cbv_method_origin")
+		o := e.PropGet("cbv_class")
 		if m == "" {
 			m = leafAfterDot(e.Name)
 		}
@@ -441,9 +441,9 @@ func extendsBases(lr *LoadedRepo, c *graph.Entity) []baseRef {
 		}
 		name := ""
 		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			name = rels[ed.relIdx].Properties["base_name"]
+			name = rels[ed.relIdx].PropGet("base_name")
 		}
-		target := lr.LabelIndex.ByID[ed.target]
+		target := lr.LabelIndex.ByID(ed.target)
 		if name == "" {
 			if target != nil && target.QualifiedName != "" {
 				name = target.QualifiedName
@@ -591,7 +591,7 @@ func classDeclaredMember(lr *LoadedRepo, cls *graph.Entity, member string) *grap
 		// in another file, or a Java class implementing an interface whose
 		// default method body lives in the interface's own file, must still
 		// resolve to that out-of-file body (#3839).
-		if e := lr.LabelIndex.ByQName[strings.ToLower(qn)]; e != nil &&
+		if e := lr.LabelIndex.ByQName(qn); e != nil &&
 			isMemberEntity(e) && hasRealBody(e) {
 			return e
 		}
@@ -601,20 +601,22 @@ func classDeclaredMember(lr *LoadedRepo, cls *graph.Entity, member string) *grap
 	// stays file-scoped because it matches on a bare leaf+prefix (no globally
 	// unique key), so a cross-file scan could pull an unrelated same-named
 	// method; the ByQName path above already covers the cross-file case.
-	for i := range lr.Doc.Entities {
-		e := &lr.Doc.Entities[i]
+	var found *graph.Entity
+	lr.forEachEntity(func(e *graph.Entity) bool {
 		if e.SourceFile != cls.SourceFile || !isMemberEntity(e) || !hasRealBody(e) {
-			continue
+			return true
 		}
 		qn := e.QualifiedName
 		if qn == "" {
 			qn = e.Name
 		}
 		if leafAfterDot(qn) == member && prefixBeforeDot(qn) == clsLeaf {
-			return e
+			found = e
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return found
 }
 
 // isMemberEntity reports whether e is a method/operation that can be a member

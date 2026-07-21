@@ -96,14 +96,14 @@ func mroOutboundEdges(lr *LoadedRepo, local string) []mroEdge {
 	if lr == nil || lr.Doc == nil {
 		return nil
 	}
-	e := lr.LabelIndex.ByID[local]
+	e := lr.LabelIndex.ByID(local)
 	if e == nil {
 		return nil
 	}
 	// If the graph already carries a real INHERITS edge from this stub, the
 	// indexer materialised it — do not double-project.
 	if adj := lr.getAdjacency(); adj != nil {
-		for _, ed := range adj.out[local] {
+		for _, ed := range adj.Outgoing(local) {
 			if ed.kind == inheritsEdgeKind {
 				return nil
 			}
@@ -170,15 +170,14 @@ func externalContractEntity(res memberResolution) *graph.Entity {
 			props["doc_url"] = m.DocURL
 		}
 	}
-	return &graph.Entity{
+	return graph.EntityPtr(graph.Entity{
 		ID:            id,
 		Name:          res.DefiningClass + "." + res.Member,
 		QualifiedName: res.DefiningClass + "." + res.Member,
 		Kind:          "SCOPE.External",
 		Subtype:       "method",
 		Language:      "",
-		Properties:    props,
-	}
+	}.WithProperties(props))
 }
 
 // buildMROInbound computes the reverse-INHERITS map for repo lr: for every
@@ -192,10 +191,9 @@ func buildMROInbound(lr *LoadedRepo) map[string][]string {
 	if lr == nil || lr.Doc == nil {
 		return out
 	}
-	for i := range lr.Doc.Entities {
-		e := &lr.Doc.Entities[i]
+	lr.forEachEntity(func(e *graph.Entity) bool {
 		if !isMemberEntity(e) {
-			continue
+			return true
 		}
 		for _, me := range mroOutboundEdges(lr, e.ID) {
 			if me.External {
@@ -203,7 +201,8 @@ func buildMROInbound(lr *LoadedRepo) map[string][]string {
 			}
 			out[me.Target] = append(out[me.Target], e.ID)
 		}
-	}
+		return true
+	})
 	return out
 }
 
@@ -233,7 +232,7 @@ func defUseMRORetarget(lg *LoadedGroup, entityFilter string) (definingID, defini
 		if r == nil || r.Doc == nil {
 			return "", ""
 		}
-		e := r.LabelIndex.ByID[id]
+		e := r.LabelIndex.ByID(id)
 		if e == nil {
 			return "", ""
 		}

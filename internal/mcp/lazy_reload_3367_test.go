@@ -32,8 +32,8 @@ func lazyTestDoc() *graph.Document {
 		},
 		Relationships: []graph.Relationship{
 			{FromID: "a", ToID: "b", Kind: "CALLS"},
-			{FromID: "p", ToID: "a", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "0"}},
-			{FromID: "p", ToID: "b", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "1"}},
+			graph.Relationship{FromID: "p", ToID: "a", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "0"}),
+			graph.Relationship{FromID: "p", ToID: "b", Kind: stepInProcessEdge}.WithProperties(map[string]string{"step_index": "1"}),
 		},
 	}
 }
@@ -102,12 +102,18 @@ func TestLazyIndexes_MatchEagerBuild(t *testing.T) {
 		t.Errorf("getStepAdj = %v; want %v", got, want)
 	}
 
-	// ByID.
+	// ByID. ADR-0027 Cutover PR2: getByID values are now INDEPENDENT heap copies
+	// of the Document rows (byte-equal), NOT pointers aliasing the Doc backing
+	// array — the pointer-decoupling that lets PR7 drop Doc.Entities.
 	byID := lr.getByID()
 	for i := range doc.Entities {
 		id := doc.Entities[i].ID
-		if byID[id] != &doc.Entities[i] {
-			t.Errorf("getByID[%q] does not point at the Document entity", id)
+		e := byID[id]
+		if e == nil || !reflect.DeepEqual(*e, doc.Entities[i]) {
+			t.Errorf("getByID[%q] not a byte-equal copy of the Document entity", id)
+		}
+		if e == &doc.Entities[i] {
+			t.Errorf("getByID[%q] aliases the Document backing array; want an independent copy (PR2)", id)
 		}
 	}
 
@@ -139,7 +145,7 @@ func TestLazyIndexes_ResetRebuildsAgainstFreshDoc(t *testing.T) {
 	lr := &LoadedRepo{Repo: "r", Doc: doc1, LabelIndex: BuildLabelIndex(doc1)}
 	lr.resetIndexes()
 	_ = lr.getAdjacency() // build against doc1
-	if len(lr.getAdjacency().out["a"]) != 1 {
+	if len(lr.getAdjacency().Outgoing("a")) != 1 {
 		t.Fatalf("expected one out-edge from a in doc1")
 	}
 
@@ -150,13 +156,13 @@ func TestLazyIndexes_ResetRebuildsAgainstFreshDoc(t *testing.T) {
 	lr.LabelIndex = BuildLabelIndex(doc2)
 	lr.resetIndexes()
 
-	gotOut := lr.getAdjacency().out["a"]
+	gotOut := lr.getAdjacency().Outgoing("a")
 	if len(gotOut) != 2 {
 		t.Errorf("after reload+reset, a has %d out-edges; want 2 (stale index served)", len(gotOut))
 	}
 	// CallsAdj must also reflect the fresh doc.
-	if len(lr.getCallsAdj()["a"]) != 2 {
-		t.Errorf("after reload+reset, callsAdj[a] = %v; want 2 callees", lr.getCallsAdj()["a"])
+	if len(lr.getCallsAdj().Get("a")) != 2 {
+		t.Errorf("after reload+reset, callsAdj.Get(a) = %v; want 2 callees", lr.getCallsAdj().Get("a"))
 	}
 }
 

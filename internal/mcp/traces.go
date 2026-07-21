@@ -96,34 +96,34 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind {
-				continue
+				return true
 			}
-			cs := e.Properties["cross_stack"] == "true"
+			cs := e.PropGet("cross_stack") == "true"
 			if crossOnly && !cs {
-				continue
+				return true
 			}
-			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			sc, _ := strconv.Atoi(e.PropGet("step_count"))
 			// #1639 — exclude trivial short flows from the default list;
 			// cross-repo flows are exempt (meaningful even when short).
 			if sc < minSteps && !cs {
-				continue
+				return true
 			}
 			items = append(items, listItem{
 				ProcessID:   prefixedID(r.Repo, e.ID),
 				Repo:        r.Repo,
 				Label:       e.Name,
-				EntryID:     e.Properties["entry_id"],
-				EntryName:   e.Properties["entry_name"],
-				TerminalID:  e.Properties["terminal_id"],
+				EntryID:     e.PropGet("entry_id"),
+				EntryName:   e.PropGet("entry_name"),
+				TerminalID:  e.PropGet("terminal_id"),
 				StepCount:   sc,
 				CrossStack:  cs,
-				ChainLabels: splitChainLabels(e.Properties["chain_labels"]),
+				ChainLabels: splitChainLabels(e.PropGet("chain_labels")),
 				SourceFile:  e.SourceFile,
 			})
-		}
+			return true
+		})
 	}
 
 	// Sort: cross-stack first, then by step_count desc, then by label.
@@ -192,10 +192,10 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 		if target == "" {
 			target = pid
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		var result *mcpapi.CallToolResult
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Kind != processEntityKind || e.ID != target {
-				continue
+				return true
 			}
 			// #1905 — bridge steps in cross-repo flows live in companion repos.
 			// Build a cross-repo lookup so bridge step entities are enriched with
@@ -203,17 +203,21 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 			// emitted as bare {id, node_id, step_index} stubs.
 			xrLookup := buildGroupCrossRepoLookup(lg, r.Repo)
 			steps := buildProcessStepsWithCrossRepo(r, e, xrLookup, verbose)
-			return jsonResult(map[string]any{
+			result = jsonResult(map[string]any{
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
 				"label":       e.Name,
-				"entry_id":    e.Properties["entry_id"],
-				"entry_name":  e.Properties["entry_name"],
-				"terminal_id": e.Properties["terminal_id"],
-				"cross_stack": e.Properties["cross_stack"] == "true",
+				"entry_id":    e.PropGet("entry_id"),
+				"entry_name":  e.PropGet("entry_name"),
+				"terminal_id": e.PropGet("terminal_id"),
+				"cross_stack": e.PropGet("cross_stack") == "true",
 				"steps":       steps,
 				"found":       true,
-			}), nil
+			})
+			return false
+		})
+		if result != nil {
+			return result, nil
 		}
 	}
 	return jsonResult(map[string]any{"found": false, "process_id": pid}), nil
@@ -261,8 +265,8 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 		}
 		// #1656: O(1) lookup via cached ByID instead of an O(N) scan over
 		// every entity in the repo to find the entry point.
-		byID := r.getByID()
-		entryEnt := byID[target]
+		resolve := memoRepoResolver(r)
+		entryEnt := resolve(target)
 		if entryEnt == nil {
 			continue
 		}
@@ -280,7 +284,7 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 					"step_index": i,
 					"node_id":    prefID,
 				}
-				if e, ok := byID[id]; ok {
+				if e := resolve(id); e != nil {
 					step["name"] = e.Name
 					step["file"] = e.SourceFile
 					if e.StartLine > 0 {
@@ -332,22 +336,26 @@ type crossRepoLookup func(id string) (repoSlug string, e *graph.Entity)
 // handles bridge steps whose entities live elsewhere in the group.
 func buildGroupCrossRepoLookup(lg *LoadedGroup, seedRepo string) crossRepoLookup {
 	// Pre-collect companion repos in sorted order for determinism.
+	// Path P (#5850): hold the repo, NOT its whole entity map. This resolver is
+	// long-lived (returned to the caller); storing getByID() per companion would
+	// retain every companion repo's entire entity set on the flag-ON path. Each
+	// lookup materializes exactly one entity via getByIDOne instead.
 	type companion struct {
 		slug string
-		byID map[string]*graph.Entity
+		repo *LoadedRepo
 	}
 	var companions []companion
 	for slug, r := range lg.Repos {
 		if slug == seedRepo || r == nil || r.Doc == nil {
 			continue
 		}
-		companions = append(companions, companion{slug, r.getByID()})
+		companions = append(companions, companion{slug, r})
 	}
 	sort.Slice(companions, func(i, j int) bool { return companions[i].slug < companions[j].slug })
 
 	return func(id string) (string, *graph.Entity) {
 		for _, c := range companions {
-			if e, ok := c.byID[id]; ok {
+			if e, ok := c.repo.getByIDOne(id); ok {
 				return c.slug, e
 			}
 		}
@@ -384,7 +392,6 @@ func buildProcessSteps(r *LoadedRepo, proc *graph.Entity, verbose ...bool) []map
 func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo crossRepoLookup, verbose ...bool) []map[string]any {
 	wantVerbose := len(verbose) > 0 && verbose[0]
 	repo := r.Repo
-	byID := r.getByID()
 	type indexed struct {
 		idx int
 		id  string
@@ -397,7 +404,7 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 	}
 	if len(ordered) == 0 {
 		// Fallback to the chain property if the edges weren't emitted.
-		ids := strings.Split(proc.Properties["chain"], ",")
+		ids := strings.Split(proc.PropGet("chain"), ",")
 		for i, id := range ids {
 			if id != "" {
 				ordered = append(ordered, indexed{i, id})
@@ -412,7 +419,7 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 		// companion's slug for the prefixed id field, not the seed repo slug.
 		stepRepo := repo
 		var ent *graph.Entity
-		if e, ok := byID[o.id]; ok {
+		if e, ok := r.getByIDOne(o.id); ok {
 			ent = e
 		} else if crossRepo != nil {
 			// Not found in the seed repo — look across companion repos.
@@ -449,8 +456,8 @@ func buildProcessStepsWithCrossRepo(r *LoadedRepo, proc *graph.Entity, crossRepo
 // walks forward CALLS edges from entry, bounded by maxDepth and
 // branching, and returns each terminal chain.
 //
-// callsAdj must be non-nil; it is cached on LoadedRepo at reload time (#1656).
-func followCallsBFS(entry string, maxDepth, branch int, callsAdj map[string][]string) [][]string {
+// callsAdj may be nil; Get on a nil *callsAdjacency returns nil (#1656, #5850).
+func followCallsBFS(entry string, maxDepth, branch int, callsAdj *callsAdjacency) [][]string {
 	out := make(map[string][]string)
 	type fr struct {
 		chain []string
@@ -462,7 +469,7 @@ func followCallsBFS(entry string, maxDepth, branch int, callsAdj map[string][]st
 		f := work[len(work)-1]
 		work = work[:len(work)-1]
 		cur := f.chain[len(f.chain)-1]
-		ns := adj[cur]
+		ns := adj.Get(cur)
 		if len(ns) == 0 || len(f.chain) > maxDepth {
 			term := f.chain[len(f.chain)-1]
 			if prev, ok := out[term]; !ok || len(prev) < len(f.chain) {

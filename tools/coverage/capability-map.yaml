@@ -11713,7 +11713,7 @@ records:
           tests:
             - file: internal/engine/aspnet_core_routes_test.go
             - file: internal/engine/http_endpoint_csharp_abp_test.go
-          verified_at: "2026-07-03"
+          verified_at: "2026-07-20"
         handler_attribution:
           # Both attribute-routed ASP.NET Core actions and ABP conventional
           # AppService endpoints carry source_handler=SCOPE.Operation:<Class>.<Method>,
@@ -11727,7 +11727,7 @@ records:
           tests:
             - file: internal/engine/aspnet_core_routes_test.go
             - file: internal/engine/http_endpoint_csharp_abp_test.go
-          verified_at: "2026-07-03"
+          verified_at: "2026-07-20"
         route_extraction:
           # Minimal-API app.MapGet/Post/Put/Delete route path strings extracted via
           # reAspNetMinimalAPI; [HttpGet/Post/Put/Delete/Patch] action-method routes via
@@ -11747,7 +11747,7 @@ records:
             - file: internal/engine/aspnet_core_routes_test.go
             - file: internal/engine/http_endpoint_csharp_abp_test.go
           issues_implemented: ["3261"]
-          verified_at: "2026-07-03"
+          verified_at: "2026-07-20"
         endpoint_deprecation_versioning:
           # #3628 (epic) — stamps api_version + deprecated / deprecated_since /
           # deprecated_replacement / deprecation_source onto the

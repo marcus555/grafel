@@ -59,7 +59,6 @@ type v2DaemonModeReply struct {
 
 type v2ModeRuntimeSettings struct {
 	RSSAdmissionBudgetMB int64 `json:"rss_admission_budget_mb,omitempty"`
-	RecommendedBudgetMB  int64 `json:"recommended_budget_mb,omitempty"`
 }
 
 // v2ModeInfo describes one mode option for the AllModes list.
@@ -152,7 +151,6 @@ func (s *Server) handleV2GetDaemonMode(w http.ResponseWriter, r *http.Request) {
 		AllModes:      allModeInfos(),
 		RuntimeSettings: v2ModeRuntimeSettings{
 			RSSAdmissionBudgetMB: daemon.ConfiguredRSSBudgetMB(),
-			RecommendedBudgetMB:  daemon.WorkstationRSSBudgetMB(),
 		},
 	}
 	writeV2JSON(w, http.StatusOK, v2OK(reply))
@@ -204,16 +202,6 @@ func (s *Server) handleV2SetDaemonMode(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusInternalServerError, "config_write_error", "save daemon config: "+err.Error())
 		return
 	}
-	if m == mode.Workstation {
-		rec := daemon.WorkstationRSSBudgetMB()
-		if cur := daemon.ConfiguredRSSBudgetMB(); cur < rec {
-			if err := daemon.PersistConfiguredRSSBudgetMB(rec); err != nil {
-				writeV2Err(w, http.StatusInternalServerError, "settings_write_error", "save workstation RSS budget: "+err.Error())
-				return
-			}
-		}
-	}
-
 	// Attempt a daemon stop+start. Not fatal if the daemon is not running —
 	// the new mode config is already persisted for the next manual start.
 	// The restart is intentionally delayed so the HTTP response can flush before

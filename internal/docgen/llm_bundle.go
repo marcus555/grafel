@@ -806,11 +806,11 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		// the kwarg.<name> sidecars stamped by django_relational.go.
 		var httpMethod, httpMethods, urlPath, typeHint string
 		var isDetail bool
-		if n.Properties != nil {
-			httpMethod = n.Properties["http_method"]
-			httpMethods = n.Properties["http_methods"]
-			urlPath = n.Properties["url_path"]
-			isDetail = n.Properties["is_detail"] == "true"
+		if n.PropLen() > 0 {
+			httpMethod = n.PropGet("http_method")
+			httpMethods = n.PropGet("http_methods")
+			urlPath = n.PropGet("url_path")
+			isDetail = n.PropGet("is_detail") == "true"
 		}
 		typeHint = buildNeighbourTypeHint(&n)
 
@@ -898,7 +898,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 			effectiveStart := entity.StartLine
 			effectiveEnd := entity.EndLine
 			if startSentinel || endSentinel {
-				if recStart, recEnd, ok := findEntityLinesByName(absPath, entity); ok {
+				if recStart, recEnd, ok := findEntityLinesByName(absPath, graph.EntityViewOf(entity)); ok {
 					if startSentinel {
 						effectiveStart = recStart
 					}
@@ -1026,7 +1026,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		// metadata so the LLM can document the accessor with the same
 		// shape every Lombok-aware reader expects.
 		if gc.SourceWindow == "" {
-			if stub := buildLombokSynthStub(entity); stub != "" {
+			if stub := buildLombokSynthStub(graph.EntityViewOf(entity)); stub != "" {
 				gc.SourceWindow = stub
 				gc.SourceWindowFallback = true
 			}
@@ -1051,7 +1051,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		// because there is no source directory to scan. SyntheticModule is
 		// set so the LLM can reason about the absence of file-level metadata.
 		if isModuleKind(entity.Kind) {
-			isSynthetic := entity.Properties["synthetic"] == "true" && entity.SourceFile == ""
+			isSynthetic := entity.PropGet("synthetic") == "true" && entity.SourceFile == ""
 			if isSynthetic {
 				gc.SyntheticModule = true
 				// For synthetic aggregate modules: skip README/config discovery
@@ -1334,9 +1334,9 @@ func buildNeighbourTypeHint(n *graph.Entity) string {
 	}
 
 	// Django Model field: build a structured hint from field_type + kwargs.
-	if n.Properties != nil {
-		if ft := strings.TrimSpace(n.Properties["field_type"]); ft != "" {
-			return composeDjangoFieldTypeHint(ft, n.Properties)
+	if n.PropLen() > 0 {
+		if ft := strings.TrimSpace(n.PropGet("field_type")); ft != "" {
+			return composeDjangoFieldTypeHint(ft, n.PropsSnapshot())
 		}
 	}
 
@@ -1471,7 +1471,7 @@ func buildClassManifest(entity *graph.Entity, neighbours []graph.Entity, neighbo
 						StartLine: n.StartLine,
 						EndLine:   n.EndLine,
 					}
-					if n.Properties != nil && n.Properties["is_static"] == "true" {
+					if n.PropLen() > 0 && n.PropGet("is_static") == "true" {
 						entry.IsStatic = true
 					}
 					entry.Visibility = inferVisibility(n.Signature)
@@ -1492,9 +1492,9 @@ func buildClassManifest(entity *graph.Entity, neighbours []graph.Entity, neighbo
 					// NeighbourBrief.TypeHint surfaces for Schema neighbours.
 					// This lets docgen render a schema table directly from
 					// class_manifest without an extra neighbour-brief lookup.
-					if n.Properties != nil {
-						entry.FieldType = strings.TrimSpace(n.Properties["field_type"])
-						entry.Kwargs = extractKwargs(n.Properties)
+					if n.PropLen() > 0 {
+						entry.FieldType = strings.TrimSpace(n.PropGet("field_type"))
+						entry.Kwargs = extractKwargs(n.PropsSnapshot())
 					}
 					m.Fields = append(m.Fields, entry)
 				}
@@ -1511,7 +1511,7 @@ func buildClassManifest(entity *graph.Entity, neighbours []graph.Entity, neighbo
 		// that target this class (Properties["target_name"] matches class name).
 		if strings.Contains(strings.ToLower(n.Kind), "pattern") &&
 			strings.ToLower(n.Subtype) == "decorator" {
-			if dn, ok := n.Properties["decorator_name"]; ok && dn != "" {
+			if dn, ok := n.PropLookup("decorator_name"); ok && dn != "" {
 				token := "@" + dn
 				if !decoratorSeen[token] {
 					decoratorSeen[token] = true
@@ -1666,7 +1666,7 @@ func buildModuleSupplements(entity *graph.Entity, repoRoot string, neighbours []
 
 // configEntryFromEntity extracts ModuleConfigEntry fields from a SCOPE.Config entity.
 func configEntryFromEntity(n *graph.Entity) ModuleConfigEntry {
-	props := n.Properties
+	props := n.PropsSnapshot()
 	get := func(key string) string {
 		if props == nil {
 			return ""
@@ -1774,9 +1774,9 @@ func buildModuleManifest(entity *graph.Entity, neighbours []graph.Entity, neighb
 						HandlerName: shortName(n.Name),
 						StartLine:   n.StartLine,
 					}
-					if n.Properties != nil {
-						entry.Method = n.Properties["http_method"]
-						entry.Path = n.Properties["path"]
+					if n.PropLen() > 0 {
+						entry.Method = n.PropGet("http_method")
+						entry.Path = n.PropGet("path")
 					}
 					if entry.Path == "" && n.Signature != "" {
 						// Fallback: try to parse "METHOD /path" from signature.
@@ -1856,8 +1856,8 @@ func buildModuleManifest(entity *graph.Entity, neighbours []graph.Entity, neighb
 						Name:      shortName(n.Name),
 						StartLine: n.StartLine,
 					}
-					if n.Properties != nil {
-						entry.ValueLiteral = n.Properties["value_literal"]
+					if n.PropLen() > 0 {
+						entry.ValueLiteral = n.PropGet("value_literal")
 					}
 					m.Constants = append(m.Constants, entry)
 				}
@@ -1951,8 +1951,8 @@ func BundleHashValid(bundle *LLMPromptBundle, result *LLMRunResult) error {
 //   - JS / TS function / arrow / class declarations
 //   - Otherwise the FIRST line containing the bare name surrounded by
 //     non-identifier chars is used (with end_line = start + 20 fallback).
-func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok bool) {
-	if e == nil || e.Name == "" {
+func findEntityLinesByName(path string, e graph.EntityView) (start, end int, ok bool) {
+	if e == nil || e.Name() == "" {
 		return 0, 0, false
 	}
 	f, err := os.Open(path) //nolint:gosec // path is constructed inside repo root
@@ -1964,7 +1964,7 @@ func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok boo
 	// Strip any dotted class prefix the extractor encoded on methods
 	// ("ClassName.methodName" → "methodName"). For Python and JS/TS the
 	// declaration in source is the bare leaf identifier.
-	leafName := e.Name
+	leafName := e.Name()
 	if idx := strings.LastIndex(leafName, "."); idx >= 0 {
 		leafName = leafName[idx+1:]
 	}
@@ -1972,7 +1972,7 @@ func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok boo
 		return 0, 0, false
 	}
 
-	patterns := entityDeclPatterns(leafName, e.Kind, e.Subtype)
+	patterns := entityDeclPatterns(leafName, e.Kind(), e.Subtype())
 	scanner := bufio.NewScanner(f)
 	// Allow long lines (default 64 KiB is too small for minified bundles).
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

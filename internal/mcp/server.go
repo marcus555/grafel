@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,75 @@ import (
 // then the legacy GRAFEL_RELOAD_DEBOUNCE_MS. 0 disables the debounce
 // (every call re-checks mtime); negative/garbage values fall back to default.
 const defaultReloadDebounceMS = 2000
+
+// defaultBM25IdleEvictionMS is the default idle window (milliseconds) after
+// which a repo's lazily-built BM25 index is dropped by the per-call idle sweep
+// (State.SweepIdleBM25, fired from reloadBeforeCall). BM25 is the single largest
+// lazy resident consumer (~313 MB warmed on the corpus); a session that has
+// stopped searching should not keep it pinned for the life of the process. The
+// next search rebuilds it transparently (getBM25 re-arms bm25Once on eviction).
+//
+// 5 minutes is deliberately generous: it survives a normal think/act/search loop
+// (an agent that searches, reads, edits, then searches again inside 5 min never
+// pays a rebuild) yet reclaims the arena for a session that has moved on. Env
+// override GRAFEL_MCP_BM25_IDLE_MS; 0 disables idle eviction; negative/garbage
+// falls back to the default.
+const defaultBM25IdleEvictionMS = 5 * 60 * 1000
+
+// resolveBM25IdleEviction returns the configured BM25 idle-eviction window,
+// reading GRAFEL_MCP_BM25_IDLE_MS once at server construction. A value of 0
+// (eviction disabled) is honoured and returned as a zero Duration.
+func resolveBM25IdleEviction() time.Duration {
+	if v := os.Getenv("GRAFEL_MCP_BM25_IDLE_MS"); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms >= 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return defaultBM25IdleEvictionMS * time.Millisecond
+}
+
+// resolveGroupIdleEviction returns the configured WHOLE-GROUP idle-eviction
+// window, reading GRAFEL_MCP_GROUP_IDLE_MS once at server construction (memory
+// epic #5850, issue #5872 PR2). Whole-group revive is heavy (a full re-load from
+// disk, or at best a heap re-materialization from the retained mmap), so this is
+// OPT-IN: the default is 0 (disabled → SweepIdleGroups no-ops, behaviour 100%
+// unchanged). A negative/garbage value also disables it.
+//
+// When enabled, a sane FLOOR is enforced: the group window must be at least the
+// BM25 idle window (defaultBM25IdleEvictionMS, ~5 min). Evicting a whole group is
+// strictly more disruptive than dropping its BM25 index, so it never makes sense
+// to evict the group before its BM25 would have gone; a smaller requested value
+// is clamped up to the floor.
+func resolveGroupIdleEviction() time.Duration {
+	v := os.Getenv("GRAFEL_MCP_GROUP_IDLE_MS")
+	if v == "" {
+		return 0 // default OFF — opt-in only.
+	}
+	ms, err := strconv.Atoi(v)
+	if err != nil || ms <= 0 {
+		return 0 // disabled / malformed.
+	}
+	if ms < defaultBM25IdleEvictionMS {
+		ms = defaultBM25IdleEvictionMS // floor: never below the BM25 window.
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// resolveGroupKeepReader returns whether whole-group idle eviction keeps each
+// repo's mmap Reader mapped (re-materializing the dropped heap on revive without a
+// disk re-read) versus fully munmapping it. Reads GRAFEL_MCP_GROUP_KEEP_READER
+// once at construction. Default ON (true) per design: keeping the ~mmap mapped
+// makes revive dramatically cheaper (no fbreader.Open, no disk re-read) while
+// still reclaiming the heavy derived-index heap. Set to "0"/"false" to force a
+// full munmap. Only an explicit falsy value disables it.
+func resolveGroupKeepReader() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GRAFEL_MCP_GROUP_KEEP_READER"))) {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
 
 // resolveReloadDebounce returns the configured debounce window, reading the
 // env overrides once at server construction. A value of 0 (debounce disabled)
@@ -264,6 +334,27 @@ type Server struct {
 	reloadDebounceMu sync.Mutex
 	reloadLastAt     atomic.Int64 // Unix nano; 0 = never run
 	reloadDebounce   time.Duration
+
+	// bm25IdleEviction is the idle window after which reloadBeforeCall drops a
+	// repo's lazily-built BM25 index (State.SweepIdleBM25). Resolved once at
+	// construction from GRAFEL_MCP_BM25_IDLE_MS (see resolveBM25IdleEviction). A
+	// zero value disables idle eviction. No extra goroutine is spawned — the sweep
+	// piggybacks on the existing per-call reload hook.
+	bm25IdleEviction time.Duration
+
+	// groupIdleEviction is the WHOLE-GROUP idle window after which reloadBeforeCall
+	// evicts an idle group's entire resident graph (State.SweepIdleGroups), the
+	// production wiring of the EvictGroup primitive (issue #5872 PR2). Resolved once
+	// at construction from GRAFEL_MCP_GROUP_IDLE_MS (see resolveGroupIdleEviction).
+	// A zero value disables it (default OFF — opt-in; whole-group revive is heavy),
+	// making the whole feature behaviour-neutral. Stacks with bm25IdleEviction: a
+	// group idle long enough first loses its BM25, then the whole graph. Piggybacks
+	// on the existing per-call reload hook — no extra goroutine.
+	groupIdleEviction time.Duration
+	// groupKeepReader controls whether whole-group idle eviction keeps each repo's
+	// mmap Reader mapped (default ON; re-materialize the heap on revive without a
+	// disk re-read) or fully munmaps it. Resolved once from GRAFEL_MCP_GROUP_KEEP_READER.
+	groupKeepReader bool
 }
 
 // SetActivityBroker wires the MCP activity broker into the server so that
@@ -350,7 +441,7 @@ func NewServer(cfg Config) (*Server, error) {
 		mcpsrv.WithToolCapabilities(true),
 		mcpsrv.WithInstructions(mcpInstructions))
 
-	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce()}
+	s := &Server{State: st, Tel: tel, SessMet: sessMet, MCP: srv, cfg: cfg, reloadDebounce: resolveReloadDebounce(), bm25IdleEviction: resolveBM25IdleEviction(), groupIdleEviction: resolveGroupIdleEviction(), groupKeepReader: resolveGroupKeepReader()}
 	s.registerTools()
 	return s, nil
 }
@@ -435,6 +526,22 @@ func (s *Server) reloadBeforeCall() {
 	n, surfaceChanged, _ := s.State.ReloadAndSurfaceChanged()
 	s.reloadLastAt.Store(time.Now().UnixNano())
 	s.Tel.MarkReload(n)
+
+	// Idle BM25 sweep — piggybacks on this existing per-call hook (no extra
+	// goroutine): drop the heavy BM25 index (~313 MB warmed on the corpus) for any
+	// repo that has not been searched within bm25IdleEviction, so a session that
+	// stopped searching stops pinning it. The next search rebuilds it via getBM25.
+	// Gated by the same debounce as the reload above, so it runs at most once per
+	// window rather than on every call. A zero window disables it.
+	s.State.SweepIdleBM25(s.bm25IdleEviction)
+
+	// Idle WHOLE-GROUP sweep (issue #5872 PR2) — same piggyback, one window later:
+	// evict the entire resident graph of any group idle past groupIdleEviction,
+	// EXCEPT the active (max-lastAccess) group, reclaiming its full RSS in an agent
+	// fleet. Opt-in (default OFF → no-op, byte-identical behaviour) and gated by the
+	// same debounce, so it runs at most once per window. Stacks with the BM25 sweep
+	// above: a group idle long enough loses BM25 first, then the whole graph.
+	s.State.SweepIdleGroups(s.groupIdleEviction, s.groupKeepReader)
 	if surfaceChanged && s.MCP != nil {
 		// Best-effort: failures are silently ignored. The notification carries
 		// no payload — clients respond by re-issuing tools/list.

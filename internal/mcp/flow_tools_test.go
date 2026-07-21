@@ -344,11 +344,10 @@ func TestFindCallers_FileEntityReferencesSource(t *testing.T) {
 	//   adminFile (Component, subtype=file) --REFERENCES--> ContractModel
 	doc := minDoc(
 		[]graph.Entity{
-			{
+			graph.Entity{
 				ID: "admin-file", Name: "core/admin.py",
 				Kind: "SCOPE.Component", SourceFile: "core/admin.py",
-				Properties: map[string]string{"subtype": "file"},
-			},
+			}.WithProperties(map[string]string{"subtype": "file"}),
 			{
 				ID: "contract-model", Name: "ContractModel",
 				Kind: "SCOPE.Schema", SourceFile: "core/models.py", StartLine: 42,
@@ -385,11 +384,10 @@ func TestFindCallers_FileEntityImportsSource(t *testing.T) {
 	//   viewsetFile --IMPORTS--> HasPermission
 	doc := minDoc(
 		[]graph.Entity{
-			{
+			graph.Entity{
 				ID: "viewset-file", Name: "building_alternate_address_viewset.py",
 				Kind: "SCOPE.Component", SourceFile: "viewsets/building_alternate_address_viewset.py",
-				Properties: map[string]string{"subtype": "file"},
-			},
+			}.WithProperties(map[string]string{"subtype": "file"}),
 			{
 				ID: "has-permission", Name: "HasPermission",
 				Kind: "SCOPE.Operation", SourceFile: "permissions.py", StartLine: 10,
@@ -427,17 +425,15 @@ func TestFindCallers_ModuleInitReExports(t *testing.T) {
 	//   acme_core/__init__.py (Component, subtype=module) --IMPORTS--> acme_core.celery
 	doc := minDoc(
 		[]graph.Entity{
-			{
+			graph.Entity{
 				ID: "init-module", Name: "acme_core/__init__.py",
 				Kind: "SCOPE.Component", SourceFile: "acme_core/__init__.py",
-				Properties: map[string]string{"subtype": "module"},
-			},
-			{
+			}.WithProperties(map[string]string{"subtype": "module"}),
+			graph.Entity{
 				ID:   "celery-module",
 				Name: "acme_core.celery",
 				Kind: "SCOPE.Component", SourceFile: "acme_core/celery.py",
-				Properties: map[string]string{"subtype": "module"},
-			},
+			}.WithProperties(map[string]string{"subtype": "module"}),
 			// Target needs a real referencable entity; the test entity itself is
 			// a module container — find_callers operates on the target as a
 			// pure id (no noise filter on the target). Walk from celery-module.
@@ -1516,7 +1512,7 @@ func buildPublicAPIDeadCodeDoc() *graph.Document {
 			{FromID: "route", ToID: "helper", Kind: "CALLS"},
 			{FromID: "dead2", ToID: "helper", Kind: "CALLS"},
 			// verifyToken is imported (consumed) cross-repo.
-			{FromID: "mod", ToID: "ext", Kind: "IMPORTS", Properties: map[string]string{"imported_name": "verifyToken"}},
+			graph.Relationship{FromID: "mod", ToID: "ext", Kind: "IMPORTS"}.WithProperties(map[string]string{"imported_name": "verifyToken"}),
 		},
 	)
 }
@@ -1564,7 +1560,7 @@ func TestFindDeadCode_ImportedNotFlagged(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestImpactRiskScore_HighInDegree(t *testing.T) {
-	e := &graph.Entity{Kind: "Function", Properties: map[string]string{}}
+	e := graph.EntityPtr(graph.Entity{Kind: "Function"}.WithProperties(map[string]string{}))
 	score := impactRiskScore(e, 50, false, false)
 	if score <= 0 {
 		t.Errorf("high in-degree should produce score > 0, got %v", score)
@@ -1572,7 +1568,7 @@ func TestImpactRiskScore_HighInDegree(t *testing.T) {
 }
 
 func TestImpactRiskScore_APIBoundary(t *testing.T) {
-	e := &graph.Entity{Kind: "http_endpoint_definition", Properties: map[string]string{}}
+	e := graph.EntityPtr(graph.Entity{Kind: "http_endpoint_definition"}.WithProperties(map[string]string{}))
 	score := impactRiskScore(e, 0, false, false)
 	if score < 0.25 {
 		t.Errorf("API boundary entity should score >= 0.25, got %v", score)
@@ -1580,8 +1576,8 @@ func TestImpactRiskScore_APIBoundary(t *testing.T) {
 }
 
 func TestImpactRiskScore_WithCoverage(t *testing.T) {
-	eCovered := &graph.Entity{Kind: "Function", Properties: map[string]string{"test_coverage": "85"}}
-	eUncovered := &graph.Entity{Kind: "Function", Properties: map[string]string{}}
+	eCovered := graph.EntityPtr(graph.Entity{Kind: "Function"}.WithProperties(map[string]string{"test_coverage": "85"}))
+	eUncovered := graph.EntityPtr(graph.Entity{Kind: "Function"}.WithProperties(map[string]string{}))
 	scoreCovered := impactRiskScore(eCovered, 0, false, false)
 	scoreUncovered := impactRiskScore(eUncovered, 0, false, false)
 	if scoreCovered >= scoreUncovered {
@@ -1594,7 +1590,7 @@ func TestImpactRiskScore_WithCoverage(t *testing.T) {
 // must score LOWER than an identical entity with neither signal, because the
 // TESTS edge is genuine test linkage and the no-coverage penalty must not apply.
 func TestImpactRiskScore_InboundTestsSuppressesNoCoverage(t *testing.T) {
-	e := &graph.Entity{Kind: "Class", Name: "AuthService", Properties: map[string]string{}}
+	e := graph.EntityPtr(graph.Entity{Kind: "Class", Name: "AuthService"}.WithProperties(map[string]string{}))
 	withTests := impactRiskScore(e, 0, true /*hasInboundTests*/, false)
 	withoutTests := impactRiskScore(e, 0, false, false)
 	if withTests >= withoutTests {
@@ -1609,7 +1605,7 @@ func TestImpactRiskScore_InboundTestsSuppressesNoCoverage(t *testing.T) {
 // TestImpactRiskScore_TestSpecEntityNotFlagged verifies #3974: a test-spec entity
 // itself is not production code, so the no-coverage penalty must never apply.
 func TestImpactRiskScore_TestSpecEntityNotFlagged(t *testing.T) {
-	spec := &graph.Entity{Kind: "Function", Name: "TestLogin", SourceFile: "auth_test.go", Properties: map[string]string{}}
+	spec := graph.EntityPtr(graph.Entity{Kind: "Function", Name: "TestLogin", SourceFile: "auth_test.go"}.WithProperties(map[string]string{}))
 	score := impactRiskScore(spec, 0, false /*no inbound TESTS*/, true /*isTestEntity*/)
 	if score != 0.0 {
 		t.Errorf("test-spec entity must not be penalised for no coverage; got %v", score)
@@ -1944,11 +1940,11 @@ func TestFindCallersIntegration_FrequencyRankedOnRealHandler(t *testing.T) {
 	}
 	rels := []graph.Relationship{
 		// A calls callApi 1 time (single edge, count=1)
-		{FromID: "ent-a", ToID: "ent-t", Kind: "CALLS", Properties: map[string]string{"count": "1"}},
+		graph.Relationship{FromID: "ent-a", ToID: "ent-t", Kind: "CALLS"}.WithProperties(map[string]string{"count": "1"}),
 		// B calls callApi 3 times (single edge, count=3) — should rank first
-		{FromID: "ent-b", ToID: "ent-t", Kind: "CALLS", Properties: map[string]string{"count": "3"}},
+		graph.Relationship{FromID: "ent-b", ToID: "ent-t", Kind: "CALLS"}.WithProperties(map[string]string{"count": "3"}),
 		// C calls callApi 2 times (single edge, count=2) — should rank second
-		{FromID: "ent-c", ToID: "ent-t", Kind: "CALLS", Properties: map[string]string{"count": "2"}},
+		graph.Relationship{FromID: "ent-c", ToID: "ent-t", Kind: "CALLS"}.WithProperties(map[string]string{"count": "2"}),
 	}
 	doc := minDoc(entities, rels)
 	srv := newTestServer(t, doc)
@@ -2111,5 +2107,47 @@ func TestFindCallers_ProductionDroppedWarnsExplicitly(t *testing.T) {
 	}
 	if !strings.Contains(note, "production "+"callers were dropped") {
 		t.Errorf("note should warn that production callers were dropped: %q", note)
+	}
+}
+
+// TestEntityExistsAnywhere_PR4Parity is the load-bearing guard for the PR4
+// mmap-cutover migration of entityExistsAnywhere's `range r.Doc.Entities` scan
+// to lr.forEachEntity (view_iter.go). The scan matches an entity by EXACT-CASE
+// Name (e.Name == probe) — a semantic the case-insensitive LabelIndex byLabel
+// map does NOT preserve, which is precisely why this site converted to
+// forEachEntity rather than an indexed LookupAll. This test pins:
+//   - a Name hit returns true (exercises the found-flag early-exit that
+//     replaced the in-loop `return true`),
+//   - a miss returns false (full scan, found stays false),
+//   - a case-folded probe does NOT match (exact-case semantics preserved —
+//     the exact risk an indexed lookup would have silently introduced).
+func TestEntityExistsAnywhere_PR4Parity(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "id-1", Name: "OrderService", Kind: "class"},
+		{ID: "id-2", Name: "PaymentService", Kind: "class"},
+	}
+	lg := &LoadedGroup{
+		Name:  "g",
+		Repos: map[string]*LoadedRepo{"r": {Repo: "r", Doc: doc}},
+	}
+
+	// Name hit (exercises the found-flag early exit).
+	if !entityExistsAnywhere(lg, "OrderService") {
+		t.Error("expected exact-Name match OrderService to exist")
+	}
+	// ID hit (getByID path, untouched by the migration but kept as a control).
+	if !entityExistsAnywhere(lg, "id-2") {
+		t.Error("expected id-2 to exist via getByID")
+	}
+	// Miss → full scan, found stays false.
+	if entityExistsAnywhere(lg, "NoSuchSymbol") {
+		t.Error("did not expect NoSuchSymbol to exist")
+	}
+	// Case-folded probe MUST NOT match: the scan is exact-case, and the
+	// migration must not have leaked case-insensitivity.
+	if entityExistsAnywhere(lg, "orderservice") {
+		t.Error("case-folded probe must not match exact-case Name (semantics drift)")
 	}
 }

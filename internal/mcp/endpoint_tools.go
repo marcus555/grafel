@@ -259,13 +259,17 @@ func newEndpointResolution(repos []*LoadedRepo, lg *LoadedGroup, orphanOnly bool
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			if isDefinitionKind(e.Kind) && e.Properties["pattern_type"] != patternTypeHTTPEndpointClientSynthesis {
+		// #5870: scan only definition-kind entities (selective materialization
+		// flag-ON) instead of forEach-filtering the whole entity set. The kind gate
+		// (isDefinitionKind) is hoisted into the visitation predicate; the residual
+		// pattern_type property filter stays in the body, so output is unchanged.
+		r.forEachEntityOfKinds(isDefinitionKind, func(e *graph.Entity) bool {
+			if e.PropGet("pattern_type") != patternTypeHTTPEndpointClientSynthesis {
 				defIDs[prefixedID(r.Repo, e.ID)] = true
 				defIDs[e.ID] = true
 			}
-		}
+			return true
+		})
 	}
 
 	linkedSrc := make(map[string]bool, len(lg.Links))
@@ -511,17 +515,16 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 		}
 		// Build a quick local-id → entity map for sample-file/line resolution.
 		byID := r.getByID()
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != "NAVIGATES_TO" {
-				continue
+				return true
 			}
 			route := ""
-			if rel.Properties != nil {
-				route = rel.Properties["route"]
+			if rel.PropLen() > 0 {
+				route = rel.PropGet("route")
 			}
 			if pathContains != "" && !strings.Contains(strings.ToLower(route), pathContains) {
-				continue
+				return true
 			}
 			a, ok := byTo[rel.ToID]
 			if !ok {
@@ -530,8 +533,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 			}
 			a.callSites++
 			// Merge param keys: prefer params_keys JSON, fall back to legacy params CSV.
-			if rel.Properties != nil {
-				if pk := rel.Properties["params_keys"]; pk != "" {
+			if rel.PropLen() > 0 {
+				if pk := rel.PropGet("params_keys"); pk != "" {
 					var arr []string
 					if err := json.Unmarshal([]byte(pk), &arr); err == nil {
 						for _, k := range arr {
@@ -540,7 +543,7 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 							}
 						}
 					}
-				} else if pcsv := rel.Properties["params"]; pcsv != "" {
+				} else if pcsv := rel.PropGet("params"); pcsv != "" {
 					for _, p := range strings.Split(pcsv, ",") {
 						p = strings.TrimSpace(p)
 						if p != "" {
@@ -555,8 +558,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 				if e := byID[rel.FromID]; e != nil {
 					a.sampleFile = e.SourceFile
 				}
-				if rel.Properties != nil {
-					if ls, ok := rel.Properties["line"]; ok {
+				if rel.PropLen() > 0 {
+					if ls, ok := rel.PropLookup("line"); ok {
 						if n, err := strconv.Atoi(ls); err == nil {
 							a.sampleLine = n
 						}
@@ -564,7 +567,8 @@ func collectNavigationRoutes(repos []*LoadedRepo, pathContains string) []navigat
 				}
 				a.sampleSeen = true
 			}
-		}
+			return true
+		})
 	}
 
 	out := make([]navigationRouteItem, 0, len(byTo))
@@ -726,24 +730,23 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			if !isDefinitionKind(e.Kind) {
-				continue
+		// #5870: definition-kind gate hoisted into the visitation predicate — scan
+		// only definition-kind entities (selective materialization flag-ON). The
+		// residual property/path/method/orphan/effect filters below are unchanged.
+		r.forEachEntityOfKinds(isDefinitionKind, func(e *graph.Entity) bool {
+			if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
+				return true
 			}
-			if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
-				continue
-			}
-			p := e.Properties["path"]
-			m := e.Properties["verb"]
+			p := e.PropGet("path")
+			m := e.PropGet("verb")
 			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
-				continue
+				return true
 			}
 			if method != "" && !strings.EqualFold(m, method) {
-				continue
+				return true
 			}
 			if orphanOnly && !isOrphanDefinition(r, e.ID, res) {
-				continue
+				return true
 			}
 			// #2811 — endpoint effect closure from the sidecar.
 			var effs []string
@@ -751,7 +754,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 				effs = entry.Effects
 			}
 			if effectFilter != "" && !containsFold(effs, effectFilter) {
-				continue
+				return true
 			}
 			it := endpointDefItem{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -770,10 +773,11 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 					it.Name = e.Name
 				}
 				// Strip path/verb from Properties — already on top-level fields.
-				it.Properties = dedupeEndpointProperties(e.Properties)
+				it.Properties = dedupeEndpointProperties(e.PropsSnapshot())
 			}
 			out = append(out, it)
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -1025,20 +1029,20 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != kindFETCHES {
-				continue
+				return true
 			}
 			key := prefixedID(r.Repo, rel.FromID)
 			if _, exists := callerToTarget[key]; !exists {
 				fe := fetchesEdge{toID: rel.ToID}
-				if rel.Properties != nil {
-					fe.path = rel.Properties["path"]
+				if rel.PropLen() > 0 {
+					fe.path = rel.PropGet("path")
 				}
 				callerToTarget[key] = fe
 			}
-		}
+			return true
+		})
 	}
 
 	var out []endpointCallItem
@@ -1046,21 +1050,25 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		// #5870: a call-site is either an explicit call kind OR a definition kind
+		// (client-synthesis http_endpoint). Hoist that pure-Kind union into the
+		// visitation predicate so only call/definition-kind entities are
+		// materialized flag-ON; the residual pattern_type/path/method refinement
+		// stays in the body unchanged.
+		r.forEachEntityOfKinds(func(k string) bool { return isCallKind(k) || isDefinitionKind(k) }, func(e *graph.Entity) bool {
 			// Accept explicit call kind OR client-synthesis http_endpoint.
 			isCall := isCallKind(e.Kind) ||
-				(isDefinitionKind(e.Kind) && e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis)
+				(isDefinitionKind(e.Kind) && e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis)
 			if !isCall {
-				continue
+				return true
 			}
-			p := e.Properties["path"]
-			m := e.Properties["verb"]
+			p := e.PropGet("path")
+			m := e.PropGet("verb")
 			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
-				continue
+				return true
 			}
 			if method != "" && !strings.EqualFold(m, method) {
-				continue
+				return true
 			}
 
 			eid := prefixedID(r.Repo, e.ID)
@@ -1094,7 +1102,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			}
 
 			if orphanOnly && orphanHint == "" {
-				continue
+				return true
 			}
 
 			it := endpointCallItem{
@@ -1113,10 +1121,11 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				if !isRedundantName(e.Name, m, p) {
 					it.Name = e.Name
 				}
-				it.Properties = dedupeEndpointProperties(e.Properties)
+				it.Properties = dedupeEndpointProperties(e.PropsSnapshot())
 			}
 			out = append(out, it)
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -1352,10 +1361,14 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		}
 		rs := repoStats{Repo: r.Repo}
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			fw := e.Properties["framework"]
-			xm := e.Properties["extraction_method"] // #5527 per-entity AST provenance
+		// #5870: only HTTP-endpoint kinds contribute to the per-repo stats — a
+		// non-endpoint entity falls through the switch untouched. Hoist that pure
+		// kind selection (classifyEndpointKind != none) into the visitation
+		// predicate so only endpoint-kind entities are materialized flag-ON; the
+		// framework/extraction_method reads and the category switch are unchanged.
+		r.forEachEntityOfKinds(isHTTPEndpointKind, func(e *graph.Entity) bool {
+			fw := e.PropGet("framework")
+			xm := e.PropGet("extraction_method") // #5527 per-entity AST provenance
 			switch classifyEndpointKind(e.Kind) {
 			case endpointKindDefinition:
 				rs.Definitions++
@@ -1366,7 +1379,7 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			case endpointKindLegacy:
 				// Pre-Sub-A entity; count separately.
 				rs.LegacyKind++
-				if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
+				if e.PropGet("pattern_type") == patternTypeHTTPEndpointClientSynthesis {
 					rs.Calls++ // treat client-synthesis as a call
 					bumpFramework(fw, xm, false)
 				} else {
@@ -1374,7 +1387,8 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 					bumpFramework(fw, xm, true)
 				}
 			}
-		}
+			return true
+		})
 
 		// Count orphan call-sites and cross-repo-resolved call-sites.
 		//
@@ -1396,20 +1410,19 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		// their callerID in linkedSources, so we also check whether a link
 		// source in the same repo covers the entity via the FETCHES ToID.
 		seenCallers := map[string]bool{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != kindFETCHES {
-				continue
+				return true
 			}
 			// Deduplicate: tally each FromID only once per repo (#2571).
 			if seenCallers[rel.FromID] {
-				continue
+				return true
 			}
 			seenCallers[rel.FromID] = true
 
 			resolvedIntra := res.definitionIDs[rel.ToID] || res.definitionIDs[prefixedID(r.Repo, rel.ToID)]
 			if resolvedIntra {
-				continue
+				return true
 			}
 			srcPrefixed := prefixedID(r.Repo, rel.FromID)
 			// #2573: check both the FETCHES FromID (the call synthetic) AND
@@ -1421,10 +1434,11 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			tgtPrefixed := prefixedID(r.Repo, rel.ToID)
 			if res.linkedSources[srcPrefixed] || res.linkedSources[tgtPrefixed] {
 				rs.CrossRepoResolved++
-				continue
+				return true
 			}
 			rs.OrphanCalls++
-		}
+			return true
+		})
 
 		totalDefs += rs.Definitions
 		totalCalls += rs.Calls

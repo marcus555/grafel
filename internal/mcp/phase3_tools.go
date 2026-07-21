@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -512,18 +513,17 @@ func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) 
 				continue
 			}
 			byID := r.getByID()
-			for i := range r.Doc.Relationships {
-				rel := &r.Doc.Relationships[i]
+			r.forEachRelationship(func(rel *graph.Relationship) bool {
 				sinkKind, ok := dbSinkEdgeKinds[strings.ToUpper(rel.Kind)]
 				if !ok {
-					continue
+					return true
 				}
 				if !sinkKindMatchesDB(sinkKindFilter, sinkKind) {
-					continue
+					return true
 				}
 				fromID := prefixedID(repo, rel.FromID)
 				if entityFilter != "" && fromID != entityFilter {
-					continue
+					return true
 				}
 				toID := rel.ToID
 				if rprefix, _ := splitPrefixed(toID); rprefix == "" {
@@ -546,12 +546,13 @@ func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) 
 					"sink":       sink,
 					"source":     "graph-edge",
 				}
-				if v := rel.Properties["field"]; v != "" {
+				if v := rel.PropGet("field"); v != "" {
 					rec["field"] = v
 				}
 				out = append(out, rec)
 				graphProjected++
-			}
+				return true
+			})
 		}
 	}
 

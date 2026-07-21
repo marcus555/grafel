@@ -29,6 +29,82 @@ import (
 // package shared with fbwriter — so drift becomes a compile-time error.
 const minSupportedFBFormatVersion = fbversion.Version
 
+// FormatVersionError is returned (wrapped, via %w) by loadFBDocument when an
+// on-disk graph.fb was stamped with a FormatVersion older than this binary
+// requires. It exists as a typed error — rather than forcing callers to
+// string-match the human-readable message below — so a caller like
+// internal/mcp's reload loop can detect "this specific repo's on-disk graph
+// is version-incompatible" via errors.As and record durable state (e.g. a
+// statusfile ReindexRequired flag), instead of only stashing the opaque error
+// string and silently continuing (the "silent-green lie" this type exists to
+// let callers fix).
+type FormatVersionError struct {
+	// Found is the FormatVersion actually stamped on the rejected graph.fb.
+	Found int
+	// Required is the minimum FormatVersion this binary accepts
+	// (fbversion.Version at build time).
+	Required int
+}
+
+// Error implements the error interface. The wording is part of the loader's
+// user-facing contract (internal/graph/fbwriter/writer_test.go asserts on
+// substrings of it verbatim) and must keep pointing the user at `grafel
+// index <repo>`.
+func (e *FormatVersionError) Error() string {
+	return fmt.Sprintf(
+		"graph.fb format version %d is older than required version %d — please reindex (run: grafel index <repo>)",
+		e.Found, e.Required,
+	)
+}
+
+// ReindexRequiredReason performs a cheap, header-only check of dir's
+// graph.fb (no entity/relationship materialization — just an mmap open plus
+// one scalar read) and reports whether it was written by an older grafel
+// build than this binary supports.
+//
+// required is false — the overwhelmingly common case — when graph.fb is
+// absent, unreadable, or already at/above minSupportedFBFormatVersion; a
+// caller must not treat that as an error, only as "nothing to report".
+// required is true only when the on-disk FormatVersion is strictly below
+// what this binary accepts, in which case reason names both versions and
+// points at the fix, mirroring FormatVersionError's wording so a human sees
+// one consistent message whether they hit it via a failed MCP reload or via
+// the persisted status-plane sidecar.
+//
+// This is deliberately independent of any single load attempt: it is safe
+// to call on every status-plane heartbeat (see internal/daemon's
+// writeRepoStatusFile) so the persisted ReindexRequired flag is always
+// freshly recomputed from the ACTUAL bytes on disk, never a one-shot flag
+// that could go stale or get clobbered by a later write from a different
+// writer.
+func ReindexRequiredReason(dir string) (required bool, reason string) {
+	fbPath := filepath.Join(dir, "graph.fb")
+	r, err := fbreader.Open(fbPath)
+	if err != nil {
+		return false, ""
+	}
+	defer r.Close()
+	v := r.Version()
+	if v >= minSupportedFBFormatVersion {
+		return false, ""
+	}
+	return true, FormatVersionReason(v, minSupportedFBFormatVersion)
+}
+
+// FormatVersionReason renders the shared human-readable "reindex required"
+// explanation naming both the found and required graph.fb format versions.
+// Exported so every caller that detects a *FormatVersionError (the header-only
+// ReindexRequiredReason check above, and internal/mcp's reload loop reacting
+// to a failed LoadGraphFromDir) renders the IDENTICAL wording — one consistent
+// message regardless of which code path first observed the incompatibility.
+func FormatVersionReason(found, required int) string {
+	fvErr := &FormatVersionError{Found: found, Required: required}
+	return fmt.Sprintf(
+		"graph format v%d incompatible with v%d — reindex required (%s)",
+		found, required, fvErr.Error(),
+	)
+}
+
 // LoadGraphFromDir loads a graph.Document from dir, where dir is the
 // .grafel state directory for a repo (the directory that contains
 // graph.fb / graph.json).
@@ -73,6 +149,28 @@ func LoadGraphFromDir(dir string) (*Document, error) {
 	default:
 		return nil, fmt.Errorf("graph.LoadGraphFromDir: neither graph.fb nor graph.json found in %s", dir)
 	}
+}
+
+// LoadGraphHeaderOnlyFromDir loads a HEADER-ONLY graph.Document from dir: all
+// meta/Stats/community/algo fields are populated but the Entities and
+// Relationships slices are left EMPTY (non-nil). It is the serve-side mmap-
+// cutover load path (ADR-0027 PR7, memory epic #5850, opt-in via
+// GRAFEL_SERVE_FROM_MMAP) — serve pairs the returned Doc with a resident
+// fbreader.Reader and serves every row from the mmap, so the ~608 MB of
+// entity/relationship rows is never materialized on the Go heap.
+//
+// Header-only is only meaningful for graph.fb (the mmap-backed format). When
+// only graph.json is present there is no mmap Reader to serve from, so this
+// falls back to the full LoadGraphFromDir (JSON) load — correctness over the
+// (absent) memory win. Callers that need a full Document (every CLI/full-Doc
+// consumer) must keep using LoadGraphFromDir.
+func LoadGraphHeaderOnlyFromDir(dir string) (*Document, error) {
+	fbPath := filepath.Join(dir, "graph.fb")
+	if _, err := os.Stat(fbPath); err == nil {
+		return loadFBDocumentHeaderOnly(fbPath)
+	}
+	// No graph.fb — no mmap to serve from; full load (graph.json or error).
+	return LoadGraphFromDir(dir)
 }
 
 // PersistedStats is a cheap, on-disk view of a repo's index size and
@@ -129,12 +227,103 @@ func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
 	return ps, true
 }
 
+// stringInterner canonicalizes repeated string VALUES seen during a single
+// loadFBDocument call so that N occurrences of an equal string share ONE Go
+// backing array in the resulting *Document, instead of each occurrence
+// paying for its own independently-allocated copy.
+//
+// This is the RESIDENT-memory counterpart to fbwriter's CreateSharedString
+// (Tier-1a, #5846): that optimization dedupes strings ON DISK, but the
+// loader still calls string(fbBytes) once per field per record, which always
+// allocates a fresh backing array regardless of on-disk sharing — so Tier-1a
+// alone shrinks graph.fb but not the loaded Document's heap footprint. The
+// interner closes that gap for the loader's own materialization.
+//
+// Only apply this to HIGH-DUPLICATION fields (entity id/kind/subtype/module/
+// source_file/language and property keys; relationship from_id/to_id/kind).
+// Do NOT intern genuinely-unique/high-cardinality fields (name,
+// qualified_name, signature, property VALUES) — interning those would only
+// grow the interner map with no dedup benefit.
+//
+// Concurrency: loadFBDocument builds every entity and relationship
+// SEQUENTIALLY in a single goroutine (the for-loops below run in program
+// order, no goroutines are spawned), so a plain, unsynchronized map is safe
+// here. If this loop is ever parallelized, this type must be guarded (mutex
+// or sharded) or replaced with a sync.Map to avoid a data race.
+//
+// Critically, ONE interner instance is shared across BOTH entity and
+// relationship construction within a single load (see loadFBDocument below),
+// so a relationship's from_id/to_id canonicalizes to the SAME backing array
+// as the referenced entity's id — the biggest win, since on the real corpus
+// each entity id is referenced by relationship endpoints ~8.7x on average
+// (mean node degree).
+type stringInterner struct {
+	m map[string]string
+}
+
+func newStringInterner() *stringInterner {
+	return &stringInterner{m: make(map[string]string)}
+}
+
+// intern returns the canonical copy of the string represented by b, sharing
+// backing storage with any prior call that saw byte-identical content. The
+// initial lookup uses the b-as-map-key form (m[string(b)]) directly as the
+// index expression so the Go compiler's built-in optimization avoids
+// allocating a string on the (common, high-duplication) hit path; only a
+// miss pays for one allocation to create the canonical copy.
+func (si *stringInterner) intern(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if v, ok := si.m[string(b)]; ok {
+		return v
+	}
+	s := string(b)
+	si.m[s] = s
+	return s
+}
+
 // loadFBDocument decodes a graph.fb file into a *Document. It opens the
 // file with fbreader (mmap + single bulk read), then converts the lazy
 // FlatBuffers view into an in-memory *Document by iterating the entity
 // and relationship vectors. This is O(N) but allocates far fewer
 // intermediate objects than JSON unmarshal.
+//
+// This is the SHARED full-materialize loader used by every full-Doc consumer
+// (CLI docgen/dashboard/links/status, xrepo-verify, group-algo, etc.). It is
+// NOT gated on any serve env flag and always returns a fully-populated
+// Document. The header-only serve variant lives in loadFBDocumentHeaderOnly.
 func loadFBDocument(path string) (*Document, error) {
+	return loadFBDoc(path, false)
+}
+
+// loadFBDocumentHeaderOnly decodes a graph.fb file into a *Document that
+// carries all header/meta/Stats/community/algo information but leaves the
+// Entities and Relationships slices EMPTY (non-nil, len 0).
+//
+// ADR-0027 mmap-cutover PR7 (memory epic #5850): this is the serve-side,
+// opt-in (GRAFEL_SERVE_FROM_MMAP) load path. serve opens its OWN resident
+// fbreader.Reader alongside this Doc and routes every read through the Reader
+// (forEachEntity/at/getByIDOne/BM25/adjacency/overlay), so the ~608 MB of
+// materialized entity/relationship rows is never allocated on the Go heap.
+// The Doc stays NON-NIL (the "loaded" sentinel every lazy getter checks) with
+// populated Stats counts so reporting reads the true entity/relationship
+// totals. It is NEVER called by the shared full-Doc CLI path.
+func loadFBDocumentHeaderOnly(path string) (*Document, error) {
+	return loadFBDoc(path, true)
+}
+
+// loadFBDoc is the shared core behind loadFBDocument (headerOnly=false, the
+// full-materialize path used by every CLI/full-Doc consumer) and
+// loadFBDocumentHeaderOnly (headerOnly=true, the serve mmap-cutover path).
+//
+// When headerOnly is true the two O(N) materialize loops that build the
+// Entities and Relationships slices are SKIPPED — the slices stay empty
+// (non-nil) — but meta, communities, AlgorithmStats and the Stats counts are
+// populated identically. Everything else is byte-identical to the full path,
+// so a full load and a header-only load of the same graph.fb agree on every
+// field except the (intentionally empty) Entities/Relationships slices.
+func loadFBDoc(path string, headerOnly bool) (*Document, error) {
 	r, err := fbreader.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("graph.loadFBDocument: open %s: %w", path, err)
@@ -146,10 +335,8 @@ func loadFBDocument(path string) (*Document, error) {
 	// rerun `grafel index <repo>` to regenerate graph.fb against the
 	// current schema.
 	if v := r.Version(); v < minSupportedFBFormatVersion {
-		return nil, fmt.Errorf(
-			"graph.loadFBDocument: graph.fb format version %d is older than required version %d — please reindex (run: grafel index <repo>)",
-			v, minSupportedFBFormatVersion,
-		)
+		return nil, fmt.Errorf("graph.loadFBDocument: %w",
+			&FormatVersionError{Found: v, Required: minSupportedFBFormatVersion})
 	}
 
 	meta := r.LoadGraphMeta()
@@ -158,22 +345,41 @@ func loadFBDocument(path string) (*Document, error) {
 	nEnts := r.EntityCount()
 	nRels := r.RelationshipCount()
 
-	entities := make([]Entity, 0, nEnts)
-	for i := 0; i < nEnts; i++ {
-		fbEnt := r.EntityAt(i)
-		if fbEnt == nil {
-			continue
-		}
-		entities = append(entities, fbEntityToGraphEntity(fbEnt))
+	// Shared across both entity and relationship construction below (see
+	// stringInterner doc comment) so relationship endpoints canonicalize to
+	// the same backing array as the entity ids they reference.
+	si := newStringInterner()
+
+	// Header-only: leave Entities/Relationships EMPTY (non-nil) and allocate no
+	// per-record backing array. serve serves these rows from its resident mmap
+	// Reader; the ~608 MB heap materialization is exactly what we are dropping.
+	entCap := nEnts
+	relCap := nRels
+	if headerOnly {
+		entCap = 0
+		relCap = 0
 	}
 
-	rels := make([]Relationship, 0, nRels)
-	for i := 0; i < nRels; i++ {
-		fbRel := r.RelationshipAt(i)
-		if fbRel == nil {
-			continue
+	entities := make([]Entity, 0, entCap)
+	if !headerOnly {
+		for i := 0; i < nEnts; i++ {
+			fbEnt := r.EntityAt(i)
+			if fbEnt == nil {
+				continue
+			}
+			entities = append(entities, fbEntityToGraphEntity(fbEnt, si))
 		}
-		rels = append(rels, fbRelToGraphRel(fbRel))
+	}
+
+	rels := make([]Relationship, 0, relCap)
+	if !headerOnly {
+		for i := 0; i < nRels; i++ {
+			fbRel := r.RelationshipAt(i)
+			if fbRel == nil {
+				continue
+			}
+			rels = append(rels, fbRelToGraphRel(fbRel, si))
+		}
 	}
 
 	// Restore the aggregate Pass-4 community list + corpus stats (#1620).
@@ -192,6 +398,18 @@ func loadFBDocument(path string) (*Document, error) {
 		}
 	}
 
+	// Stats reports the record counts. On the full path use len(entities)/
+	// len(rels) (byte-identical to before; may differ from nEnts/nRels if a
+	// vector slot decoded to nil and was skipped). Header-only skips the loops,
+	// so source the counts straight off the Reader header — reporting
+	// (len(lr.Doc.Entities) is 0 header-only) reads Stats for the true totals.
+	statsEnts := len(entities)
+	statsRels := len(rels)
+	if headerOnly {
+		statsEnts = nEnts
+		statsRels = nRels
+	}
+
 	doc := &Document{
 		// Preserve SchemaVersion (JSON schema = 1) rather than the FB
 		// binary format version (2) so callers that check Version == 1
@@ -203,8 +421,8 @@ func loadFBDocument(path string) (*Document, error) {
 		Relationships: rels,
 		Communities:   communities,
 		Stats: Stats{
-			Entities:      len(entities),
-			Relationships: len(rels),
+			Entities:      statsEnts,
+			Relationships: statsRels,
 		},
 		// Phase 0 git metadata (#2088). Defaults to "" / false for graphs
 		// written before these fields were added.
@@ -252,37 +470,50 @@ func loadJSONDocument(path string) (*Document, error) {
 // the canonical graph.Entity struct. All string fields are copied out
 // of the mmap'd bytes so the returned struct is safe to use after the
 // Reader is closed.
-func fbEntityToGraphEntity(e *fb.Entity) Entity {
-	props := make(map[string]string, e.PropertiesLength())
-	var pe fb.PropertyEntry
-	for i := 0; i < e.PropertiesLength(); i++ {
-		if e.Properties(&pe, i) {
-			props[string(pe.Key())] = string(pe.Value())
+//
+// High-duplication fields (Id/Kind/Subtype/Module/SourceFile/Language and
+// property keys) are canonicalized through si so repeated values across
+// entities (and, for Id, across relationship endpoints referencing it) share
+// one backing array. Name/QualifiedName/Signature/property VALUES are
+// genuinely high-cardinality and are intentionally NOT interned.
+func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
+	// #5850 Phase B: build the sorted []propKV slice directly from the FB
+	// PropertyEntry vector instead of routing through an intermediate map.
+	// fbwriter.buildPropertyVector writes entries in ascending key order
+	// (sort.Strings(keys) before emission), so the FB vector is already
+	// sorted — no re-sort needed here, just a straight copy.
+	n := e.PropertiesLength()
+	var props []propKV
+	if n > 0 {
+		props = make([]propKV, 0, n)
+		var pe fb.PropertyEntry
+		for i := 0; i < n; i++ {
+			if e.Properties(&pe, i) {
+				props = append(props, propKV{K: si.intern(pe.Key()), V: string(pe.Value())})
+			}
 		}
 	}
 	ent := Entity{
-		ID:            string(e.Id()),
+		ID:            si.intern(e.Id()),
 		Name:          string(e.Name()),
 		QualifiedName: string(e.QualifiedName()),
-		Kind:          string(e.Kind()),
-		Subtype:       string(e.Subtype()),
-		SourceFile:    string(e.SourceFile()),
+		Kind:          si.intern(e.Kind()),
+		Subtype:       si.intern(e.Subtype()),
+		SourceFile:    si.intern(e.SourceFile()),
 		StartLine:     int(e.SourceLine()),
-		Properties:    props,
 	}
+	ent.properties = props
 	// The Module field is stored as a top-level FB scalar by the writer
 	// (see fbwriter.buildEntity). Restore it into Properties["module"]
-	// so callers that read props["module"] continue to work.
-	if mod := string(e.Module()); mod != "" {
-		if props == nil {
-			props = map[string]string{}
-		}
-		props["module"] = mod
-		ent.Properties = props
+	// so callers that read props["module"] continue to work. PropSet keeps
+	// the slice sorted (binary-search insert), so this stays correct
+	// regardless of where "module" falls alphabetically among the FB props.
+	if mod := si.intern(e.Module()); mod != "" {
+		ent.PropSet("module", mod)
 	}
 	// Issue #2370 — Language is read directly from the dedicated FB slot.
 	// The PR #2365 property-tunnel restore (props["language"]) is retired.
-	if lang := string(e.Language()); lang != "" {
+	if lang := si.intern(e.Language()); lang != "" {
 		ent.Language = lang
 	}
 	// Issue #4881 — restore the entity Signature from its dedicated FB slot.
@@ -335,23 +566,76 @@ func fbCommunityToResult(c *fb.Community) CommunityResult {
 
 // fbRelToGraphRel converts one lazy FlatBuffers Relationship view into
 // the canonical graph.Relationship struct.
-func fbRelToGraphRel(r *fb.Relationship) Relationship {
-	props := make(map[string]string, r.PropertiesLength())
-	var pe fb.PropertyEntry
-	for i := 0; i < r.PropertiesLength(); i++ {
-		if r.Properties(&pe, i) {
-			props[string(pe.Key())] = string(pe.Value())
+//
+// FromID/ToID/Kind and property keys are canonicalized through si — the SAME
+// interner instance used for entity ids (see loadFBDocument) — so an
+// endpoint string shares backing storage with the entity.ID it references
+// rather than allocating its own copy.
+func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
+	// #5850 Phase B: same direct-to-[]propKV construction as
+	// fbEntityToGraphEntity above — the FB vector is already key-sorted.
+	n := r.PropertiesLength()
+	var props []propKV
+	if n > 0 {
+		props = make([]propKV, 0, n)
+		var pe fb.PropertyEntry
+		for i := 0; i < n; i++ {
+			if r.Properties(&pe, i) {
+				props = append(props, propKV{K: si.intern(pe.Key()), V: string(pe.Value())})
+			}
 		}
 	}
 	rel := Relationship{
-		FromID:     string(r.FromId()),
-		ToID:       string(r.ToId()),
-		Kind:       string(r.Kind()),
-		Properties: props,
+		FromID: si.intern(r.FromId()),
+		ToID:   si.intern(r.ToId()),
+		Kind:   si.intern(r.Kind()),
 	}
+	rel.properties = props
 	// Restore the ID from Properties if the writer stored it.
-	if id, ok := props["id"]; ok {
+	if id, ok := rel.PropLookup("id"); ok {
 		rel.ID = id
 	}
 	return rel
+}
+
+// MaterializeEntity decodes the i-th entity of the mmap'd Reader into a
+// single heap-safe graph.Entity, on demand. It is a thin exported wrapper
+// over the same fbEntityToGraphEntity conversion loadFBDocument uses per
+// row, so a MaterializeEntity(r, i) result is byte-identical to the
+// Document's Entities[i] for the same graph.fb.
+//
+// Every string field is COPIED out of the mmap region (see
+// fbEntityToGraphEntity), so the returned Entity is safe to retain after
+// the Reader is closed — no borrow of the underlying mapping is held.
+//
+// A fresh interner is used per call: interning only deduplicates repeated
+// substrings WITHIN one materialized row, and the copied-out strings are
+// independent of any Document-wide interner. Returns the zero Entity when
+// r is nil or i is out of range.
+func MaterializeEntity(r *fbreader.Reader, i int) Entity {
+	if r == nil {
+		return Entity{}
+	}
+	fbEnt := r.EntityAt(i)
+	if fbEnt == nil {
+		return Entity{}
+	}
+	return fbEntityToGraphEntity(fbEnt, newStringInterner())
+}
+
+// MaterializeRelationship decodes the i-th relationship of the mmap'd
+// Reader into a single heap-safe graph.Relationship, on demand. Thin
+// exported wrapper over fbRelToGraphRel — byte-identical to the Document's
+// Relationships[i] for the same graph.fb. All strings are copied out of
+// the mmap region, so the result outlives the Reader. Returns the zero
+// Relationship when r is nil or i is out of range.
+func MaterializeRelationship(r *fbreader.Reader, i int) Relationship {
+	if r == nil {
+		return Relationship{}
+	}
+	fbRel := r.RelationshipAt(i)
+	if fbRel == nil {
+		return Relationship{}
+	}
+	return fbRelToGraphRel(fbRel, newStringInterner())
 }

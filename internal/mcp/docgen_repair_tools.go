@@ -148,11 +148,10 @@ func countEdgesForFidelity(r *LoadedRepo) (total, bugs int) {
 	if r == nil || r.Doc == nil {
 		return 0, 0
 	}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		// Scope: IMPORTS only — matches audit.AuditPath and health-history.bug_rate.
 		if rel.Kind != "IMPORTS" {
-			continue
+			return true
 		}
 		total++
 		// A relationship is "buggy" (unresolved) when its ToID still looks like
@@ -164,7 +163,8 @@ func countEdgesForFidelity(r *LoadedRepo) (total, bugs int) {
 		if resolve.IsBugEdgeToID(rel.ToID) {
 			bugs++
 		}
-	}
+		return true
+	})
 	return total, bugs
 }
 
@@ -226,8 +226,8 @@ type importRootEntry struct {
 func unresolvedImportDisposition(rel *graph.Relationship) string {
 	toID := rel.ToID
 	srcMod := ""
-	if rel.Properties != nil {
-		srcMod = rel.Properties["source_module"]
+	if rel.PropLen() > 0 {
+		srcMod = rel.PropGet("source_module")
 	}
 
 	// Proto/gRPC generated code: proto package paths, protobuf imports,
@@ -282,8 +282,8 @@ func matchesProto(s string) bool {
 // For a bare name like "myFunc" → "myFunc".
 func importRoot(rel *graph.Relationship) string {
 	ref := rel.ToID
-	if rel.Properties != nil {
-		if sm := rel.Properties["source_module"]; sm != "" {
+	if rel.PropLen() > 0 {
+		if sm := rel.PropGet("source_module"); sm != "" {
 			ref = sm
 		}
 	}
@@ -329,14 +329,13 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			continue
 		}
 		byID := r.getByID()
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			// Scope: IMPORTS only — matches countEdgesForFidelity and audit.AuditPath.
 			if rel.Kind != "IMPORTS" {
-				continue
+				return true
 			}
 			if !resolve.IsBugEdgeToID(rel.ToID) {
-				continue
+				return true
 			}
 
 			disp := unresolvedImportDisposition(rel)
@@ -348,8 +347,8 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			if ent := byID[rel.FromID]; ent != nil {
 				lang = strings.ToLower(ent.Language)
 			}
-			if lang == "" && rel.Properties != nil {
-				lang = strings.ToLower(rel.Properties["language"])
+			if lang == "" && rel.PropLen() > 0 {
+				lang = strings.ToLower(rel.PropGet("language"))
 			}
 			if lang == "" {
 				lang = "unknown"
@@ -368,7 +367,8 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			}
 			rs.count++
 			rs.dispCounts[disp]++
-		}
+			return true
+		})
 	}
 
 	// Build sorted top-N list.

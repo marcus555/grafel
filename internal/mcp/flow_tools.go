@@ -248,8 +248,10 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
+		// Path P (#5850): on-demand memoizing resolver — find_callers materializes
+		// only its inbound BFS closure, not the whole repo's entity set.
+		resolve := memoRepoResolver(r)
+		if resolve(target) == nil {
 			continue
 		}
 
@@ -275,7 +277,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		for d := 0; d < depth; d++ {
 			next := []string{}
 			for _, n := range frontier {
-				for _, e := range adj.in[n] {
+				for _, e := range adj.Incoming(n) {
 					// #4242: accept every semantic predecessor edge, not just the
 					// inboundRefKinds allow-list. The out/callees side already
 					// surfaces all kinds; mirroring it here is what makes the
@@ -323,7 +325,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			// It is a legitimate caller of the base member, so it must survive
 			// the shadow/container noise filter exactly like a file-ref edge.
 			isInheritsEdge := dk == inheritsEdgeKind
-			e := byID[id]
+			e := resolve(id)
 			if e == nil {
 				// #2015: previously a nil byID lookup silently dropped the
 				// caller. In production this hides legitimate file-level
@@ -427,7 +429,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		//   - Extractor emits N duplicate CALLS edges → each weight=1 → sum=N
 		//   - Extractor emits 1 CALLS edge with Properties["count"]="N" → weight=N → sum=N
 		callFrequency := make(map[string]float64)
-		for _, e := range adj.in[target] {
+		for _, e := range adj.Incoming(target) {
 			if e.kind == "CALLS" {
 				callFrequency[e.target] += e.weight
 			}
@@ -465,7 +467,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			return callers[i].Name < callers[j].Name
 		})
 
-		root := byID[target]
+		root := resolve(target)
 		rootName := target
 		if root != nil {
 			rootName = root.Name
@@ -614,8 +616,10 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
+		// Path P (#5850): on-demand memoizing resolver — find_callees materializes
+		// only its outbound BFS closure, not the whole repo's entity set.
+		resolve := memoRepoResolver(r)
+		if resolve(target) == nil {
 			continue
 		}
 
@@ -640,7 +644,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		for d := 0; d < depth; d++ {
 			next := []string{}
 			for _, n := range frontier {
-				for _, e := range adj.out[n] {
+				for _, e := range adj.Outgoing(n) {
 					if _, seen := visited[e.target]; seen {
 						continue
 					}
@@ -676,7 +680,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			if id == target {
 				continue
 			}
-			e := byID[id]
+			e := resolve(id)
 			if e == nil {
 				e = mroExternal[id]
 			}
@@ -740,7 +744,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			return callees[i].Name < callees[j].Name
 		})
 
-		root := byID[target]
+		root := resolve(target)
 		rootName := target
 		if root != nil {
 			rootName = root.Name
@@ -858,7 +862,7 @@ func entityHasTestCoverage(e *graph.Entity, hasInboundTests bool) bool {
 	if hasInboundTests {
 		return true
 	}
-	cov := e.Properties["test_coverage"]
+	cov := e.PropGet("test_coverage")
 	return cov != "" && cov != "0" && cov != "none"
 }
 
@@ -925,7 +929,7 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		if _, ok := r.getByID()[target]; ok {
+		if _, ok := r.getByIDOne(target); ok {
 			return impactResolution{repo: r, localID: target}
 		}
 	}
@@ -942,8 +946,7 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if e.Name == target || e.QualifiedName == target {
 				hits = append(hits, hit{repo: r, id: e.ID})
 				byName = append(byName, impactCandidate{
@@ -954,7 +957,8 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 					SourceFile: e.SourceFile,
 				})
 			}
-		}
+			return true
+		})
 	}
 	switch {
 	case len(hits) == 1:
@@ -1034,15 +1038,14 @@ func fuzzyMatchEntities(repos []*LoadedRepo, probe string) fuzzyMatchResult {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isNoise(e) {
-				continue
+				return true
 			}
 			nameL := strings.ToLower(e.Name)
 			qnL := strings.ToLower(e.QualifiedName)
 			if !strings.Contains(nameL, ql) && !strings.Contains(qnL, ql) {
-				continue
+				return true
 			}
 			cand := impactCandidate{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -1054,11 +1057,12 @@ func fuzzyMatchEntities(repos []*LoadedRepo, probe string) fuzzyMatchResult {
 			if nameL == ql || qnL == ql {
 				exact = append(exact, fuzzyHit{repo: r, id: e.ID})
 				exactC = append(exactC, cand)
-				continue
+				return true
 			}
 			sub = append(sub, fuzzyHit{repo: r, id: e.ID})
 			subC = append(subC, cand)
-		}
+			return true
+		})
 	}
 	// A unique exact-(case-insensitive) name/qualified-name match wins outright,
 	// even if substrings also matched — this mirrors grafel_find floating the
@@ -1192,7 +1196,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	// joins (lg.Links, method="topic") so cross-repo publishers + subscribers
 	// appear with correct per-repo attribution. The non-topic (code entity) path
 	// below is entirely unchanged.
-	if e := resolution.repo.getByID()[resolution.localID]; isMessageTopicEntity(e) {
+	if e, _ := resolution.repo.getByIDOne(resolution.localID); isMessageTopicEntity(e) {
 		return s.impactRadiusForTopic(lg, &topicSeed{repo: resolution.repo, id: resolution.localID, name: e.Name}, hops), nil
 	}
 
@@ -1225,8 +1229,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	// with ≥1 inbound TESTS edge has genuine test linkage and must not be
 	// labelled "no test coverage" regardless of its test_coverage property.
 	inboundTestsMap := map[string]int{}
-	for i := range r.Doc.Relationships {
-		rel := &r.Doc.Relationships[i]
+	r.forEachRelationship(func(rel *graph.Relationship) bool {
 		totalDegreeMap[rel.ToID]++
 		if rel.Kind == "TESTS" {
 			inboundTestsMap[rel.ToID]++
@@ -1241,7 +1244,8 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 			// Source not in byID — treat as named to avoid under-counting.
 			namedCallerMap[rel.ToID]++
 		}
-	}
+		return true
+	})
 
 	// Impact radius = entities that transitively depend on `target`.
 	// We walk the INBOUND graph from target: callers of callers. The walk is
@@ -1253,7 +1257,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	for d := 0; d < hops; d++ {
 		next := []string{}
 		for _, n := range frontier {
-			for _, e := range adj.in[n] {
+			for _, e := range adj.Incoming(n) {
 				if _, seen := visited[e.target]; seen {
 					continue
 				}
@@ -1530,10 +1534,28 @@ func subgraphModulePrefix(path string) string {
 //
 // A target is a hub when its precomputed IsGodNode flag is set or its total
 // degree exceeds subgraphHubDegree.
-func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *graph.Entity) *bfsRanker {
+// memoRepoResolver returns an entity-by-id resolver backed by getByIDOne,
+// memoizing each result (including nil) so a BOUNDED subgraph walk materializes
+// each visited entity at most ONCE on the flag-ON mmap path — instead of
+// getByID materializing the whole repo's entity set for a maxNodes-bounded walk
+// (memory epic #5850 Path P). Not safe for concurrent use; each call site builds
+// its own.
+func memoRepoResolver(r *LoadedRepo) func(string) *graph.Entity {
+	cache := make(map[string]*graph.Entity)
+	return func(id string) *graph.Entity {
+		if e, ok := cache[id]; ok {
+			return e
+		}
+		e, _ := r.getByIDOne(id)
+		cache[id] = e
+		return e
+	}
+}
+
+func newSubgraphRanker(adj *adjacency, resolve func(string) *graph.Entity, root *graph.Entity) *bfsRanker {
 	degree := func(id string) int { return len(adj.Outgoing(id)) + len(adj.Incoming(id)) }
 	isHub := func(id string) bool {
-		if e := byID[id]; e != nil && e.IsGodNode {
+		if e := resolve(id); e != nil && e.IsGodNode {
 			return true
 		}
 		return degree(id) >= subgraphHubDegree
@@ -1551,7 +1573,7 @@ func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *grap
 			if ha != hb {
 				return !ha // non-hub first
 			}
-			ea, eb := byID[a.target], byID[b.target]
+			ea, eb := resolve(a.target), resolve(b.target)
 			fa, fb := ea != nil && ea.SourceFile == rootFile, eb != nil && eb.SourceFile == rootFile
 			if fa != fb {
 				return fa // same file first
@@ -1573,14 +1595,14 @@ func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *grap
 // subgraphHubNote renders the hub-boundary annotation shared by the raw and
 // markdown subgraph paths (#5691): human names + degree for each hub the walk
 // stopped at, and the id->display map for structured output.
-func subgraphHubNote(hubIDs []string, byID map[string]*graph.Entity, adj *adjacency) []string {
+func subgraphHubNote(hubIDs []string, resolve func(string) *graph.Entity, adj *adjacency) []string {
 	if len(hubIDs) == 0 {
 		return nil
 	}
 	names := make([]string, 0, len(hubIDs))
 	for _, id := range hubIDs {
 		name := id
-		if e := byID[id]; e != nil && e.Name != "" {
+		if e := resolve(id); e != nil && e.Name != "" {
 			name = e.Name
 		}
 		deg := len(adj.Outgoing(id)) + len(adj.Incoming(id))
@@ -1650,16 +1672,19 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
+		// Path P (#5850): resolve entities on demand via a memoizing resolver so a
+		// maxNodes-bounded walk materializes only the visited entities, not the
+		// whole repo (which the flag-ON whole-map getByID would).
+		resolve := memoRepoResolver(r)
+		root := resolve(target)
+		if root == nil {
 			continue
 		}
 		adj := r.getAdjacency()
-		byID2 := r.getByID()
 		// Locality-first, hub-aware bounded expansion (#5691): rank the frontier
 		// by locality so local structure survives truncation, and stop at
 		// high-degree hubs instead of inheriting their fan-out.
-		ranker := newSubgraphRanker(adj, byID2, byID[target])
+		ranker := newSubgraphRanker(adj, resolve, root)
 		visited, nodesTruncated, hubIDs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsBoth)
 		type nodeOut struct {
 			EntityID   string `json:"entity_id"`
@@ -1677,7 +1702,7 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		var nodes []nodeOut
 		nodeSet := map[string]bool{}
 		for id, d := range visited {
-			if e := byID2[id]; e != nil {
+			if e := resolve(id); e != nil {
 				nodes = append(nodes, nodeOut{
 					EntityID:   prefixedID(r.Repo, e.ID),
 					Name:       e.Name,
@@ -1741,7 +1766,7 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 		}
 		// Hub boundaries: the walk stopped at these high-degree hubs rather than
 		// inheriting their fan-out. Surface them so the caller can narrow (#5691).
-		hubNames := subgraphHubNote(hubIDs, byID2, adj)
+		hubNames := subgraphHubNote(hubIDs, resolve, adj)
 		truncated := nodesTruncated || len(hubNames) > 0
 		out["truncated"] = truncated
 		var notes []string
@@ -1805,9 +1830,11 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		if target == "" {
 			target = entityID
 		}
-		byID := r.getByID()
-		root, ok := byID[target]
-		if !ok {
+		// Path P (#5850): memoizing on-demand resolver — materialize only the
+		// bounded walk's visited entities, not the whole repo.
+		resolve := memoRepoResolver(r)
+		root := resolve(target)
+		if root == nil {
 			continue
 		}
 
@@ -1815,7 +1842,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		// Locality-first, hub-aware, BOUNDED walk in each direction (#5691).
 		// bfsBoundedRanked includes the start node at depth 0; the caller lists
 		// exclude it below.
-		ranker := newSubgraphRanker(adj, byID, root)
+		ranker := newSubgraphRanker(adj, resolve, root)
 		inVisited, _, inHubs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsIn)
 		outVisited, _, outHubs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsOut)
 
@@ -1831,7 +1858,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 			if id == target {
 				continue // bfsBoundedRanked includes the start node at depth 0
 			}
-			if e := byID[id]; e != nil {
+			if e := resolve(id); e != nil {
 				callers = append(callers, neighbor{name: e.Name, kind: stripScopePrefix(e.Kind), file: e.SourceFile, hop: d})
 			}
 		}
@@ -1847,7 +1874,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 			if id == target {
 				continue // bfsBoundedRanked includes the start node at depth 0
 			}
-			if e := byID[id]; e != nil {
+			if e := resolve(id); e != nil {
 				callees = append(callees, neighbor{name: e.Name, kind: stripScopePrefix(e.Kind), file: e.SourceFile, hop: d})
 			}
 		}
@@ -1919,7 +1946,7 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 				hubIDs = append(hubIDs, id)
 			}
 		}
-		if names := subgraphHubNote(hubIDs, byID, adj); len(names) > 0 {
+		if names := subgraphHubNote(hubIDs, resolve, adj); len(names) > 0 {
 			b.WriteString(fmt.Sprintf(
 				"## Hub boundaries\n\n_Expanded into hub(s) [%s] and stopped there to avoid inheriting "+
 					"their fan-out. Pass an entity_kind or module filter to narrow._\n\n",
@@ -1950,9 +1977,9 @@ func isStdlibEntity(e *graph.Entity) bool {
 			return true
 		}
 	}
-	if e.Properties["is_external"] == "true" ||
-		e.Properties["is_stdlib"] == "true" ||
-		e.Properties["external"] == "true" {
+	if e.PropGet("is_external") == "true" ||
+		e.PropGet("is_stdlib") == "true" ||
+		e.PropGet("external") == "true" {
 		return true
 	}
 	return false
@@ -2144,18 +2171,18 @@ func buildImportedNameSet(repos []*LoadedRepo) map[string]bool {
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != "IMPORTS" {
-				continue
+				return true
 			}
-			if n := rel.Properties["imported_name"]; n != "" {
+			if n := rel.PropGet("imported_name"); n != "" {
 				set[n] = true
 			}
-			if n := rel.Properties["local_name"]; n != "" {
+			if n := rel.PropGet("local_name"); n != "" {
 				set[n] = true
 			}
-		}
+			return true
+		})
 	}
 	return set
 }
@@ -2273,15 +2300,15 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 		// pass.
 		projectEntities := map[string]bool{}
 		testEntity := map[string]bool{}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isStdlibEntity(e) {
 				projectEntities[e.ID] = true
 			}
 			if isTestFileMCP(e.SourceFile) {
 				testEntity[e.ID] = true
 			}
-		}
+			return true
+		})
 
 		// Count inbound *reference* edges (the usage signal) per entity. An
 		// operation with any inbound CALLS/REFERENCES/TESTS/ROUTES_TO/etc. is
@@ -2298,13 +2325,12 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 		// production-dead-but-test-covered: the `test_only_referenced` class.
 		inRef := map[string]int{}
 		inRefProd := map[string]int{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if !projectEntities[rel.FromID] || !projectEntities[rel.ToID] {
-				continue
+				return true
 			}
 			if rel.Kind == "CONTAINS" {
-				continue
+				return true
 			}
 			if inboundRefKinds[rel.Kind] {
 				inRef[rel.ToID]++
@@ -2315,19 +2341,19 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 					inRefProd[rel.ToID]++
 				}
 			}
-		}
+			return true
+		})
 
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if isStdlibEntity(e) {
-				continue
+				return true
 			}
 			if !matchesKindFilter(e, kindFilter) {
-				continue
+				return true
 			}
 			// #2769 Phase 1C: drop entities below the caller's confidence floor.
 			if !entityPassesConfidence(e, minConfidence) {
-				continue
+				return true
 			}
 
 			// Dead-code analysis applies ONLY to callable operations
@@ -2337,11 +2363,11 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 			// destroys precision on real per-repo graphs (where cross-repo
 			// usage lives in the group links file, not in per-repo edges).
 			if !isOperationKind(e) {
-				continue
+				return true
 			}
 			// Exclude non-code "operation" entities (Dockerfile CMD, SQL DDL).
 			if nonCodeLanguages[strings.ToLower(e.Language)] {
-				continue
+				return true
 			}
 			// The TARGET being a test entity is never dead production code — a
 			// test helper called only by other tests is wired-as-intended. We
@@ -2349,7 +2375,7 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 			// test_only_referenced class require the target to live in
 			// production code.
 			if testEntity[e.ID] || strings.Contains(strings.ToLower(e.SourceFile), "test") {
-				continue
+				return true
 			}
 			// Route handlers, framework lifecycle hooks, event listeners, and
 			// constructors are reachable without an explicit call edge. These
@@ -2357,11 +2383,11 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 			// reflectively / by the framework / as an entry point is not dead
 			// even with zero in-graph production callers.
 			if isFrameworkOrHandler(e) {
-				continue
+				return true
 			}
 			// Imported by another repo → live public API surface.
 			if isExternallyConsumed(e, imported) {
-				continue
+				return true
 			}
 
 			leaf := e.Name
@@ -2403,7 +2429,7 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 				// rather than in per-repo edges) is NOT flagged, keeping false
 				// positives near zero.
 				if !deadMarkerRe.MatchString(leaf) {
-					continue
+					return true
 				}
 				out = append(out, item{
 					EntityID:   prefixedID(r.Repo, e.ID),
@@ -2416,7 +2442,8 @@ func (s *Server) handleFindDeadCode(_ context.Context, req mcpapi.CallToolReques
 					Confidence: 0.85,
 				})
 			}
-		}
+			return true
+		})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -2459,13 +2486,19 @@ func entityExistsAnywhere(lg *LoadedGroup, id string) bool {
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		if _, ok := r.getByID()[probe]; ok {
+		if _, ok := r.getByIDOne(probe); ok {
 			return true
 		}
-		for i := range r.Doc.Entities {
-			if r.Doc.Entities[i].Name == probe {
-				return true
+		found := false
+		r.forEachEntity(func(e *graph.Entity) bool {
+			if e.Name == probe {
+				found = true
+				return false
 			}
+			return true
+		})
+		if found {
+			return true
 		}
 	}
 	return false
@@ -2502,35 +2535,34 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 			continue
 		}
 		byID := r.getByID()
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
+		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if rel.Kind != "NAVIGATES_TO" {
-				continue
+				return true
 			}
 			match := rel.ToID == wantToID
-			if !match && rel.Properties != nil {
-				if rel.Properties["route"] == routeLit {
+			if !match && rel.PropLen() > 0 {
+				if rel.PropGet("route") == routeLit {
 					match = true
-				} else if strings.EqualFold(rel.Properties["route"], routeLit) {
+				} else if strings.EqualFold(rel.PropGet("route"), routeLit) {
 					match = true
 				}
 			}
 			if !match {
-				continue
+				return true
 			}
 			line := 0
 			route := routeLit
 			paramsKeys := ""
-			if rel.Properties != nil {
-				if ls := rel.Properties["line"]; ls != "" {
+			if rel.PropLen() > 0 {
+				if ls := rel.PropGet("line"); ls != "" {
 					if n, perr := strconv.Atoi(ls); perr == nil {
 						line = n
 					}
 				}
-				if rt := rel.Properties["route"]; rt != "" {
+				if rt := rel.PropGet("route"); rt != "" {
 					route = rt
 				}
-				paramsKeys = rel.Properties["params_keys"]
+				paramsKeys = rel.PropGet("params_keys")
 			}
 			rc := routeCaller{
 				EntityID:   prefixedID(r.Repo, rel.FromID),
@@ -2545,7 +2577,8 @@ func (s *Server) tryFindCallersByRoute(req mcpapi.CallToolRequest, lg *LoadedGro
 				rc.SourceFile = e.SourceFile
 			}
 			callers = append(callers, rc)
-		}
+			return true
+		})
 	}
 	if len(callers) == 0 {
 		return nil

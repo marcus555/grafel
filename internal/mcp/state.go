@@ -18,6 +18,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -30,6 +31,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/embed"
 	"github.com/cajasmota/grafel/internal/graph"
+	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
@@ -266,11 +268,31 @@ func (l CrossRepoLink) EdgeConfidence() string {
 // transient field-decode wrapper. Reader is nil when graph.fb is not
 // present (JSON-only fallback or old index format).
 type LoadedRepo struct {
-	Repo       string
-	Path       string
-	GraphFile  string
-	Doc        *graph.Document
-	Reader     *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	Repo      string
+	Path      string
+	GraphFile string
+	Doc       *graph.Document
+	Reader    *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	// handle is the F1 (ADR-0027) deferred-unmap wrapper that OWNS the lifetime
+	// of Reader's mapping. Reader is the (still-dark) read accessor; handle is
+	// what reload/evict/Close route the munmap through so an in-flight borrow can
+	// drain first. Invariant: handle == nil iff Reader == nil, and when both are
+	// non-nil handle.reader == Reader. Mutated only under State.mu via
+	// publishHandle / retireHandle. Nil when graph.fb is unavailable.
+	handle *MapHandle
+	// readerMu is the ADR-0027 read-side SIGBUS-safety mutex (memory epic #5850,
+	// "Option B") that gates the GRAFEL_SERVE_FROM_MMAP flag-on read path. It is
+	// STRICTLY INNERMOST: nothing else is acquired while it is held. The 4 flag-on
+	// read choke points (LabelIndex.at + the three build*AdjacencyFromReader
+	// getters) hold it around their mmap dereference; publishHandle/retireHandle
+	// hold it around the predecessor's munmap (setting handle.readRetired true
+	// first). Because it sits below idxMu in the order (read: idxMu->readerMu, or
+	// bare readerMu at at()) and reload already holds s.mu (reload:
+	// s.mu->...->readerMu), a deref and the munmap of that same mapping can never
+	// interleave and no lock inversion is possible. Its zero value is usable, so a
+	// LoadedRepo needs no explicit init. The wired *LabelIndex holds &readerMu so a
+	// lookup on a pre-reload-captured index locks the SAME mutex.
+	readerMu   sync.Mutex
 	LabelIndex *LabelIndex
 	BM25       *BM25Index
 	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
@@ -302,10 +324,28 @@ type LoadedRepo struct {
 	bm25Once     sync.Once                // #3377: BM25 built lazily on first search
 	suffixOnce   sync.Once                // #5682: source-file suffix index built lazily
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
-	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
+	callsAdj     *callsAdjacency          // CALLS-only forward adjacency, CSR layout (#1656, #5850)
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
-	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
-	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
+	byID         map[string]*graph.Entity // entity ID -> entity, flag-OFF resident cache (#1656)
+	// byIDIdx is the FLAG-ON resident getByID cache (memory epic #5850 Path P): it
+	// maps entity ID -> vector INDEX and holds NO *graph.Entity, so it cannot
+	// re-pin the ~608 MB entity set that the mmap flip moves out of the Go heap.
+	// getByID resolves each index to an entity ON DEMAND via the readerMu-guarded
+	// LabelIndex.at (Reader base + overlay side-table). Built once per reload under
+	// byIDOnce, cleared by resetIndexes. Nil on the flag-OFF default path (which
+	// keeps byID above — Doc is retained flag-OFF anyway, so pointer retention
+	// there is free). Mirrors the BM25 int32-index no-retention build (PR3b L4).
+	byIDIdx      map[string]int32
+	topKPageRank []string // entity IDs sorted descending by PageRank (#2304)
+	// bm25LastUse is the wall-clock time of the most recent getBM25() borrow (a
+	// search-tool use). idxMu-guarded — written under idxMu in getBM25 and read
+	// under idxMu in evictBM25IfIdle. The idle sweep (SweepIdleBM25) drops the
+	// heavy BM25 index once now-bm25LastUse exceeds the configured idle window so
+	// a session that has stopped searching does not keep ~313 MB (corpus) pinned;
+	// the next search rebuilds it transparently via getBM25. Zero value means the
+	// index has never been borrowed through getBM25 (e.g. a test that set BM25
+	// directly), in which case it is NOT eligible for idle eviction.
+	bm25LastUse time.Time
 	// mroInbound maps a DEFINING member's local id -> the inherited-stub ids
 	// that resolve to it via the MRO walk (#3834). It is the reverse of
 	// mroOutboundEdges, used by neighbors(in) so a base method surfaces the
@@ -335,6 +375,20 @@ type LoadedRepo struct {
 	suffixIndex        map[string][]string
 	suffixIndexPartial bool
 
+	// hotIdx is the W1 (ADR-0027) memoized handle-keyed hot index (id/label/
+	// qname entity lookups + the relationship view seam) built lazily on the
+	// FIRST view-getter use for a given captured MapHandle and reused across
+	// borrows of that handle. It is guarded by its own leaf mutex hotIdxMu (never
+	// nested under idxMu / mroMu / baseChainMu) because the build takes no other
+	// index lock. The memo is keyed by the captured handle's identity: a reload
+	// publishes a successor handle, so the next borrow's captured handle no longer
+	// matches lr.hotIdx.Handle() and the index rebuilds. resetIndexes also clears
+	// it under s.mu on every Doc replacement, covering the degenerate no-mmap
+	// (nil-handle) reload where the handle identity is unchanged. Nil until the
+	// first view-getter use. See LoadedRepo.hotIndexFor and hotindex.go.
+	hotIdxMu sync.Mutex
+	hotIdx   *hotIndex
+
 	semMtime time.Time
 	mtime    time.Time
 	// contentHash is the FNV-1a hash of the graph.fb bytes last parsed into
@@ -347,6 +401,18 @@ type LoadedRepo struct {
 	// first successful load.
 	contentHash uint64
 	loadErr     string // populated when last reload failed; doc may be stale
+
+	// reindexRequired / reindexReason record whether the LAST reload attempt
+	// for this repo failed specifically because its on-disk graph.fb format
+	// version is older than this binary supports (#reindex-required PR1:
+	// detection + observability only — nothing reads these fields to trigger
+	// a reindex or a user prompt yet). The authoritative, always-fresh,
+	// race-free ReindexRequired/ReindexReason surfaced to the statusline and
+	// `grafel status --json` is recomputed independently by the engine's
+	// status writer directly from graph.fb bytes (see readDocumentFromDir's
+	// call site above for why serve-side state is not the source of truth).
+	reindexRequired bool
+	reindexReason   string
 
 	// algoStampedMt is the lr.mtime value at which applyGroupAlgoOverlay last
 	// stamped the group overlay (CommunityID/PageRank/Centrality/god/articulation)
@@ -393,6 +459,16 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.baseChainHash = 0
 	lr.baseChainMu.Unlock()
 
+	// W1 (ADR-0027): drop the memoized hot index so the next view-getter use
+	// rebuilds against the fresh Doc. Handle-identity keying already rebuilds when
+	// reload publishes a successor handle, but a no-mmap reload (nil handle both
+	// before and after) leaves the identity unchanged, so the explicit clear here
+	// — under s.mu, on every Doc replacement — is the load-bearing invalidation
+	// for that case. Its own leaf mutex, taken independently (never nested).
+	lr.hotIdxMu.Lock()
+	lr.hotIdx = nil
+	lr.hotIdxMu.Unlock()
+
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.adjOnce = sync.Once{}
@@ -407,9 +483,65 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.callsAdj = nil
 	lr.stepAdj = nil
 	lr.byID = nil
+	lr.byIDIdx = nil
 	lr.topKPageRank = nil
 	lr.suffixIndex = nil
 	lr.suffixIndexPartial = false
+}
+
+// publishHandle installs nh as the repo's live mmap handle under the F1
+// (ADR-0027) deferred-unmap protocol and retires the predecessor. The ordering
+// is load-bearing: the successor is published (lr.handle / lr.Reader repointed)
+// BEFORE the old handle is retired, so a fresh borrow — which only ever targets
+// the currently-published lr.handle — can never re-borrow the retired
+// predecessor (§Correctness "no re-borrow of a retired handle"). retire() then
+// unmaps the predecessor immediately iff it has already drained (refs==0);
+// otherwise the last in-flight release() unmaps it. NEVER an in-place Close().
+//
+// nh may be nil (JSON-only fallback / no graph.fb). Caller MUST hold State.mu.
+func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
+	// ADR-0027 SIGBUS-safety (memory epic #5850): the whole swap runs under the
+	// strictly-innermost readerMu so a flag-on read choke point sees a consistent
+	// (lr.Reader/lr.handle) pair and never derefs a mapping being munmapped here.
+	// The predecessor is flagged readRetired BEFORE its munmap so a stale captured
+	// *LabelIndex checking readRetired (under this same readerMu) falls back to the
+	// Doc instead of dereferencing the freed region. readerMu is innermost: the
+	// only thing done while holding it is field assignment + old.retire()'s munmap
+	// syscall — no other grafel lock is acquired.
+	lr.readerMu.Lock()
+	old := lr.handle
+	if nh != nil {
+		nh.repo = lr.Repo
+		lr.Reader = nh.reader
+	} else {
+		lr.Reader = nil
+	}
+	lr.handle = nh
+	if old != nil {
+		old.readRetired = true
+		old.retire()
+	}
+	lr.readerMu.Unlock()
+}
+
+// retireHandle retires the repo's current mmap handle (repo eviction and server
+// Close), routing the munmap through the F1 drain instead of a bare
+// lr.Reader.Close() — same munmap-while-borrowed hazard as reload. The mapping
+// is unmapped now iff it has drained, else by the last release(). Caller MUST
+// hold State.mu.
+func (lr *LoadedRepo) retireHandle() {
+	// Same readerMu discipline as publishHandle: flag readRetired then munmap, all
+	// under the strictly-innermost readerMu, so a concurrent flag-on read choke
+	// point cannot deref this mapping while (or after) it is unmapped.
+	lr.readerMu.Lock()
+	old := lr.handle
+	lr.handle = nil
+	lr.Reader = nil
+	if old != nil {
+		old.readRetired = true
+		old.retire()
+	}
+	lr.readerMu.Unlock()
 }
 
 // getSuffixIndex returns the source-file suffix index (basename -> repo-relative
@@ -454,28 +586,150 @@ func (lr *LoadedRepo) getMROInbound() map[string][]string {
 	return lr.mroInbound
 }
 
-// getByID returns the entity-ID → *Entity map, building it on first use.
-// Reuses LabelIndex.ByID when present (the LabelIndex is built eagerly at
-// reload and carries an identical map), avoiding a second O(N) pass.
+// getByID returns the entity-ID → *Entity map, building the cache on first use.
+//
+// Memory epic #5850 Path P — de-retain byID. The resident cache is gated by
+// GRAFEL_SERVE_FROM_MMAP so the flag-ON path pins NO entity pointers (the flip
+// prerequisite; post-flip lr.Doc is emptied and a retained entity map here would
+// re-pin the whole ~608 MB entity set in the Go heap, defeating the flip):
+//
+//   - Flag-ON (Reader resident): the resident cache is lr.byIDIdx — ID → vector
+//     INDEX (map[string]int32), learned once from the LabelIndex's own int32 map.
+//     getByID resolves each index to an entity ON DEMAND via the readerMu-guarded
+//     LabelIndex.at (Reader base + overlay side-table, byte-equal to the overlaid
+//     Doc row) and returns a TRANSIENT map[string]*graph.Entity that the caller
+//     drops after use — nothing entity-shaped stays resident. The bound is the
+//     Reader's row count (EntityCount), so a PR7 Doc-emptying does not collapse
+//     the result. Mirrors the BM25 int32-index no-retention build (PR3b L4).
+//   - Flag-OFF (default): the resident cache is lr.byID — INDEPENDENT heap copies
+//     of the live Doc rows (ADR-0027 PR2), so post-load in-place overlay stamps
+//     stay visible, GC-safe, with NO handler-path mmap read. Doc is retained
+//     flag-OFF anyway, so this pointer retention is free. Built once and cached,
+//     so the values are INTERNALLY STABLE for the life of the reload.
+//
+// The mmap path short-circuits to the flag-OFF Doc build whenever at() cannot
+// serve an index (nil LabelIndex/Reader, JSON load). getByID consumers index the
+// returned map by id and never compare value pointers across calls, so they are
+// insulated from the per-lookup pointer instability of LabelIndex.at.
 func (lr *LoadedRepo) getByID() map[string]*graph.Entity {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
+	lr.buildByIDCacheLocked()
+
+	if lr.byIDIdx != nil {
+		// Flag-ON: resolve every cached index to an entity ON DEMAND via the
+		// readerMu-guarded LabelIndex.at (Reader base + overlay side-table). The
+		// returned map is transient — the caller drops it, so no entity stays
+		// resident. A retired mapping falls back to the Doc inside at() (nil when
+		// Doc is emptied), never a read-after-munmap.
+		//
+		// This whole-map build materializes the ENTIRE entity set per call, so it
+		// is reserved for genuine iterate-many callers (lookup tables built across
+		// forEachEntity/forEachRelationship). Single/few-id callers MUST use
+		// getByIDOne, which materializes exactly one entity.
+		out := make(map[string]*graph.Entity, len(lr.byIDIdx))
+		for id, i := range lr.byIDIdx {
+			if ent := lr.LabelIndex.at(i); ent != nil {
+				out[id] = ent
+			}
+		}
+		return out
+	}
+	return lr.byID
+}
+
+// getByIDOne resolves a SINGLE entity by id, materializing exactly one entity on
+// the flag-ON path (never the whole entity set) — the accessor for the single/
+// few-lookup callers (memory epic #5850 Path P). It returns (entity, true) when
+// present, (nil, false) when the id is unknown OR the mmap mapping was retired
+// out from under a lookup (at() returns nil). Byte-identical to today's
+// getByID()[id] / `_, ok := getByID()[id]` on the flag-OFF path.
+//
+// Flag-ON it looks up the resident int32 index cache (lr.byIDIdx, built/reused
+// under the same byIDOnce/idxMu as getByID) and resolves the ONE index via the
+// readerMu-guarded LabelIndex.at. Flag-OFF it indexes the memoized Doc-backed
+// map (lr.byID). Sharing byIDOnce means getByID and getByIDOne never build the
+// cache twice for a repo.
+func (lr *LoadedRepo) getByIDOne(id string) (*graph.Entity, bool) {
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	lr.buildByIDCacheLocked()
+
+	if lr.byIDIdx != nil {
+		idx, ok := lr.byIDIdx[id]
+		if !ok {
+			return nil, false
+		}
+		ent := lr.LabelIndex.at(idx)
+		if ent == nil {
+			return nil, false // retired mapping / out-of-range — graceful miss
+		}
+		return ent, true
+	}
+	e, ok := lr.byID[id]
+	return e, ok
+}
+
+// buildByIDCacheLocked populates the reload-scoped getByID cache exactly once
+// (guarded by byIDOnce). Caller MUST hold idxMu. Flag-ON it builds lr.byIDIdx
+// (ID → vector index, NO entities retained); flag-OFF it builds the Doc-backed
+// lr.byID map. Shared by getByID and getByIDOne.
+func (lr *LoadedRepo) buildByIDCacheLocked() {
 	lr.byIDOnce.Do(func() {
-		if lr.LabelIndex != nil && lr.LabelIndex.ByID != nil {
-			lr.byID = lr.LabelIndex.ByID
+		mmapSourced := serveFromMMap() && lr.LabelIndex != nil && lr.LabelIndex.reader != nil
+		if mmapSourced {
+			// Learn ID → vector index once, retaining ONLY the int32 map. The
+			// LabelIndex already holds the exact ID → index mapping (built from the
+			// Reader in vector order); copy it into an independent resident cache so
+			// getByID's lifetime is decoupled from LabelIndex churn. No *graph.Entity
+			// is materialized or retained here.
+			idxMap := make(map[string]int32, len(lr.LabelIndex.byID))
+			for id, i := range lr.LabelIndex.byID {
+				idxMap[id] = i
+			}
+			lr.byIDIdx = idxMap
 			return
 		}
+		// Flag-OFF: memoize the Doc-backed *graph.Entity map (unchanged, PR2).
 		if lr.Doc == nil {
 			lr.byID = map[string]*graph.Entity{}
 			return
 		}
 		m := make(map[string]*graph.Entity, len(lr.Doc.Entities))
 		for i := range lr.Doc.Entities {
-			m[lr.Doc.Entities[i].ID] = &lr.Doc.Entities[i]
+			ent := lr.Doc.Entities[i] // heap copy — a fresh pointer, not an alias into Doc
+			m[ent.ID] = &ent
 		}
 		lr.byID = m
 	})
-	return lr.byID
+}
+
+// hotIndexFor returns the memoized W1 (ADR-0027) hot index for this repo built
+// off the captured handle h, building it via build(h) exactly once per distinct
+// captured handle and reusing it across borrows of that same handle.
+//
+// Memoization + invalidation contract:
+//   - Reuse iff a memoized index exists AND it is keyed off the SAME captured
+//     handle h (lr.hotIdx.Handle() == h). This is the read-through-captured-
+//     handle invariant (F1/F2): the returned index's handle always equals the
+//     caller's captured handle, never a live lr.handle re-deref.
+//   - A reload publishes a successor handle, so a subsequent borrow captures a
+//     different h and this rebuilds. resetIndexes additionally nils lr.hotIdx
+//     under s.mu on every Doc replacement, so even a nil-handle (no-mmap) reload
+//     invalidates. The index is therefore never read across a reload.
+//
+// build is invoked ONLY on a memo miss (the first getter use for a handle, or
+// after invalidation), so the hot index costs nothing until a consumer reads it.
+// Guarded by hotIdxMu, a leaf lock: build must not acquire any other LoadedRepo
+// index lock (docEntityViewSource/docRelationshipViewSource read only lr.Doc).
+func (lr *LoadedRepo) hotIndexFor(h *MapHandle, build func(*MapHandle) *hotIndex) *hotIndex {
+	lr.hotIdxMu.Lock()
+	defer lr.hotIdxMu.Unlock()
+	if lr.hotIdx != nil && lr.hotIdx.Handle() == h {
+		return lr.hotIdx
+	}
+	lr.hotIdx = build(h)
+	return lr.hotIdx
 }
 
 // getBM25 returns the per-repo BM25 index, building it on first search-tool
@@ -491,9 +745,85 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 		if lr.Doc == nil {
 			return
 		}
-		lr.BM25 = BuildBM25(lr.Doc)
+		// ADR-0027 Cutover / issue #5871 L4 (memory epic #5850, Path P PR3b):
+		// build the BM25 index from the resident mmap Reader when ON, else the
+		// Document. This is the FLIP PREREQUISITE — post-flip lr.Doc is emptied,
+		// so BuildBM25(lr.Doc) would build an EMPTY index; the Reader still holds
+		// every row. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
+		// read (BuildBM25FromReader materializes every row) + a concurrent
+		// reload's munmap are serialized by the strictly-innermost readerMu, so
+		// the mapping cannot be freed mid-scan. Lock order: idxMu (held) ->
+		// readerMu; the Doc build takes no mmap so readerMu is dropped first.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			idx := BuildBM25FromReader(rdr)
+			// Search resolves each ranked vector index -> *graph.Entity at return
+			// time via the readerMu-guarded, materialize-on-demand LabelIndex.at
+			// (mmap Reader base + group-algo overlay side-table) — NOT a retained
+			// pointer slice. Capture the current LabelIndex generation so the
+			// resolver stays byte-consistent with the graph.fb this index was
+			// built from; at() takes readerMu itself and falls back to the Doc if
+			// the mapping is retired, so it is safe to call lock-free from Search.
+			li := lr.LabelIndex
+			idx.resolve = func(vi int32) *graph.Entity { return li.at(vi) }
+			lr.BM25 = idx
+			lr.readerMu.Unlock()
+		} else {
+			lr.readerMu.Unlock()
+			lr.BM25 = BuildBM25(lr.Doc)
+		}
 	})
+	// Record the borrow time so the idle sweep can distinguish an actively-used
+	// index from one whose last search is older than the eviction window. Stamped
+	// under idxMu (same lock evictBM25IfIdle reads it under) so the sweep never
+	// observes a torn timestamp. The caller reads through the returned pointer for
+	// the duration of its Search; a concurrent eviction only nils lr.BM25, which —
+	// under Go's GC — merely drops one reference and can never free the index out
+	// from under this borrow (contrast F1's munmap, which needs a refcount drain).
+	lr.bm25LastUse = time.Now()
 	return lr.BM25
+}
+
+// evictBM25IfIdle drops the repo's BM25 index (and re-arms bm25Once so the next
+// getBM25 rebuilds it) iff it is currently built AND its last search borrow is
+// older than idle relative to now. Returns true when it evicted.
+//
+// Concurrency: runs under idxMu, exactly like getBM25 and resetIndexes, so it is
+// mutually excluded from a concurrent build and from the reload-time reset — the
+// three are the only writers of lr.BM25 / lr.bm25Once. Re-arming the sync.Once by
+// assignment is safe here for the same reason resetIndexes does it: no other
+// goroutine can be inside bm25Once.Do (it holds idxMu for the whole Do). Nilling
+// lr.BM25 does NOT free memory an in-flight search still reads — that search holds
+// its own live *BM25Index from getBM25, so Go's GC keeps the object alive until
+// the search returns; only after the last reference drops is the ~313 MB (corpus)
+// reclaimable. This is why a plain lock suffices and no F1-style refcount drain is
+// needed: BM25 is a pure heap object, not a manually-unmapped mmap region.
+//
+// Reload interaction: resetIndexes already nils lr.BM25 under idxMu on a graph
+// change, so a stale index for the new graph is dropped there; an eviction that
+// races a reload finds lr.BM25 already nil and no-ops (no double-free), and a
+// reload that races an eviction likewise just re-nils an already-nil field.
+func (lr *LoadedRepo) evictBM25IfIdle(idle time.Duration, now time.Time) bool {
+	if idle <= 0 {
+		return false
+	}
+	lr.idxMu.Lock()
+	defer lr.idxMu.Unlock()
+	if lr.BM25 == nil {
+		return false
+	}
+	// A never-borrowed index (bm25LastUse zero) is not idle-eligible: it was
+	// populated outside the search path (e.g. a test that set BM25 directly) and
+	// has no meaningful last-use to age out.
+	if lr.bm25LastUse.IsZero() || now.Sub(lr.bm25LastUse) < idle {
+		return false
+	}
+	lr.BM25 = nil
+	lr.bm25Once = sync.Once{}
+	return true
 }
 
 // getAdjacency returns the in/out neighbor index, building it on first use.
@@ -502,24 +832,70 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 	defer lr.idxMu.Unlock()
 	lr.adjOnce.Do(func() {
 		if lr.Doc == nil {
-			lr.adjacency = &adjacency{out: map[string][]edge{}, in: map[string][]edge{}}
+			// Zero-value adjacency works out of the box: nodes.code/kinds.code
+			// are nil maps (lookups miss cleanly, returning ok=false) and
+			// out/in are zero-value csrDir (nil slices), so Outgoing/Incoming
+			// return nil for every id, matching the pre-#5852 empty-map
+			// behaviour (#5852).
+			lr.adjacency = &adjacency{}
 			return
 		}
-		lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
+		// ADR-0027 Cutover PR1: source the build from the resident mmap Reader
+		// when present (byte-identical to the Document build — same rows, same
+		// order), ELSE the Document. Gated behind GRAFEL_SERVE_FROM_MMAP (default
+		// OFF): this getter runs on the HANDLER path (idxMu only), and a
+		// concurrent reload retire()s+munmaps the old Reader WITHOUT idxMu (F1's
+		// borrow protocol is inert → refs==0 → immediate munmap), so an
+		// unconditional Reader iteration here is a read-after-unmap SIGBUS (latent
+		// PR1 #5865). OFF → the GC-safe Document build. Nil-Reader always uses the
+		// Document.
+		//
+		// ADR-0027 SIGBUS-safety (memory epic #5850): read lr.Reader/lr.handle and
+		// run the mmap build UNDER the strictly-innermost readerMu, so a concurrent
+		// reload's munmap (also under readerMu) cannot free the mapping mid-scan.
+		// readRetired is checked for uniformity with at() (lr.handle here is always
+		// the current, non-retired generation). Lock order: idxMu (held) -> readerMu;
+		// the Doc build takes no mmap so readerMu is dropped before it.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			lr.adjacency = buildAdjacencyFromReader(rdr, lr.Repo)
+			lr.readerMu.Unlock()
+		} else {
+			lr.readerMu.Unlock()
+			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
+		}
 	})
 	return lr.adjacency
 }
 
 // getCallsAdj returns the CALLS-only forward adjacency, building it on first use.
-func (lr *LoadedRepo) getCallsAdj() map[string][]string {
+func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.callsOnce.Do(func() {
 		if lr.Doc == nil {
-			lr.callsAdj = map[string][]string{}
+			// Zero-value callsAdjacency works out of the box (nodes.code is a
+			// nil map, so Get's lookup misses cleanly and returns nil),
+			// matching the pre-#5850 empty-map behaviour.
+			lr.callsAdj = &callsAdjacency{}
 			return
 		}
-		lr.callsAdj = buildCallsAdjacency(lr.Doc)
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
+		// Document. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
+		// read + reload munmap are serialized by the strictly-innermost readerMu.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			lr.callsAdj = buildCallsAdjacencyFromReader(rdr)
+			lr.readerMu.Unlock()
+		} else {
+			lr.readerMu.Unlock()
+			lr.callsAdj = buildCallsAdjacency(lr.Doc)
+		}
 	})
 	return lr.callsAdj
 }
@@ -533,7 +909,20 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 			lr.stepAdj = map[string][]stepEdge{}
 			return
 		}
-		lr.stepAdj = buildStepAdjacency(lr.Doc)
+		// ADR-0027 Cutover PR1: prefer the resident mmap Reader when ON, else the
+		// Document. Flag-gated (default OFF) for the same handler-path munmap
+		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
+		// read + reload munmap are serialized by the strictly-innermost readerMu.
+		lr.readerMu.Lock()
+		rdr := lr.Reader
+		h := lr.handle
+		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
+			lr.stepAdj = buildStepAdjacencyFromReader(rdr)
+			lr.readerMu.Unlock()
+		} else {
+			lr.readerMu.Unlock()
+			lr.stepAdj = buildStepAdjacency(lr.Doc)
+		}
 	})
 	return lr.stepAdj
 }
@@ -545,7 +934,28 @@ func (lr *LoadedRepo) getTopKPageRank() []string {
 	lr.idxMu.Lock()
 	defer lr.idxMu.Unlock()
 	lr.pagerankOnce.Do(func() {
-		lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+		// Real PageRank is NEVER in graph.fb: per-repo Pass-4 (the per-repo
+		// PageRank/CommunityID/Centrality/god/articulation compute) was removed
+		// when the group-scope algo pass (A1-A3, #5349) replaced it, so graph.fb's
+		// Pagerank() scalar is a PERMANENT sentinel (0) for every entity. The one
+		// authoritative source of real PageRank is applyGroupAlgoOverlay, from the
+		// <group>-algo.json overlay.
+		//
+		//   - Flag-OFF (default): the overlay is stamped IN PLACE onto
+		//     lr.Doc.Entities[i].PageRank, so source from lr.Doc. This is
+		//     byte-identical to the pre-PR5 behavior.
+		//   - Flag-ON (flip-ready): lr.Doc is (post-PR7) empty; the real PageRank
+		//     lives in the overlay SIDE-TABLE. buildTopKPageRankFromSideTable reads
+		//     the entity ids from the Reader (vector order) and PageRank from the
+		//     side-table (overlay[i].PageRank) — it MUST NOT read the Reader's
+		//     Pagerank() scalar (the permanent sentinel), which would collapse
+		//     top-K to id order and corrupt pickFallback (the reverted PR1 #5866
+		//     bug — see buildTopKPageRankFromReader's BLOCKED doc comment).
+		if serveFromMMap() {
+			lr.topKPageRank = lr.buildTopKPageRankFromSideTable(64)
+		} else {
+			lr.topKPageRank = buildTopKPageRank(lr.Doc, 64)
+		}
 	})
 	return lr.topKPageRank
 }
@@ -571,6 +981,18 @@ type LoadedGroup struct {
 	algoFile    string
 	algoMt      time.Time
 	algoApplied bool
+
+	// lastAccess is the wall-clock time of the most recent State.Group(name)
+	// routing decision for this group — the per-call choke point every tool call
+	// passes through to resolve its target group. s.mu-guarded (written in
+	// State.Group, read in SweepIdleGroups, both under s.mu). It is the idle-group
+	// LRU signal AND the PIN signal (memory epic #5850, issue #5872 PR2): the idle
+	// sweep evicts a whole group whose now-lastAccess exceeds the configured window
+	// but NEVER the currently-active group (the max-lastAccess group — the working
+	// set the fleet is servicing). Zero value means the group has been loaded but
+	// never routed to through State.Group (e.g. eager startup warm never queried):
+	// mirroring bm25LastUse, such a group is NOT idle-eligible until first access.
+	lastAccess time.Time
 }
 
 // WorktreeLookup is the narrow interface ResolveCWD uses to query the PH3
@@ -601,6 +1023,21 @@ type State struct {
 	// ResolveCWD checks it before falling through to the parent-repo logic so
 	// that a cwd inside a linked worktree returns the worktree-specific entry.
 	worktreeLookup WorktreeLookup
+
+	// evicted is the per-group whole-graph LRU-eviction cold-gate (memory epic
+	// #5850, issue #5872 PR1). A group name present here has been reclaimed by
+	// EvictGroup and swapped OUT of s.groups; the gate keeps reloadAllLocked from
+	// eagerly resurrecting it before it is explicitly accessed again.
+	//
+	//   - value nil  → full evict (keepReader=false): the mmap was munmapped and
+	//     the whole heavy group dropped; revive reloads from disk.
+	//   - value !nil → keepReader evict: a lightweight COLD SHELL whose repos kept
+	//     their mmap Readers resident (LabelIndex/derived-index heap dropped);
+	//     revive re-materializes the heap from those Readers with no re-Open.
+	//
+	// Mutated only under s.mu. Nil until the first EvictGroup call. No policy
+	// lives here in PR1 — this is the eviction PRIMITIVE's bookkeeping only.
+	evicted map[string]*LoadedGroup
 
 	// CrossLinkCache is the ref-keyed in-memory cache for cross-repo link
 	// candidates (issue #2224). Keyed by (repoA, refA, repoB, refB); the
@@ -766,10 +1203,28 @@ func (s *State) ReloadAndSurfaceChanged() (int, bool, error) {
 func (s *State) reloadLocked() (int, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.reloadAllLocked()
+}
+
+// reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split
+// out of reloadLocked (memory epic #5850 PR1) so the eviction revive path can
+// reload from disk while already holding s.mu (Group -> reviveEvictedLocked)
+// without re-taking the lock.
+func (s *State) reloadAllLocked() (int, bool, error) {
 	prevSig := s.registrySignature
 	registryChanged := s.refreshRegistryFromDisk()
 	reloaded := 0
 	for gName, gEntry := range s.registry.Groups {
+		// Cold-gate (memory epic #5850, issue #5872 PR1): a group EvictGroup put
+		// in s.evicted is intentionally NOT resident. Skip it so reload does not
+		// eagerly resurrect every registered group before it is touched — an
+		// evicted group stays evicted until an explicit State.Group access revives
+		// it (reviveEvictedLocked). Without this gate the loop below would recreate
+		// the LoadedGroup and reload every repo from disk on the very next reload,
+		// defeating the eviction.
+		if _, gated := s.evicted[gName]; gated {
+			continue
+		}
 		grp, ok := s.groups[gName]
 		if !ok {
 			grp = &LoadedGroup{
@@ -858,19 +1313,81 @@ func (s *State) reloadLocked() (int, bool, error) {
 					doc, err := readDocumentFromDir(stateDir)
 					if err != nil {
 						lr.loadErr = err.Error()
+						// #reindex-required PR1: detect (not act on) a graph.fb
+						// format-version incompatibility. errors.As lets us tell
+						// "this repo's on-disk graph.fb was written by an older
+						// grafel build than this process supports" apart from any
+						// other load failure (corrupt file, permission error,
+						// etc.), without string-matching err.Error(). Recorded
+						// here for observability on the in-memory LoadedRepo; the
+						// DURABLE, authoritative ReindexRequired/ReindexReason
+						// truth served to the statusline and `grafel status
+						// --json` is (re)computed independently, per on-disk
+						// graph.fb bytes, by the engine's status writer
+						// (internal/daemon/statuswriter.go, writeRepoStatusFile ->
+						// graph.ReindexRequiredReason) on every heartbeat — NOT
+						// written from here — because in ADR-0024 split mode this
+						// mcp/state.go reload loop runs in the separate `serve`
+						// process, whose write here could be silently clobbered by
+						// the engine process's own periodic heartbeat write to the
+						// same statusfile.File. This slice is detection + state
+						// ONLY: no reindex is triggered.
+						var fvErr *graph.FormatVersionError
+						if errors.As(err, &fvErr) {
+							lr.reindexRequired = true
+							lr.reindexReason = graph.FormatVersionReason(fvErr.Found, fvErr.Required)
+						}
 						continue
 					}
-					// S8 (#2159): close the previous reader before replacing it so
-					// we don't leak mmap fds across reloads.
-					if lr.Reader != nil {
-						_ = lr.Reader.Close()
-						lr.Reader = nil
-					}
+					lr.reindexRequired = false
+					lr.reindexReason = ""
 					lr.Doc = doc
 					lr.mtime = fileMtime
 					lr.contentHash = newHash // 0 on hash failure → next reload re-parses
 					lr.loadErr = ""
-					lr.LabelIndex = BuildLabelIndex(doc)
+					// ADR-0027 Cutover PR2: open the mmap Reader BEFORE building the
+					// LabelIndex so the index sources entity indices (int32 positions)
+					// and MATERIALIZES each lookup from the resident mmap — byte-
+					// identical to the Document rows (PR1) — instead of pinning
+					// *graph.Entity pointers into Doc.Entities (the PR7 flip removes
+					// Doc.Entities entirely). Best-effort: Open failure leaves newRdr
+					// nil and the index falls back to the Document (JSON-only path).
+					// The SAME reader is published via setReader below (F1 protocol).
+					fbPath := filepath.Join(stateDir, "graph.fb")
+					var newRdr *fbreader.Reader
+					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
+						newRdr = rdr
+					}
+					// ADR-0027 SIGBUS-safety (memory epic #5850): build the successor
+					// MapHandle up front so the reader-sourced LabelIndex is FULLY wired
+					// (readerMu + this generation's retirement handle) BEFORE it is
+					// published to lr.LabelIndex — a handler live-reading lr.LabelIndex
+					// never sees a half-wired index, and at()'s mmap deref is serialized
+					// (its stale-capture fallback armed) against this handle's later
+					// munmap. publishHandle below installs this SAME handle.
+					var newHandle *MapHandle
+					if newRdr != nil {
+						newHandle = newMapHandle(newRdr)
+						li := BuildLabelIndexFromReader(newRdr, doc)
+						li.readerMu = &lr.readerMu
+						li.handle = newHandle
+						// ADR-0027 SIGBUS-safety (memory epic #5850, Path P PR1 /
+						// view_iter.go): publish lr.LabelIndex under the SAME
+						// readerMu that guards lr.Reader/lr.handle (publishHandle
+						// below) so forEachEntity's flag-on scan — which holds
+						// readerMu across the whole scan and reads lr.LabelIndex.
+						// overlay for the group-algo merge — never observes a
+						// torn/concurrent write to this field. Field assignment
+						// only; no other lock is acquired while held (matches the
+						// readerMu contract documented on LoadedRepo.readerMu).
+						lr.readerMu.Lock()
+						lr.LabelIndex = li
+						lr.readerMu.Unlock()
+					} else {
+						lr.readerMu.Lock()
+						lr.LabelIndex = BuildLabelIndex(doc)
+						lr.readerMu.Unlock()
+					}
 					// BM25 is NO LONGER built eagerly here (#3377). It tokenizes every
 					// entity (name, path, docstring, discriminators) and dominated
 					// reload cost (~85%); it is now built lazily on first search-tool
@@ -884,23 +1401,42 @@ func (s *State) reloadLocked() (int, bool, error) {
 					// is built on first use by its getter and cached until the next
 					// reload re-arms the Once here (#3367, #3377).
 					lr.resetIndexes()
+					// S8 (#2159) + F1 (ADR-0027): publish the successor (newRdr, opened
+					// above alongside the LabelIndex) through the deferred-unmap protocol
+					// instead of a bare Close() of the old reader. setReader repoints
+					// lr.handle/lr.Reader to the new mapping FIRST, then retires the
+					// predecessor — which unmaps it now iff it has already drained, else
+					// the last in-flight release() unmaps it. Reload never waits on
+					// borrows and never munmaps in place. Passing nil on Open failure
+					// retires the stale predecessor and leaves Reader nil; callers then
+					// fall back to doc.Entities / doc.Relationships.
 					// TESTS-edge count cached once per reload so grafel_whoami can
 					// return it in O(1) without rescanning all relationships. This is a
 					// cheap O(R) count with no allocation, so it stays eager (#3325).
+					//
+					// ADR-0027 Cutover PR1: count TESTS-kind edges off the freshly
+					// opened mmap Reader (Kind() read directly) rather than the
+					// materialized Document. Byte-neutral (Reader == Document's rows).
+					// Gated behind GRAFEL_SERVE_FROM_MMAP (default OFF) so the whole
+					// cutover shares ONE switch and no mmap read happens off the flag;
+					// falls back to doc.Relationships when OFF or no graph.fb is mapped.
 					testsCount := 0
-					for i := range doc.Relationships {
-						if doc.Relationships[i].Kind == "TESTS" {
-							testsCount++
+					if newRdr != nil && serveFromMMap() {
+						newRdr.IterateRelationships(func(rel *fb.Relationship) bool {
+							if string(rel.Kind()) == "TESTS" {
+								testsCount++
+							}
+							return true
+						})
+					} else {
+						for i := range doc.Relationships {
+							if doc.Relationships[i].Kind == "TESTS" {
+								testsCount++
+							}
 						}
 					}
 					lr.TestsEdgeCount = testsCount
-					// S8 (#2159): open the mmap reader alongside the Document.
-					// Best-effort: failures leave Reader nil; callers fall back to
-					// doc.Entities / doc.Relationships.
-					fbPath := filepath.Join(stateDir, "graph.fb")
-					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
-						lr.Reader = rdr
-					}
+					lr.publishHandle(newHandle)
 					reloaded++
 				}
 			}
@@ -921,12 +1457,13 @@ func (s *State) reloadLocked() (int, bool, error) {
 			}
 		}
 		// Drop repos no longer in the registry.
-		// S8 (#2159): close the mmap reader when evicting a repo entry.
+		// S8 (#2159) + F1 (ADR-0027): route the mmap munmap through the deferred-
+		// unmap protocol (retireHandle) rather than a bare Reader.Close(), so an
+		// in-flight borrow of an evicted repo's mapping drains before the unmap.
 		for rName, lr := range grp.Repos {
 			if !seen[rName] {
-				if lr != nil && lr.Reader != nil {
-					_ = lr.Reader.Close()
-					lr.Reader = nil
+				if lr != nil {
+					lr.retireHandle()
 				}
 				delete(grp.Repos, rName)
 			}
@@ -986,10 +1523,262 @@ func (s *State) Group(name string) *LoadedGroup {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	grp := s.groups[name]
+	if grp == nil {
+		// Cold-gate revive (memory epic #5850, issue #5872 PR1): a group EvictGroup
+		// reclaimed is absent from s.groups and pinned in s.evicted. An explicit
+		// access is exactly the "touch" that ends the eviction — bring it back on
+		// demand (re-materialize from the retained Reader, or reload from disk).
+		if cold, gated := s.evicted[name]; gated {
+			grp = s.reviveEvictedLocked(name, cold)
+		}
+	}
 	if grp != nil {
+		// Stamp the LRU/PIN signal on every routing decision (issue #5872 PR2).
+		// This is the per-call choke point, so the group with the newest lastAccess
+		// is definitionally the active working set — SweepIdleGroups pins it. It is
+		// also why a group queried within the idle window is never idle-evicted, and
+		// why a revive (below) immediately re-arms the signal for the freshly
+		// re-materialized group.
+		grp.lastAccess = time.Now()
 		s.refreshGroupAlgoOverlayLocked(grp)
 	}
 	return grp
+}
+
+// EvictGroup reclaims the resident graph of group name — the per-group whole-graph
+// LRU-eviction PRIMITIVE (memory epic #5850, issue #5872 PR1). It is the clean
+// RSS-reclamation lever for an idle group in an agent fleet. Returns true when a
+// resident group was evicted, false when name was not resident.
+//
+// PR1 is the primitive + cold-gate ONLY — no policy, LRU bookkeeping, watermark,
+// or knobs, and no production caller (tests only). Those are PR2/PR3.
+//
+// Safety (the load-bearing part). The serve read path is lock-free: a handler that
+// already called State.Group holds its own *LoadedGroup / *LoadedRepo pointers and
+// dereferences their fields WITHOUT any lock. So eviction MUST NOT nil live fields
+// on a struct such a reader might still hold — instead it SWAPS the whole group out
+// of s.groups (delete below): new lookups miss immediately, existing holders finish
+// against the still-valid old struct, and the heavy heap is reclaimed by GC once
+// they drop it. The mmap is always released through the F1 retireHandle drain, never
+// a raw munmap, so an in-flight borrow drains first.
+//
+//   - keepReader=false → full evict: each repo's Reader is retired (munmapped via the
+//     safe drain) and the whole old group is discarded. A later access reloads the
+//     group from disk.
+//   - keepReader=true → keep the mmap mapped: a lightweight COLD SHELL takes over each
+//     repo's Reader/handle (transferred, NOT retired — the file stays mapped) while
+//     the heavy old group (LabelIndex + adjacency/BM25/byIDIdx/overlay/… heap) is
+//     dropped to GC. A later access re-materializes the heap from the already-mapped
+//     Readers with no fbreader.Open and no disk re-read.
+func (s *State) EvictGroup(name string, keepReader bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.evictGroupLocked(name, keepReader)
+}
+
+// evictGroupLocked is EvictGroup's body with the lock already held. Extracted
+// (issue #5872 PR2) so the idle-group sweep (SweepIdleGroups) can evict several
+// idle groups inside ONE s.mu critical section without re-entrant locking.
+// Caller MUST hold s.mu.
+func (s *State) evictGroupLocked(name string, keepReader bool) bool {
+	grp := s.groups[name]
+	if grp == nil {
+		return false
+	}
+	// Swap the whole group out FIRST: new State.Group / borrowGroup lookups miss
+	// from here on, while any lock-free reader mid-handler keeps its own pointers.
+	delete(s.groups, name)
+	if s.evicted == nil {
+		s.evicted = map[string]*LoadedGroup{}
+	}
+
+	if !keepReader {
+		// Full evict: munmap every repo's mapping through the F1 drain (defers if a
+		// borrow is live) and drop the heavy group entirely. Revive reloads from disk.
+		for _, lr := range grp.Repos {
+			if lr != nil {
+				lr.retireHandle()
+			}
+		}
+		s.evicted[name] = nil
+		return true
+	}
+
+	// keepReader: transfer each repo's live mapping to a fresh cold shell that
+	// carries ONLY the fields a re-materialization needs; the heavy old group is
+	// left untouched (safe for in-flight readers) and becomes garbage. The mmap is
+	// NOT retired — it stays mapped, owned henceforth by the shell.
+	shell := &LoadedGroup{
+		Name:      grp.Name,
+		Repos:     make(map[string]*LoadedRepo, len(grp.Repos)),
+		Links:     grp.Links,
+		LinksFile: grp.LinksFile,
+		linksMt:   grp.linksMt,
+		MemoryDir: grp.MemoryDir,
+		// Overlay re-application is FORCED on revive (algoApplied=false) so the
+		// freshly rebuilt LabelIndex re-acquires its group-algo values / side-table.
+		algoFile: grp.algoFile,
+	}
+	for rName, lr := range grp.Repos {
+		if lr == nil {
+			continue
+		}
+		shell.Repos[rName] = coldShellRepo(lr)
+	}
+	s.evicted[name] = shell
+	return true
+}
+
+// coldShellRepo builds the keepReader cold-shell twin of lr: a fresh *LoadedRepo
+// that takes over lr's mmap Reader/handle and header/meta but carries NONE of the
+// dropped heap (LabelIndex nil, every lazy derived index zero). The mapping is
+// transferred (not retired), so a revive re-materializes the heap from it with no
+// fbreader.Open. The old lr is left fully intact for any lock-free reader still
+// holding it and is otherwise unreferenced (GC reclaims its heap); it has no
+// finalizer, so it never munmaps — only the shell (or a later full evict/Close)
+// ever retires the shared handle, and no borrow is outstanding on the dark read
+// path, so the transfer cannot double-free.
+func coldShellRepo(lr *LoadedRepo) *LoadedRepo {
+	return &LoadedRepo{
+		Repo:           lr.Repo,
+		Path:           lr.Path,
+		GraphFile:      lr.GraphFile,
+		Doc:            lr.Doc,
+		Reader:         lr.Reader,
+		handle:         lr.handle,
+		Semantic:       lr.Semantic,
+		semMtime:       lr.semMtime,
+		TestsEdgeCount: lr.TestsEdgeCount,
+		mtime:          lr.mtime,
+		contentHash:    lr.contentHash,
+		// algoStampedMt is PRESERVED (not zeroed): the graph did not reparse during
+		// eviction, so the per-repo overlay-staleness check must stay "not stale".
+		// The single load-bearing trigger that forces revive to re-apply the overlay
+		// (rebuilding the LabelIndex side-table dropped with the heap) is the shell
+		// group's algoApplied=false, set in EvictGroup — not a spurious stale mtime.
+		algoStampedMt: lr.algoStampedMt,
+	}
+}
+
+// reviveEvictedLocked ends the eviction of name and returns the now-resident group.
+// Caller MUST hold s.mu. cold is the s.evicted[name] value (nil for a full evict, a
+// cold shell for a keepReader evict).
+func (s *State) reviveEvictedLocked(name string, cold *LoadedGroup) *LoadedGroup {
+	delete(s.evicted, name)
+	if cold != nil {
+		// keepReader: re-materialize each repo's dropped heap from its retained,
+		// still-mapped Reader — no fbreader.Open, no disk re-read — then reinstall.
+		for _, lr := range cold.Repos {
+			if lr != nil {
+				lr.rematerializeFromReaderLocked()
+			}
+		}
+		s.groups[name] = cold
+		return cold
+	}
+	// Full evict: the group is gone from both maps and the gate is now clear, so
+	// reloadAllLocked recreates it and loads it from disk. Other still-gated groups
+	// stay skipped; already-resident groups mtime/hash-skip, so this is targeted.
+	_, _, _ = s.reloadAllLocked()
+	return s.groups[name]
+}
+
+// rematerializeFromReaderLocked rebuilds the heap indexes dropped by a keepReader
+// eviction from this repo's retained mmap Reader, mirroring reloadLocked's
+// LabelIndex wiring. Caller MUST hold s.mu. No fbreader.Open and no disk read: the
+// Reader is the same mapping the eviction kept resident. The lazy derived indexes
+// (adjacency/BM25/byID/…) are left for their getters to rebuild on first use
+// (resetIndexes re-arms the Once guards). The group-algo overlay side-table is
+// re-applied by the caller's refreshGroupAlgoOverlayLocked (forced via the shell's
+// algoApplied=false).
+func (lr *LoadedRepo) rematerializeFromReaderLocked() {
+	lr.readerMu.Lock()
+	if lr.Reader != nil {
+		li := BuildLabelIndexFromReader(lr.Reader, lr.Doc)
+		li.readerMu = &lr.readerMu
+		li.handle = lr.handle
+		lr.LabelIndex = li
+	} else {
+		lr.LabelIndex = BuildLabelIndex(lr.Doc)
+	}
+	lr.readerMu.Unlock()
+	lr.resetIndexes()
+}
+
+// groupBorrow is the immutable per-call snapshot returned by borrowGroup — the
+// F1 (ADR-0027) read-through-captured-handle seam. It captures the group pointer
+// AND a borrow on every repo's current MapHandle in one critical section under
+// State.mu. A caller reads through the captured handles for the whole call and
+// MUST NEVER live-re-dereference lr.handle / lr.Reader / lr.Doc at read time:
+// reload mutates *LoadedRepo in place (repointing lr.handle to a successor this
+// call never borrow()-incremented), so a live re-deref could hand a reader a
+// mapping a concurrent reload is free to unmap → SIGSEGV. The captured handle is
+// the read cursor for the entire call; Release() drops every borrow on return.
+//
+// In F1 the read path is DARK — no handler calls this yet (the borrow protocol
+// is inert). It establishes the seam and lifetime guarantee that F2's hot index
+// and F3's mmap read path bind to.
+type groupBorrow struct {
+	Group   *LoadedGroup
+	handles []*MapHandle
+}
+
+// Handle returns the borrowed MapHandle captured for repo slug, or nil when the
+// repo had no mmap mapping at borrow time. The returned handle is the immutable
+// read cursor for this call — it stays valid (not munmapped) until Release,
+// even across a concurrent reload that retires it.
+func (b *groupBorrow) Handle(repo string) *MapHandle {
+	if b == nil {
+		return nil
+	}
+	for _, h := range b.handles {
+		if h != nil && h.repo == repo {
+			return h
+		}
+	}
+	return nil
+}
+
+// Release drops every borrow captured by this snapshot. The last releaser of a
+// retired handle performs its munmap. Idempotent: safe to call once per borrow.
+func (b *groupBorrow) Release() {
+	if b == nil {
+		return
+	}
+	for _, h := range b.handles {
+		if h != nil {
+			h.release()
+		}
+	}
+	b.handles = nil
+}
+
+// borrowGroup returns an immutable per-call snapshot of a group with a borrow
+// held on each repo's current MapHandle. The group lookup, overlay refresh, and
+// every borrow happen in ONE critical section under s.mu, so the borrow cannot
+// race reload's publish+retire (which also runs under s.mu): a call either
+// borrows before retire (refs>=1 → reload defers the unmap to this call's
+// Release) or borrows the already-published successor. The caller MUST defer
+// snapshot.Release(). Returns nil when the group is unknown.
+//
+// F1: inert — no production caller yet. Wired here so the seam and its race
+// safety are proven (TestBorrowGroupSurvivesReload) before F3 lights the read
+// path.
+func (s *State) borrowGroup(name string) *groupBorrow {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	grp := s.groups[name]
+	if grp == nil {
+		return nil
+	}
+	s.refreshGroupAlgoOverlayLocked(grp)
+	b := &groupBorrow{Group: grp}
+	for _, lr := range grp.Repos {
+		if lr != nil && lr.handle != nil {
+			b.handles = append(b.handles, lr.handle.borrow())
+		}
+	}
+	return b
 }
 
 // refreshGroupAlgoOverlayLocked re-applies the group-algo overlay to an
@@ -1039,6 +1828,113 @@ func (s *State) refreshGroupAlgoOverlayLocked(grp *LoadedGroup) {
 	applyGroupAlgoOverlay(grp)
 }
 
+// SweepIdleBM25 drops the BM25 index of every loaded repo whose last search
+// borrow is older than idle, returning how many were evicted. It is the idle
+// sweep the MCP server fires from its per-call reload hook (reloadBeforeCall):
+// a session that has stopped issuing searches releases the heavy BM25 index
+// (~313 MB warmed on the corpus) instead of pinning it for the life of the
+// process; the next search rebuilds it transparently and single-flighted via
+// getBM25. A non-positive idle disables the sweep (returns 0 without locking).
+//
+// Locking: takes s.mu once and calls evictBM25IfIdle (which takes idxMu) per
+// repo — the same s.mu -> idxMu order reload uses (reloadLocked -> resetIndexes),
+// so it cannot invert against any read-path getter (which only ever takes idxMu).
+func (s *State) SweepIdleBM25(idle time.Duration) int {
+	if idle <= 0 {
+		return 0
+	}
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	evicted := 0
+	for _, g := range s.groups {
+		for _, lr := range g.Repos {
+			if lr != nil && lr.evictBM25IfIdle(idle, now) {
+				evicted++
+			}
+		}
+	}
+	return evicted
+}
+
+// SweepIdleGroups evicts the whole resident graph of every group whose last
+// State.Group routing is older than idle, EXCEPT the currently-active group,
+// returning how many groups were evicted. It is the production wiring of the
+// EvictGroup primitive (memory epic #5850, issue #5872 PR2) — the lever that
+// makes idle-group RSS reclamation actually happen in an agent fleet — fired from
+// the MCP server's per-call reload hook (reloadBeforeCall) alongside
+// SweepIdleBM25. A non-positive idle disables the sweep (returns 0 without
+// locking), so it is behaviour-neutral when the knob is unset.
+//
+// PIN (the load-bearing safety requirement). The group being serviced RIGHT NOW
+// must NEVER be evicted — a flag-on in-flight read on an evicted group would
+// otherwise observe an empty graph. The pin is the MAX-lastAccess group: State.Group
+// stamps lastAccess on every routing decision, so the newest-stamped group is the
+// active working set the fleet is currently querying, and it is always skipped
+// regardless of its absolute age. Reinforcing the pin:
+//   - The idle window itself: any group touched within idle (now-lastAccess <= idle)
+//     is skipped, so a group queried concurrently mid-sweep is safe.
+//   - Never-routed groups (lastAccess zero — loaded but never queried through
+//     State.Group) are NOT idle-eligible, mirroring bm25LastUse's zero semantics.
+//   - The revive-on-access backstop in State.Group: even a group this sweep does
+//     evict is transparently re-materialized on its very next State.Group, so a
+//     pin miss degrades to an extra evict+revive, never an empty read.
+//
+// Composition with SweepIdleBM25: BM25 evicts at the short window (~5 min); the
+// whole group evicts at the longer group window — they stack. A group idle long
+// enough first loses its BM25 (heap already dropped, bm25Once re-armed) and then,
+// still idle, loses the whole graph — evicting a group whose BM25 was already
+// evicted is a plain no-op interaction (EvictGroup drops whatever heap remains).
+//
+// Locking: takes s.mu once and evicts via evictGroupLocked (the EvictGroup body),
+// which routes every munmap through the F1 retireHandle drain — same s.mu ->
+// readerMu order the primitive and reload use, so no in-flight borrow is unmapped.
+// keepReader is threaded straight to evictGroupLocked (keep the mmap mapped and
+// re-materialize on revive vs. full munmap + disk re-read).
+func (s *State) SweepIdleGroups(idle time.Duration, keepReader bool) int {
+	if idle <= 0 {
+		return 0
+	}
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Identify the PIN: the active (max-lastAccess) group. Skipped unconditionally
+	// below so the group the fleet is currently servicing is never the victim.
+	pin := ""
+	var pinAt time.Time
+	for name, g := range s.groups {
+		if g == nil {
+			continue
+		}
+		if pin == "" || g.lastAccess.After(pinAt) {
+			pin, pinAt = name, g.lastAccess
+		}
+	}
+
+	// Collect eligible names first — evictGroupLocked mutates s.groups, so we must
+	// not delete while ranging it.
+	var idleNames []string
+	for name, g := range s.groups {
+		if g == nil || name == pin {
+			continue
+		}
+		// Never-routed (zero lastAccess) → not idle-eligible (mirrors bm25LastUse).
+		if g.lastAccess.IsZero() || now.Sub(g.lastAccess) <= idle {
+			continue
+		}
+		idleNames = append(idleNames, name)
+	}
+
+	evicted := 0
+	for _, name := range idleNames {
+		if s.evictGroupLocked(name, keepReader) {
+			evicted++
+		}
+	}
+	return evicted
+}
+
 // SnapshotGroups returns a stable list of loaded group pointers.
 func (s *State) SnapshotGroups() []*LoadedGroup {
 	s.mu.Lock()
@@ -1059,9 +1955,27 @@ func (s *State) Close() {
 	defer s.mu.Unlock()
 	for _, g := range s.groups {
 		for _, lr := range g.Repos {
-			if lr != nil && lr.Reader != nil {
-				_ = lr.Reader.Close()
-				lr.Reader = nil
+			if lr != nil {
+				// F1 (ADR-0027): retire (not bare Close) so any in-flight borrow
+				// drains before the mapping is unmapped — same munmap-while-borrowed
+				// hazard as reload/eviction. When nothing is borrowed (the common
+				// shutdown case) retire unmaps immediately, matching prior behavior.
+				lr.retireHandle()
+			}
+		}
+	}
+	// Drain kept-reader cold shells too (memory epic #5850, issue #5872 PR1). A
+	// keepReader EvictGroup leaves a group's mmap RESIDENT on a shell in s.evicted
+	// (not in s.groups), so the loop above would miss it and leak the mapping on
+	// shutdown. Retire each shell's handle through the same F1 drain. Full-evict
+	// entries are nil (already munmapped at eviction) and skipped.
+	for _, g := range s.evicted {
+		if g == nil {
+			continue
+		}
+		for _, lr := range g.Repos {
+			if lr != nil {
+				lr.retireHandle()
 			}
 		}
 	}
@@ -1073,6 +1987,17 @@ func (s *State) Close() {
 // readDocumentFromDir is a package var (not a plain func) so tests can wrap it
 // with a parse counter to assert the #3377 content-hash skip avoids reparsing.
 var readDocumentFromDir = func(stateDir string) (*graph.Document, error) {
+	// ADR-0027 mmap-cutover PR7 (memory epic #5850): when serving from mmap is
+	// enabled (opt-in, GRAFEL_SERVE_FROM_MMAP; DEFAULT OFF), load a HEADER-ONLY
+	// Document — meta/Stats/counts populated, Entities/Relationships left empty
+	// — because reloadLocked opens a resident fbreader.Reader right after this
+	// call and every read path (forEachEntity/at/getByIDOne/BM25/adjacency/
+	// overlay) serves from that Reader. The Doc stays non-nil (the "loaded"
+	// sentinel), so the ~608 MB entity/relationship materialization is dropped
+	// from the Go heap. DEFAULT OFF ⇒ full materialization, 100% unchanged.
+	if serveFromMMap() {
+		return graph.LoadGraphHeaderOnlyFromDir(stateDir)
+	}
 	return graph.LoadGraphFromDir(stateDir)
 }
 
@@ -1160,6 +2085,111 @@ func buildTopKPageRank(doc *graph.Document, k int) []string {
 	out := make([]string, k)
 	for i := 0; i < k; i++ {
 		out[i] = all[i].id
+	}
+	return out
+}
+
+// buildTopKPageRankFromReader is the mmap-sourced twin of buildTopKPageRank,
+// reading Id/Pagerank directly off the fbreader.Reader.
+//
+// BLOCKED — NOT CALLED (post-PR1 regression fix, see getTopKPageRank): the FB
+// Pagerank() scalar this reads is a permanent sentinel (0) for every entity.
+// Per-repo Pass-4 (the code that used to compute + persist real per-entity
+// PageRank into graph.fb) was removed when the group-scope algo pass (A1-A3,
+// #5349) replaced it. The only place real PageRank now lives is the
+// <group>-algo.json overlay, which applyGroupAlgoOverlay stamps onto
+// lr.Doc.Entities[i].PageRank in memory — it is never written back into
+// graph.fb, so the Reader can never see it. Calling this from
+// getTopKPageRank silently collapsed top-K to id order and corrupted
+// pickFallback's entity choice; that regression is why getTopKPageRank now
+// always sources from lr.Doc via buildTopKPageRank instead.
+//
+// This function is kept — with TestTopKPageRankReaderParity_PR1 still
+// exercising it — because it correctly proves byte-identical top-K
+// extraction logic between the Reader path and the Document path for
+// whatever PageRank values are actually baked into a given graph.fb (the
+// parity test writes real values directly into its fixture, bypassing the
+// production sentinel). A follow-up PR can re-enable calling this once a
+// side-table lets the overlay's real PageRank reach the Reader seam (the
+// overlay's per-entity map keyed by ID, applied at Reader-borrow time rather
+// than only onto lr.Doc), at which point this comment should be replaced.
+// ADR-0027 Cutover PR1.
+func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
+	if r == nil || r.EntityCount() == 0 {
+		return nil
+	}
+	type ranked struct {
+		id string
+		pr float64
+	}
+	all := make([]ranked, 0, r.EntityCount())
+	r.IterateEntities(func(e *fb.Entity) bool {
+		all = append(all, ranked{id: string(e.Id()), pr: e.Pagerank()})
+		return true
+	})
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].pr > all[j].pr
+	})
+	if k > len(all) {
+		k = len(all)
+	}
+	out := make([]string, k)
+	for i := 0; i < k; i++ {
+		out[i] = all[i].id
+	}
+	return out
+}
+
+// buildTopKPageRankFromSideTable is the flip-ready (GRAFEL_SERVE_FROM_MMAP ON)
+// top-K builder. It sources entity IDS from the resident mmap Reader in vector
+// order and PageRank VALUES from the group-algo overlay SIDE-TABLE
+// (lr.LabelIndex.overlay[i].PageRank) — NOT the Reader's Pagerank() scalar,
+// which is the permanent sentinel (0) and would collapse top-K to id order
+// (the reverted PR1 #5866 bug). An entity with no overlay entry ranks at 0,
+// exactly as an un-stamped lr.Doc row (nil PageRank) does under
+// buildTopKPageRank, so this is byte-identical to the flag-off Doc-sourced
+// top-K for the same overlay data.
+//
+// Falls back to the Doc-sourced buildTopKPageRank when no mmap Reader is
+// resident or the mapping was retired (mirrors at()/forEachEntity). readerMu
+// guards the mmap dereference (SIGBUS-safety, memory epic #5850).
+func (lr *LoadedRepo) buildTopKPageRankFromSideTable(k int) []string {
+	lr.readerMu.Lock()
+	rdr := lr.Reader
+	if rdr == nil || (lr.handle != nil && lr.handle.readRetired) {
+		lr.readerMu.Unlock()
+		return buildTopKPageRank(lr.Doc, k) // Reader gone → Doc fallback
+	}
+	var overlay map[int32]entityOverlay
+	if lr.LabelIndex != nil {
+		overlay = lr.LabelIndex.overlay
+	}
+	type ranked struct {
+		id string
+		pr float64
+	}
+	all := make([]ranked, 0, rdr.EntityCount())
+	var i int32
+	rdr.IterateEntities(func(e *fb.Entity) bool {
+		pr := 0.0
+		if ov, ok := overlay[i]; ok && ov.PageRank != nil {
+			pr = *ov.PageRank
+		}
+		all = append(all, ranked{id: string(e.Id()), pr: pr})
+		i++
+		return true
+	})
+	lr.readerMu.Unlock()
+
+	sort.Slice(all, func(a, b int) bool {
+		return all[a].pr > all[b].pr
+	})
+	if k > len(all) {
+		k = len(all)
+	}
+	out := make([]string, k)
+	for j := 0; j < k; j++ {
+		out[j] = all[j].id
 	}
 	return out
 }
@@ -1294,6 +2324,11 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			continue
 		}
 		ents := lr.Doc.Entities
+		// In-place Doc stamp: the flag-OFF read path (LabelIndex.at / forEachEntity
+		// / buildTopKPageRank) reads these values directly, and the flag-ON path
+		// still reads them PRE-FLIP while lr.Doc.Entities is populated. Kept
+		// byte-identical to the original; a no-op once PR7 empties lr.Doc.Entities
+		// (the side-table below then carries the values on the flag-ON path).
 		for i := range ents {
 			eo, has := ov.Results[ents[i].ID]
 			if !has {
@@ -1308,6 +2343,40 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			ents[i].IsGodNode = eo.IsGodNode
 			ents[i].IsArticulationPt = eo.IsArticulationPoint
 		}
+		// ADR-0027 overlay SIDE-TABLE (built ONLY when GRAFEL_SERVE_FROM_MMAP is
+		// ON): a fresh entity-INDEX-keyed table of the 5 overlay fields so the
+		// Reader-materialized read path (LabelIndex.at/getByID/forEachEntity) can
+		// merge them WITHOUT depending on lr.Doc for VALUES. Sourced by iterating
+		// the resident mmap Reader (not lr.Doc) so it is populated even after PR7
+		// empties lr.Doc.Entities — flip-readiness is the whole point of this PR.
+		// Keyed by vector index i (== the LabelIndex/Reader position, the same
+		// order BuildLabelIndexFromReader assigns). Falls back to the Doc ONLY when
+		// no Reader is resident (JSON-only / no graph.fb), where the read path also
+		// reads the Doc, so the side-table is never consulted there anyway. On the
+		// flag-off default path the table is left nil — no resident cost pre-flip.
+		//
+		// ADR-0027 SIGBUS-safety (memory epic #5850, Path P): readerMu guards BOTH
+		// the mmap iteration (buildOverlayTableFromReader dereferences the mapping)
+		// AND the publish onto the current LabelIndex generation, mirroring
+		// forEachEntity/at() — which read lr.LabelIndex.overlay under readerMu, so
+		// this re-stamp must not race them. handle.readRetired is checked so a
+		// retired mapping falls back to the Doc instead of dereferencing freed
+		// memory. Publish happens BEFORE resetIndexes below; resetIndexes does NOT
+		// touch LabelIndex, so the table persists for this generation's life and is
+		// reassigned on the next re-stamp.
+		if serveFromMMap() {
+			lr.readerMu.Lock()
+			var table map[int32]entityOverlay
+			if rdr := lr.Reader; rdr != nil && !(lr.handle != nil && lr.handle.readRetired) {
+				table = buildOverlayTableFromReader(rdr, ov)
+			} else {
+				table = buildOverlayTableFromDoc(lr.Doc, ov)
+			}
+			if lr.LabelIndex != nil {
+				lr.LabelIndex.overlay = table
+			}
+			lr.readerMu.Unlock()
+		}
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo
 		// ones (mirrors the resetIndexes() call after a reparse).
@@ -1317,6 +2386,64 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 
 	grp.algoMt = fi.ModTime()
 	grp.algoApplied = true
+}
+
+// newEntityOverlay heap-copies a groupalgo.EntityOverlay into an entityOverlay
+// side-table row. The three pointer fields are INDEPENDENT copies (distinct from
+// the in-place Doc stamp's pointers) so the side-table remains a valid value
+// source after PR7 drops lr.Doc.Entities.
+func newEntityOverlay(eo groupalgo.EntityOverlay) entityOverlay {
+	cid := eo.CommunityID
+	pr := eo.PageRank
+	cen := eo.Centrality
+	return entityOverlay{
+		CommunityID:      &cid,
+		PageRank:         &pr,
+		Centrality:       &cen,
+		IsGodNode:        eo.IsGodNode,
+		IsArticulationPt: eo.IsArticulationPoint,
+	}
+}
+
+// buildOverlayTableFromReader builds the entity-INDEX-keyed overlay side-table
+// by iterating the resident mmap Reader (NOT lr.Doc), matching each entity to
+// the overlay by ID. The int32 key is the vector index i in Reader iteration
+// order — identical to the order BuildLabelIndexFromReader assigns and the order
+// at()/materializeFromReader/forEachEntity look the table up by. Only entities
+// WITH an overlay entry are inserted; a miss leaves the fb sentinel on the read
+// path. Callers MUST hold the owning LoadedRepo's readerMu (the mmap is
+// dereferenced here via IterateEntities).
+func buildOverlayTableFromReader(r *fbreader.Reader, ov *groupalgo.Overlay) map[int32]entityOverlay {
+	table := make(map[int32]entityOverlay)
+	if r == nil || ov == nil {
+		return table
+	}
+	var i int32
+	r.IterateEntities(func(e *fb.Entity) bool {
+		if eo, has := ov.Results[string(e.Id())]; has {
+			table[i] = newEntityOverlay(eo)
+		}
+		i++
+		return true
+	})
+	return table
+}
+
+// buildOverlayTableFromDoc is the Doc-sourced twin used ONLY when no mmap Reader
+// is resident (JSON-only / no graph.fb) on the flag-on path. Keyed by the same
+// vector index i as the Reader path. The read path reads the Doc directly when
+// the Reader is absent, so this table is a belt-and-braces parity fallback.
+func buildOverlayTableFromDoc(doc *graph.Document, ov *groupalgo.Overlay) map[int32]entityOverlay {
+	table := make(map[int32]entityOverlay)
+	if doc == nil || ov == nil {
+		return table
+	}
+	for i := range doc.Entities {
+		if eo, has := ov.Results[doc.Entities[i].ID]; has {
+			table[int32(i)] = newEntityOverlay(eo)
+		}
+	}
+	return table
 }
 
 // defaultLinksFile is the conventional path for cross-repo links.

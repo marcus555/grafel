@@ -119,6 +119,19 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		if graphPath, mtimeNano := FindGraphFile(repoPath); graphPath != "" {
 			f.GraphFBMtime = mtimeNano
 		}
+		// #reindex-required PR1: recompute FRESH on every heartbeat, directly
+		// from the on-disk graph.fb bytes, rather than trusting any prior
+		// write or a serve-side in-process observation. This is the
+		// authoritative, race-free source of truth for ReindexRequired: the
+		// engine is documented as the SOLE writer of this statusfile (see the
+		// package doc above), and this File struct is rebuilt from scratch on
+		// every call, so recomputing here means the flag is always correct —
+		// it self-clears the instant a fresh reindex lands, and it can never
+		// be silently overwritten stale by this same writer's next tick (the
+		// cross-process race a one-shot flag set from internal/mcp's reload
+		// loop would be exposed to under ADR-0024 split mode). Detection only:
+		// this never triggers a reindex.
+		f.ReindexRequired, f.ReindexReason = graph.ReindexRequiredReason(stateDir)
 	}
 
 	// Split the single "indexing" signal into indexing (extraction, graph not
@@ -159,6 +172,13 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 	// Write path is git-free: read the short SHA off disk, never shell out
 	// (review #5734 non-blocking #3).
 	f.IndexedCommit = indexedCommitShortNoGit(repoPath)
+
+	// #5822 sub-ask 3: carry forward the "last rebuild FAILED" marker (if any)
+	// from the in-memory registry — this File struct is rebuilt from scratch
+	// on every call, so without this the marker would vanish again at the very
+	// next heartbeat tick. Cleared only by ClearRebuildFailure (a subsequent
+	// successful rebuild), never by this write alone.
+	f.LastRebuildFailure = currentRebuildFailure(repoPath)
 
 	if err := statusfile.Write(repoPath, f); err != nil && logger != nil {
 		logger.Warn("statusfile: write failed", "repo", repoPath, "err", err)

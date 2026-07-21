@@ -58,18 +58,17 @@ func (s springContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 		if r.Doc == nil {
 			continue
 		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+		r.forEachEntity(func(e *graph.Entity) bool {
 			if !isServerEndpointDefinition(e) {
-				continue
+				return true
 			}
 			if !isSpringEndpoint(e) {
-				continue
+				return true
 			}
 			handler := frameworkHandlerEntity(r, e)
 			controller := frameworkControllerLeaf(e, handler)
 			if controller == "" || strings.ToLower(controller) != wantLeaf {
-				continue
+				return true
 			}
 			c := composeSpringContract(r, e, handler)
 			key := groupKey{repo: r.Repo, class: controller}
@@ -80,7 +79,8 @@ func (s springContractResolver) Resolve(lg *LoadedGroup, target, wantLeaf string
 				order = append(order, key)
 			}
 			g.Handlers = append(g.Handlers, c)
-		}
+			return true
+		})
 	}
 	if len(groups) == 0 {
 		return nil, false
@@ -110,7 +110,7 @@ func isSpringEndpoint(e *graph.Entity) bool {
 		return true
 	}
 	if fw == "java" || fw == "kotlin" {
-		p := e.Properties
+		p := e.PropsSnapshot()
 		if p["request_body_type"] != "" || p["path_params"] != "" ||
 			p["parameters"] != "" || p["api_responses"] != "" ||
 			strings.Contains(strings.ToLower(p["route_decorator"]), "mapping") {
@@ -124,8 +124,8 @@ func isSpringEndpoint(e *graph.Entity) bool {
 func composeSpringContract(r *LoadedRepo, ep *graph.Entity, handler *graph.Entity) effectiveContract {
 	c := effectiveContract{
 		Framework: "spring",
-		Verb:      strings.ToUpper(ep.Properties["verb"]),
-		Path:      ep.Properties["path"],
+		Verb:      strings.ToUpper(ep.PropGet("verb")),
+		Path:      ep.PropGet("path"),
 		Kind:      "explicit",
 	}
 	if handler != nil {

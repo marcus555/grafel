@@ -22,6 +22,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -268,6 +269,9 @@ func inheritedGrafelIgnores(root string) []*IgnoreFile {
 	if err != nil {
 		return nil
 	}
+	if resolved, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootAbs = resolved
+	}
 	top = filepath.Clean(top)
 	rootAbs = filepath.Clean(rootAbs)
 	if samePath(top, rootAbs) {
@@ -277,17 +281,19 @@ func inheritedGrafelIgnores(root string) []*IgnoreFile {
 	if err != nil || relRoot == "." || strings.HasPrefix(relRoot, "..") {
 		return nil
 	}
-	relRoot = filepath.ToSlash(relRoot)
-
-	parts := strings.Split(relRoot, "/")
 	var out []*IgnoreFile
 	dir := top
-	for i := 0; i < len(parts); i++ {
-		ig := parseInheritedGrafelIgnore(dir, relRoot)
+	for !samePath(dir, rootAbs) {
+		relFromDir, err := filepath.Rel(dir, rootAbs)
+		if err != nil || relFromDir == "." || strings.HasPrefix(relFromDir, "..") {
+			return nil
+		}
+		ig := parseInheritedGrafelIgnore(dir, filepath.ToSlash(relFromDir))
 		if ig != nil && len(ig.patterns) > 0 {
 			out = append(out, ig)
 		}
-		dir = filepath.Join(dir, filepath.FromSlash(parts[i]))
+		first, _, _ := strings.Cut(filepath.ToSlash(relFromDir), "/")
+		dir = filepath.Join(dir, filepath.FromSlash(first))
 	}
 	return out
 }
@@ -349,7 +355,12 @@ func rewriteInheritedIgnoreLine(line, relRoot string) string {
 }
 
 func samePath(a, b string) bool {
-	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // hardcodedSkip reports whether a directory basename is on the extended
