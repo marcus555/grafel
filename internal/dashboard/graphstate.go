@@ -26,7 +26,9 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/types"
@@ -258,11 +260,16 @@ func (g *DashGroup) diskUnchanged() bool {
 	return true
 }
 
-// statGraphMtime returns the modification time of the graph.fb in stateDir,
-// falling back to graph.json, or the zero time when neither exists.
+// statGraphMtime returns the modification time of the active graph in
+// stateDir (single-file .fb or segment-set manifest.json, via
+// graph.CurrentGraphMtime), falling back to graph.json, or the zero time
+// when neither exists. #5915 J2 slice-2: the old
+// os.Stat(graph.CurrentGraphPath(stateDir)) gate only ever resolved a flat
+// .fb path, so a segment-set repo (graph.<gen>/ dir + manifest.json, no flat
+// .fb) fell straight through to the zero time here.
 func statGraphMtime(stateDir string) time.Time {
-	if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
-		return info.ModTime()
+	if mt, ok := graph.CurrentGraphMtime(stateDir); ok { // #5891, #5915 J2 slice-2
+		return mt
 	}
 	if info, e := os.Stat(filepath.Join(stateDir, "graph.json")); e == nil {
 		return info.ModTime()
@@ -703,11 +710,34 @@ func (c *GraphCache) loadGroupForRef(groupName, ref string) (*DashGroup, error) 
 				})
 			}
 			dr.Doc = doc
+			// Description side-table (#5904 PR-a): ADDITIVELY stamp any
+			// <stateDir>/descriptions.json onto this repo's entities so the
+			// PropGet("description") readers (openapi/DAG export) surface agent
+			// write-back descriptions again now that write-back no longer rewrites
+			// the graph. Absence/corrupt/stale-tolerant: a miss leaves the entity's
+			// own (extractor-native) description intact.
+			if sc, ok := descriptions.Read(stateDir); ok {
+				for i := range doc.Entities {
+					if d, has := sc.Results[doc.Entities[i].ID]; has {
+						doc.Entities[i].PropSet("description", d)
+					}
+				}
+			}
+			// Flow side-table (#5904 PR-b): REPLACE-merge the per-repo
+			// <stateDir>/flows.json onto this repo's Document so the flow handlers
+			// (handlers_flows / handlers_event_flows / v2_flows), which loop
+			// r.Doc.Entities/Relationships by Kind, see the cross-repo-aware flows
+			// the phantom pass produced instead of the index-baked intra-repo ones.
+			// MergeInto SUPPRESSES the baked SCOPE.Process/SCOPE.EventFlow entities +
+			// their STEP/ENTRY/SEED edges and substitutes the sidecar's (never
+			// additive → never doubled). Absence/corrupt/stale → no-op, leaving the
+			// baked intra-repo flows (correct degraded state).
+			flows.MergeInto(stateDir, doc)
 			// S8 (#2159): open a zero-copy mmap reader alongside the Document
 			// so handlers that only need to iterate entities/relationships can
 			// avoid materialising the full heap slice. Best-effort: failures
 			// leave Reader nil and callers fall back to doc.Entities.
-			fbPath := filepath.Join(stateDir, "graph.fb")
+			fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 			if rdr, rerr := fbreader.Open(fbPath); rerr == nil {
 				dr.Reader = rdr
 			}

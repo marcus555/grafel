@@ -14,6 +14,7 @@ package mcp
 import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 )
 
 // forEachEntity calls yield for every entity in lr, in index order. yield
@@ -48,34 +49,85 @@ func (lr *LoadedRepo) forEachEntity(yield func(*graph.Entity) bool) {
 	if lr == nil {
 		return
 	}
+	// Flow side-table (#5904 PR-b): REPLACE. When a fresh cross-repo flow overlay
+	// is present, SUPPRESS baked SCOPE.Process/SCOPE.EventFlow entities from the
+	// base source (flowFilteredYield) and INJECT the sidecar's cross-repo-aware
+	// flow entities after the base scan (injectFlowEntities). fo==nil → unchanged.
+	fo := lr.flowOverlaySnapshot()
+	if !lr.forEachEntityBase(flowFilteredYield(fo, yield)) {
+		return // base scan stopped early; do not inject
+	}
+	injectFlowEntities(fo, nil, yield)
+}
+
+// forEachEntityBase is the base entity source (Doc or mmap Reader) for
+// forEachEntity — the pre-#5904-PR-b body. It returns false iff yield stopped
+// the scan early (so the caller skips flow injection).
+func (lr *LoadedRepo) forEachEntityBase(yield func(*graph.Entity) bool) bool {
 	if !serveFromMMap() {
-		lr.forEachDocEntity(yield)
-		return
+		return lr.forEachDocEntity(yield)
 	}
 
 	// Flag-ON: strictly-innermost readerMu held across the WHOLE scan (Option-B
 	// tradeoff, intentional — see doc comment above and ADR-0027).
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	h := lr.handle
 	if rdr == nil || (h != nil && h.readRetired) {
-		lr.readerMu.Unlock()
-		lr.forEachDocEntity(yield)
-		return
+		lr.rmu().Unlock()
+		return lr.forEachDocEntity(yield)
 	}
-	defer lr.readerMu.Unlock()
+	defer lr.rmu().Unlock()
 
 	var overlay map[int32]entityOverlay
+	var descOverlay map[int32]string
 	if lr.LabelIndex != nil {
 		overlay = lr.LabelIndex.overlay
+		descOverlay = lr.LabelIndex.descOverlay
 	}
 	n := rdr.EntityCount()
 	for i := 0; i < n; i++ {
-		e := materializeEntityOverlay(rdr, overlay, int32(i))
+		e := materializeEntityOverlay(rdr, overlay, descOverlay, int32(i))
 		if !yield(e) {
-			return
+			return false
 		}
 	}
+	return true
+}
+
+// flowFilteredYield wraps yield so that, when a flow overlay is active, baked
+// flow entities (SCOPE.Process / SCOPE.EventFlow) are SKIPPED from the base
+// source — they are substituted by injectFlowEntities (REPLACE). fo==nil returns
+// yield unchanged (zero overhead on the no-overlay path).
+func flowFilteredYield(fo *flows.Sidecar, yield func(*graph.Entity) bool) func(*graph.Entity) bool {
+	if fo == nil {
+		return yield
+	}
+	return func(e *graph.Entity) bool {
+		if flows.IsFlowEntityKind(e.Kind) {
+			return true // suppress baked flow entity; substituted below
+		}
+		return yield(e)
+	}
+}
+
+// injectFlowEntities yields each overlay flow entity whose kind satisfies pred
+// (nil pred = every overlay entity). Returns false if yield stopped early. A nil
+// overlay is a no-op.
+func injectFlowEntities(fo *flows.Sidecar, pred func(kind string) bool, yield func(*graph.Entity) bool) bool {
+	if fo == nil {
+		return true
+	}
+	for i := range fo.Entities {
+		e := &fo.Entities[i]
+		if pred != nil && !pred(e.Kind) {
+			continue
+		}
+		if !yield(e) {
+			return false
+		}
+	}
+	return true
 }
 
 // forEachEntityOfKinds is the by-Kind analogue of forEachEntity (memory epic
@@ -104,97 +156,116 @@ func (lr *LoadedRepo) forEachEntityOfKinds(pred func(kind string) bool, yield fu
 	if lr == nil || pred == nil {
 		return
 	}
+	// Flow side-table (#5904 PR-b): REPLACE. Suppress baked flow entities from the
+	// base by-Kind scan (only relevant when pred matches a flow kind) and inject
+	// the sidecar's cross-repo-aware flow entities that also satisfy pred.
+	fo := lr.flowOverlaySnapshot()
+	if !lr.forEachEntityOfKindsBase(pred, flowFilteredYield(fo, yield)) {
+		return
+	}
+	injectFlowEntities(fo, pred, yield)
+}
+
+// forEachEntityOfKindsBase is the base by-Kind entity source (the pre-#5904-PR-b
+// body). Returns false iff yield stopped the scan early.
+func (lr *LoadedRepo) forEachEntityOfKindsBase(pred func(kind string) bool, yield func(*graph.Entity) bool) bool {
 	li := lr.LabelIndex
 	if li == nil || li.byKind == nil {
 		// No by-Kind index — preserve output via a filtered full scan (no
-		// selective materialization on this fallback).
-		lr.forEachEntity(func(e *graph.Entity) bool {
+		// selective materialization on this fallback). forEachEntityBase (not the
+		// public forEachEntity) so flow suppression/injection is applied exactly
+		// once, by the public forEachEntityOfKinds wrapper.
+		return lr.forEachEntityBase(func(e *graph.Entity) bool {
 			if !pred(e.Kind) {
 				return true
 			}
 			return yield(e)
 		})
-		return
 	}
 	idxs := li.indicesForKinds(pred)
 	if len(idxs) == 0 {
-		return
+		return true
 	}
 
 	if !serveFromMMap() {
 		// Flag-OFF: Doc-sourced, same &Doc.Entities[idx] pointer semantics as
 		// forEachEntity's flag-off branch.
 		if lr.Doc == nil {
-			return
+			return true
 		}
 		for _, idx := range idxs {
 			if int(idx) >= len(lr.Doc.Entities) {
 				continue
 			}
 			if !yield(&lr.Doc.Entities[idx]) {
-				return
+				return false
 			}
 		}
-		return
+		return true
 	}
 
 	// Flag-ON: strictly-innermost readerMu held across the WHOLE scan (Option-B
 	// tradeoff, identical to forEachEntity).
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	h := lr.handle
 	if rdr == nil || (h != nil && h.readRetired) {
-		lr.readerMu.Unlock()
-		lr.forEachDocEntityOfIdxs(idxs, yield)
-		return
+		lr.rmu().Unlock()
+		return lr.forEachDocEntityOfIdxs(idxs, yield)
 	}
-	defer lr.readerMu.Unlock()
+	defer lr.rmu().Unlock()
 
 	var overlay map[int32]entityOverlay
+	var descOverlay map[int32]string
 	if lr.LabelIndex != nil {
 		overlay = lr.LabelIndex.overlay
+		descOverlay = lr.LabelIndex.descOverlay
 	}
 	n := rdr.EntityCount()
 	for _, idx := range idxs {
 		if int(idx) >= n {
 			continue
 		}
-		e := materializeEntityOverlay(rdr, overlay, idx)
+		e := materializeEntityOverlay(rdr, overlay, descOverlay, idx)
 		if !yield(e) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 // forEachDocEntityOfIdxs yields &lr.Doc.Entities[idx] for each index in idxs (in
 // the given order), the Doc-sourced path shared by forEachEntityOfKinds's flag-ON
 // retired/nil-Reader fallback. Callers must NOT hold readerMu (this touches only
 // the Doc).
-func (lr *LoadedRepo) forEachDocEntityOfIdxs(idxs []int32, yield func(*graph.Entity) bool) {
+func (lr *LoadedRepo) forEachDocEntityOfIdxs(idxs []int32, yield func(*graph.Entity) bool) bool {
 	if lr.Doc == nil {
-		return
+		return true
 	}
 	for _, idx := range idxs {
 		if int(idx) >= len(lr.Doc.Entities) {
 			continue
 		}
 		if !yield(&lr.Doc.Entities[idx]) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 // forEachDocEntity is the Doc-sourced path shared by forEachEntity's flag-off
-// branch and its flag-on retired/nil-Reader fallback.
-func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) {
+// branch and its flag-on retired/nil-Reader fallback. Returns false iff yield
+// stopped the scan early.
+func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) bool {
 	if lr.Doc == nil {
-		return
+		return true
 	}
 	for i := range lr.Doc.Entities {
 		if !yield(&lr.Doc.Entities[i]) {
-			return
+			return false
 		}
 	}
+	return true
 }
 
 // materializeEntityOverlay decodes the i-th entity from the mmap Reader and
@@ -203,7 +274,7 @@ func (lr *LoadedRepo) forEachDocEntity(yield func(*graph.Entity) bool) {
 // is byte-identical to a LabelIndex.at()-based lookup for the same index.
 // Callers MUST hold the owning LoadedRepo's readerMu — the mmap dereference
 // happens here.
-func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverlay, idx int32) *graph.Entity {
+func materializeEntityOverlay(r fbreader.GraphView, overlay map[int32]entityOverlay, descOverlay map[int32]string, idx int32) *graph.Entity {
 	// Test-only observability seam (memory epic #5850 Path P): count each mmap
 	// entity materialization so the selective-materialization tests can assert a
 	// forEachEntityOfKinds scan materializes ONLY its matching-Kind subset, not the
@@ -219,6 +290,11 @@ func materializeEntityOverlay(r *fbreader.Reader, overlay map[int32]entityOverla
 		e.Centrality = ov.Centrality
 		e.IsGodNode = ov.IsGodNode
 		e.IsArticulationPt = ov.IsArticulationPt
+	}
+	// Description side-table (#5904 PR-a): ADDITIVE merge, mirroring
+	// LabelIndex.materializeFromReader — a miss leaves the base description intact.
+	if d, ok := descOverlay[idx]; ok {
+		e.PropSet("description", d)
 	}
 	return &e
 }
@@ -237,15 +313,15 @@ func (lr *LoadedRepo) forEachRelationship(yield func(*graph.Relationship) bool) 
 		return
 	}
 
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	h := lr.handle
 	if rdr == nil || (h != nil && h.readRetired) {
-		lr.readerMu.Unlock()
+		lr.rmu().Unlock()
 		lr.forEachDocRelationship(yield)
 		return
 	}
-	defer lr.readerMu.Unlock()
+	defer lr.rmu().Unlock()
 
 	n := rdr.RelationshipCount()
 	for i := 0; i < n; i++ {

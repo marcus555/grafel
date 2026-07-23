@@ -420,8 +420,8 @@ func groupIndexCounts(lg *LoadedGroup) (entities, relationships, testsEdges int)
 		if r == nil || r.Doc == nil {
 			continue
 		}
-		entities += len(r.Doc.Entities)
-		relationships += len(r.Doc.Relationships)
+		entities += r.entityCount()   // #5870 PR7a
+		relationships += r.relCount() // #5870 PR7a
 		testsEdges += r.TestsEdgeCount
 	}
 	return
@@ -1423,12 +1423,13 @@ func agentResolvedEdgesForEntity(lr *LoadedRepo, entityID string, scopeIsOne boo
 	// underlying Relationship to read Properties (kind/target alone would not
 	// suffice for the agent-repair filter).
 	out := []map[string]any(nil)
-	rels := lr.Doc.Relationships
+	// #5870 PR7a: relationshipAt (Reader flag-ON / Doc flag-OFF) replaces the
+	// raw lr.Doc.Relationships random-access by relIdx.
 	for _, e := range lr.getAdjacency().Outgoing(entityID) {
-		if e.relIdx < 0 || e.relIdx >= len(rels) {
+		r := lr.relationshipAt(e.relIdx)
+		if r == nil {
 			continue
 		}
-		r := &rels[e.relIdx]
 		if r.PropGet("resolved_by") != "agent-repair" {
 			continue
 		}
@@ -1504,7 +1505,6 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		return []map[string]any{}
 	}
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	for _, ed := range lr.getAdjacency().Outgoing(e.ID) {
 		if !strings.EqualFold(ed.kind, "CALLS") {
 			continue
@@ -1532,15 +1532,15 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		if unresolved && !includeUnresolved {
 			continue
 		}
-		// Line number from relationship properties.
+		// Line number from relationship properties. #5870 PR7a: relationshipAt.
 		lineNum := 0
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].PropGet("line"); v != "" {
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			if v := rel.PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
 			}
-			if v := rels[ed.relIdx].PropGet("via"); v != "" {
+			if v := rel.PropGet("via"); v != "" {
 				entry["via"] = v
 			}
 		}
@@ -1623,7 +1623,6 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 	lineCache := map[string][]string{}
 
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	for _, ed := range lr.getAdjacency().Incoming(e.ID) {
 		// #5686: besides direct CALLS callers, surface the async trigger of an
 		// event-driven handler. A DELIVERS_TO edge (topic → handler) is the
@@ -1659,8 +1658,8 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 		}
 
 		lineNum := 0
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].PropGet("line"); v != "" {
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			if v := rel.PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					lineNum = n
 				}
@@ -1708,12 +1707,12 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 		return nil
 	}
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	emit := func(ed edge, otherIsTarget bool) {
-		if ed.relIdx < 0 || ed.relIdx >= len(rels) {
+		// #5870 PR7a: relationshipAt replaces the raw lr.Doc.Relationships lookup.
+		r := lr.relationshipAt(ed.relIdx)
+		if r == nil {
 			return
 		}
-		r := &rels[ed.relIdx]
 		line := 0
 		if v := r.PropGet("line"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -1875,7 +1874,6 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 		return nil
 	}
 	out := []map[string]any{}
-	rels := lr.Doc.Relationships
 	emit := func(ed edge, direction string) {
 		other := ed.target
 		if !scopeIsOne {
@@ -1889,8 +1887,8 @@ func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, acce
 			"other":     other,
 			"line":      0,
 		}
-		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
-			if v := rels[ed.relIdx].PropGet("line"); v != "" {
+		if rel := lr.relationshipAt(ed.relIdx); rel != nil {
+			if v := rel.PropGet("line"); v != "" {
 				if n, err := strconv.Atoi(v); err == nil {
 					entry["line"] = n
 				}
@@ -2435,16 +2433,27 @@ func normalizePrefixed(lg *LoadedGroup, s string) string {
 			if r.Doc == nil {
 				continue
 			}
-			found := false
+			// #5870 PR7a: collect entity IDs INSIDE the scan, resolve MRO edges
+			// AFTER it releases readerMu. mroOutboundEdges→resolveMember runs a
+			// nested forEachEntity + extendsBases→relationshipAt, both of which
+			// re-lock the repo readerMu and self-deadlock in-scan flag-ON.
+			var ids []string
 			r.forEachEntity(func(e *graph.Entity) bool {
-				for _, me := range mroOutboundEdges(r, e.ID) {
-					if me.External && me.Target == s {
-						found = true
-						return false
-					}
-				}
+				ids = append(ids, e.ID)
 				return true
 			})
+			found := false
+			for _, id := range ids {
+				for _, me := range mroOutboundEdges(r, id) {
+					if me.External && me.Target == s {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
 			if found {
 				return prefixedID(r.Repo, s)
 			}
@@ -2667,7 +2676,9 @@ func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (
 		if r.Doc == nil {
 			continue
 		}
-		res := graph.AnalyzeOrientation(r.Doc.Entities, r.Doc.Relationships, opts)
+		// #5870 PR7a: Reader-served materialize seam (transient copy) instead of
+		// the raw lr.Doc.* slices — heavy/rare pass, transient copy acceptable.
+		res := graph.AnalyzeOrientation(materializeAllEntities(r), materializeAllRelationships(r), opts)
 		analyzed = append(analyzed, &res)
 		names = append(names, r.Repo)
 		for _, n := range []int{len(res.KeyEntities), len(res.CrossCutEdges), len(res.Questions)} {
@@ -3296,8 +3307,8 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 			unavailable = append(unavailable, name+": "+r.loadErr)
 			continue
 		}
-		totalE += len(r.Doc.Entities)
-		totalR += len(r.Doc.Relationships)
+		totalE += r.entityCount() // #5870 PR7a
+		totalR += r.relCount()    // #5870 PR7a
 		rImport, rBug := countEdgesForFidelity(r)
 		totalImport += rImport
 		totalBug += rBug
@@ -3307,8 +3318,8 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		}
 		repoStats = append(repoStats, map[string]any{
 			"repo":          name,
-			"entities":      len(r.Doc.Entities),
-			"relationships": len(r.Doc.Relationships),
+			"entities":      r.entityCount(),
+			"relationships": r.relCount(),
 			"communities":   commCount,
 		})
 		loadedRepos = append(loadedRepos, r)
@@ -3798,7 +3809,7 @@ func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.Ca
 
 	// ── Trust-model R1-R7 ────────────────────────────────────────────────
 	// Build verify context from the loaded graph document.
-	docEnts, containsParents := buildVerifyContext(target.Doc)
+	docEnts, containsParents := buildVerifyContext(target)
 	edgeIDSet := candidateEdgeIDSet(candidates)
 	fromEntityID := fromEntityIDForEdge(candidates, edgeID)
 

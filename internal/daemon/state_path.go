@@ -59,6 +59,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/graph"
 )
 
 // canonicalCache caches (inputPath → canonicalPath) resolutions so that
@@ -452,16 +453,60 @@ func GraphPathForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "graph.json")
 }
 
-// GraphFBPathForRepo returns the path to graph.fb (FlatBuffers binary format)
-// inside the per-repo state directory.
+// GraphFBPathForRepo returns the path to the active FlatBuffers graph inside
+// the per-repo state directory. #5891: this resolves the `current` generation
+// pointer (graph.<gen>.fb), falling back to the legacy flat graph.fb for repos
+// that have not been reindexed since the gen-layout migration.
+//
+// NOTE: this ALWAYS resolves to a single .fb path (or the absent flat
+// fallback) — it is absent for a segment-set repo (graph.<gen>/ dir +
+// manifest.json, no flat .fb). Callers that only need an EXISTENCE check
+// ("does this repo have an FB graph at all?") should use GraphFBExistsForRepo
+// instead, which is segment-set aware; this path-returning form remains for
+// callers that genuinely need the literal single-file path.
 func GraphFBPathForRepo(repoPath string) string {
-	return filepath.Join(StateDirForRepo(repoPath), "graph.fb")
+	return graph.CurrentGraphPath(StateDirForRepo(repoPath))
+}
+
+// GraphFBExistsForRepo reports whether repoPath's current-ref state dir has
+// ANY active FlatBuffers graph — single-file or segment-set — recognised via
+// graph.CurrentGraphDescriptor. #5915 J2 P2: unlike
+// os.Stat(GraphFBPathForRepo(repoPath)), which only ever resolves a flat .fb
+// path and is therefore absent for a segment-set repo (graph.<gen>/ dir +
+// manifest.json, no flat .fb), this correctly reports true for both shapes.
+func GraphFBExistsForRepo(repoPath string) bool {
+	desc, err := graph.CurrentGraphDescriptor(StateDirForRepo(repoPath))
+	return err == nil && desc.Kind != graph.GraphAbsent
 }
 
 // findGraphFileInDir checks dir for graph.fb / graph.json and returns the
 // path + modtime of the newest one. Returns ("", 0) if neither exists.
 func findGraphFileInDir(dir string) (path string, modtime int64) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	// #5891: resolve the active generation via the `current` pointer (falling
+	// back to the legacy flat graph.fb for un-migrated repos). This is the
+	// linchpin: because writers stop bumping a fixed graph.fb, FindGraphFile /
+	// FindGraphFileAnyRef — and therefore statuswriter's GraphFBMtime — MUST
+	// stat the resolved gen file so a completed rebuild's mtime keeps advancing.
+	//
+	// #5901 segment-set: when the active graph is the multi-segment gen-dir
+	// layout, the resolved artifact is a directory (graph.<gen>/), not a .fb
+	// file. Return the gen dir as the graph "path" (its parent is the state dir,
+	// so lr.GraphFile → filepath.Dir → the correct state dir for the Doc load)
+	// and use the manifest.json mtime as the freshness signal (a real file whose
+	// mtime advances on each rebuild). Downstream readers route on this via the
+	// descriptor; the mmap zero-copy cutover correctly declines a dir (see
+	// internal/mcp/state.go's .fb-ext guard) and serves the segment-set Document.
+	if desc, dErr := graph.CurrentGraphDescriptor(dir); dErr == nil && desc.Kind == graph.GraphSegmentSet {
+		if fi, err := os.Stat(filepath.Join(desc.GenDir, graph.ManifestFileName)); err == nil {
+			segMtime := fi.ModTime().UnixNano()
+			jsonPath := filepath.Join(dir, "graph.json")
+			if jInfo, jErr := os.Stat(jsonPath); jErr == nil && jInfo.ModTime().UnixNano() > segMtime {
+				return jsonPath, jInfo.ModTime().UnixNano()
+			}
+			return desc.GenDir, segMtime
+		}
+	}
+	fbPath := graph.CurrentGraphPath(dir)
 	jsonPath := filepath.Join(dir, "graph.json")
 
 	fbInfo, fbErr := os.Stat(fbPath)

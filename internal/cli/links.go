@@ -16,7 +16,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/engine"
 	"github.com/cajasmota/grafel/internal/graph"
-	"github.com/cajasmota/grafel/internal/graph/fbwriter"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -211,10 +211,27 @@ func runLinksForGroup(cmd *cobra.Command, group string) error {
 
 // stageGraphsDir creates a scratch directory containing one sub-dir per
 // repo. Each sub-dir has symlinks pointing at the repo's on-disk graph
-// files (graph.fb and/or graph.json). This keeps the layout that
-// loadAllGraphs expects without duplicating bytes. ADR-0016 flip-day
-// (#808): graph.fb is symlinked when present so LoadGraphFromDir
-// can prefer the binary format in downstream passes.
+// files (graph.fb and/or graph.json, or — for a SEGMENTED repo — the whole
+// graph.<gen>/ segment dir plus a `current` pointer). This keeps the layout
+// that loadAllGraphs/LoadGraphFromDir expects without duplicating bytes.
+// ADR-0016 flip-day (#808): graph.fb is symlinked when present so
+// LoadGraphFromDir can prefer the binary format in downstream passes.
+//
+// #5904(e) PR-c (#5915 P2 gap): staging used to resolve only the flat
+// graph.fb path via graph.CurrentGraphPath, so a repo whose active generation
+// is a multi-segment gen dir (graph.<gen>/seg-*.fb + manifest.json — no flat
+// .fb ever exists for it) had hasFB==false and was silently DROPPED from
+// staging, and therefore from every cross-repo link pass. This now resolves
+// each repo via graph.CurrentGraphDescriptor and stages per its Kind:
+//
+//   - GraphSingleFile: symlink desc.Path as dstDir/graph.fb — BYTE-FOR-BYTE
+//     the pre-existing behavior (the common path).
+//   - GraphSegmentSet: symlink the whole generation into dstDir/graph.<gen>/
+//     (every segment file + manifest.json) and write a `current` pointer in
+//     dstDir naming that gen dir, so LoadGraphFromDir(dstDir) resolves it as
+//     a segment-set exactly as it would at the repo's real state dir.
+//   - GraphAbsent: nothing to stage for the fb side (graph.json, if any, is
+//     still staged below).
 func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	tmp, err := os.MkdirTemp("", "grafel-links-")
 	if err != nil {
@@ -224,13 +241,17 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
 		jsonSrc := daemon.GraphPathForRepo(r.Path)
-		fbSrc := filepath.Join(stateDir, "graph.fb")
-
-		hasFB := func() bool { _, e := os.Stat(fbSrc); return e == nil }()
 		hasJSON := func() bool { _, e := os.Stat(jsonSrc); return e == nil }()
-		if !hasFB && !hasJSON {
+
+		desc, derr := graph.CurrentGraphDescriptor(stateDir)
+		if derr != nil {
+			cleanup()
+			return "", func() {}, fmt.Errorf("stage graphs: resolve %s: %w", r.Slug, derr)
+		}
+		if desc.Kind == graph.GraphAbsent && !hasJSON {
 			continue
 		}
+
 		dstDir := filepath.Join(tmp, r.Slug)
 		if err := os.MkdirAll(dstDir, 0o755); err != nil {
 			cleanup()
@@ -242,11 +263,40 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 				return "", func() {}, err
 			}
 		}
-		if hasFB {
-			if err := linkOrCopyFile(fbSrc, filepath.Join(dstDir, "graph.fb")); err != nil {
+
+		switch desc.Kind {
+		case graph.GraphSingleFile:
+			if err := linkOrCopyFile(desc.Path, filepath.Join(dstDir, "graph.fb")); err != nil {
 				cleanup()
 				return "", func() {}, err
 			}
+		case graph.GraphSegmentSet:
+			genDirName := filepath.Base(desc.GenDir)
+			dstGenDir := filepath.Join(dstDir, genDirName)
+			if err := os.MkdirAll(dstGenDir, 0o755); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+			for _, seg := range desc.Segments {
+				if err := linkOrCopyFile(seg, filepath.Join(dstGenDir, filepath.Base(seg))); err != nil {
+					cleanup()
+					return "", func() {}, err
+				}
+			}
+			manifestSrc := filepath.Join(desc.GenDir, graph.ManifestFileName)
+			if err := linkOrCopyFile(manifestSrc, filepath.Join(dstGenDir, graph.ManifestFileName)); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+			// Point the staged repo's `current` pointer at the staged gen dir
+			// so LoadGraphFromDir(dstDir) resolves the same segment-set shape
+			// CurrentGraphDescriptor resolved at the real state dir.
+			if err := graph.WriteCurrentPointerRaw(dstDir, genDirName); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+		case graph.GraphAbsent:
+			// Nothing further to stage; graph.json (if any) is already linked.
 		}
 	}
 	return tmp, cleanup, nil
@@ -309,9 +359,14 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	if err != nil {
 		return 0, fmt.Errorf("phantom-edge pass: load links: %w", err)
 	}
-	if len(allLinks) == 0 {
-		return 0, nil // nothing to promote
-	}
+	// NOTE (#5904 PR-b): do NOT early-return on len(allLinks)==0. When the LAST
+	// cross-repo link is removed the links file goes empty, and this pass — the
+	// sole writer of the flow side-table — must still run so the clear-stale loop
+	// below wipes every loaded repo's now-obsolete flows.json. An early return
+	// here would leave a repo's cross-repo flows serving fresh forever (its
+	// source_key still matches until the repo is next reindexed). With no links
+	// there is simply nothing to promote (added stays 0) and affectedRepos is
+	// empty, so every loaded repo falls into the cleanup path.
 
 	// Load each repo's graph.Document. Prefer graph.fb when available
 	// (ADR-0016 flip-day #808); fall back to graph.json via LoadGraphFromDir.
@@ -319,12 +374,19 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → graph.json path for WriteAtomic
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
-		fbPath := filepath.Join(stateDir, "graph.fb")
 		jsonPath := daemon.GraphPathForRepo(r.Path)
-		// Check that at least one graph file exists before attempting load.
-		hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
+		// Check that a graph exists before attempting load. #5904(e) PR-c: use
+		// the segment-aware descriptor rather than a flat graph.fb stat, so a
+		// SEGMENTED repo (graph.<gen>/ dir + manifest.json, no flat .fb) is not
+		// skipped here — the load below (loadGraphDocument → LoadGraphFromDir)
+		// is already segment-aware; only this existence gate needed to catch
+		// up (#5915 P2 gap).
+		desc, derr := graph.CurrentGraphDescriptor(stateDir)
+		if derr != nil {
+			return 0, fmt.Errorf("phantom-edge pass: resolve graph for %s: %w", r.Slug, derr)
+		}
 		hasJSON := func() bool { _, e := os.Stat(jsonPath); return e == nil }()
-		if !hasFB && !hasJSON {
+		if desc.Kind == graph.GraphAbsent && !hasJSON {
 			continue // repo not indexed yet
 		}
 		doc, err := loadGraphDocument(stateDir)
@@ -394,11 +456,8 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		// a full re-index.
 		_ = engine.ApplyAsyncTriggerEdges(doc)
 
-		// Update stats.
-		doc.Stats.Entities = len(doc.Entities)
-		doc.Stats.Relationships = len(doc.Relationships)
-
-		// Sort entities + relationships for determinism (mirrors index.go).
+		// Sort entities + relationships for determinism (mirrors index.go) so the
+		// side-table delta is stable run-to-run.
 		sort.SliceStable(doc.Entities, func(a, b int) bool {
 			return doc.Entities[a].ID < doc.Entities[b].ID
 		})
@@ -413,28 +472,77 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 			return ra.Kind < rb.Kind
 		})
 
-		// Write atomically — both graph.fb (canonical binary) and graph.json
-		// must be updated together so that LoadGraphFromDir and any tool that
-		// reads graph.json directly see the same entity set (fixes #1702).
+		// #5904 PR-b: repoint the SINK from a whole-graph rewrite onto the per-repo
+		// flow SIDE-TABLE. The re-synthesised cross-repo-aware flow entities + their
+		// step/entry/seed edges + the phantom cross_repo CALLS edges are the DELTA
+		// over the index-baked graph; write ONLY that delta to <stateDir>/flows.json
+		// via flows.Upsert. graph.fb / graph.json are NOT rewritten.
+		//
+		// This removes the #5915 P1 hazard: for a #5901 segment-set the resident
+		// Document is a COLLAPSED union of every segment, so re-serialising it as one
+		// flat graph.<gen>.fb re-materialised the whole graph in memory (OOM) and
+		// discarded the segmented layout. The side-table leaves the graph untouched;
+		// the read overlay (flows.MergeInto / MCP applyFlowOverlay) REPLACE-merges the
+		// baked intra-repo flows with this delta at read time.
 		stateDir := filepath.Dir(graphPaths[slug])
-		fbPath := filepath.Join(stateDir, "graph.fb")
-		if fbErr := fbwriter.WriteAtomic(fbPath, doc); fbErr != nil {
-			return added, fmt.Errorf("phantom-edge pass: write graph.fb %s: %w", slug, fbErr)
+		flowEnts, flowRels := extractFlowDelta(doc)
+		if err := flows.Upsert(stateDir, flowEnts, flowRels); err != nil {
+			return added, fmt.Errorf("phantom-edge pass: write flow side-table %s: %w", slug, err)
 		}
-		p := graphPaths[slug]
-		if werr := graph.WriteAtomic(p, doc, false); werr != nil {
-			return added, fmt.Errorf("phantom-edge pass: write graph.json %s: %w", slug, werr)
-		}
-		// Stamp identical mtime so the two encodings of the same data are
-		// never mistaken for a partial write (#1626 pattern).
-		now := time.Now()
-		_ = os.Chtimes(fbPath, now, now)
-		_ = os.Chtimes(p, now, now)
 		fmt.Fprintf(os.Stderr,
-			"grafel: phantom-edge pass group=%s repo=%s phantom_edges=%d\n",
-			group, slug, added)
+			"grafel: phantom-edge pass group=%s repo=%s phantom_edges=%d flow_entities=%d (side-table)\n",
+			group, slug, added, len(flowEnts))
+	}
+
+	// Repos that were loaded but are NOT (or no longer) affected by cross-repo
+	// links must not keep a stale flows.json from a previous run — otherwise the
+	// read overlay would resurrect old cross-repo flows for a repo whose links
+	// were removed (without a reindex to invalidate the source_key). The phantom
+	// pass is the sole writer of the flow side-table, so it owns this cleanup.
+	for slug := range docs {
+		if affectedRepos[slug] {
+			continue
+		}
+		stateDir := filepath.Dir(graphPaths[slug])
+		if err := os.Remove(flows.Path(stateDir)); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "grafel: phantom-edge pass: clear stale flow side-table %s: %v\n", slug, err)
+		}
 	}
 	return added, nil
+}
+
+// extractFlowDelta returns the FLOW side-table delta from a re-synthesised
+// document (#5904 PR-b): every SCOPE.Process / SCOPE.EventFlow entity, their
+// STEP_IN_* / ENTRY_POINT_OF / SEED_OF_EVENT_FLOW structural edges, and the
+// phantom cross_repo CALLS edges. This is exactly the set the read overlay
+// SUBSTITUTES for the index-baked flows (flows.Apply strips the baked flows +
+// their structural edges, then appends this delta) plus the phantom CALLS edges
+// (which are never baked). Ordinary entities/edges are excluded — they already
+// live in graph.fb and are not rewritten.
+func extractFlowDelta(doc *graph.Document) ([]graph.Entity, []graph.Relationship) {
+	var ents []graph.Entity
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == string(engine.EntityKindProcess) ||
+			doc.Entities[i].Kind == engine.EntityKindEventFlow {
+			ents = append(ents, doc.Entities[i])
+		}
+	}
+	var rels []graph.Relationship
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		switch r.Kind {
+		case string(engine.RelationshipKindStepInProcess),
+			string(engine.RelationshipKindEntryPointOf),
+			engine.RelationshipKindStepInEventFlow,
+			engine.RelationshipKindSeedOfEventFlow:
+			rels = append(rels, *r)
+		case "CALLS":
+			if r.PropGet("cross_repo") == "true" {
+				rels = append(rels, *r)
+			}
+		}
+	}
+	return ents, rels
 }
 
 // stripProcessEntities returns new entity and relationship slices with all

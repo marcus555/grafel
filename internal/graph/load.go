@@ -78,8 +78,18 @@ func (e *FormatVersionError) Error() string {
 // that could go stale or get clobbered by a later write from a different
 // writer.
 func ReindexRequiredReason(dir string) (required bool, reason string) {
-	fbPath := filepath.Join(dir, "graph.fb")
-	r, err := fbreader.Open(fbPath)
+	// #5915 J1 FIX-2: route through the segment-aware descriptor. The old code
+	// opened CurrentGraphPath(dir)+fbreader.Open, so a segment-set's absent flat
+	// .fb path returned (false,"") — segment-blind: after a future fbversion bump
+	// a below-min segment-set would NOT be detected stale, so it would NOT be
+	// auto-reindexed and would serve empty (defeating #5907 for exactly the large
+	// repos that segment). ReaderForDir opens fbreader.Open(desc.Path) for a
+	// single-file/legacy graph (byte-identical — same version read, absent →
+	// (false,"")) and a *MultiReader for a segment-set, whose Version() is segment
+	// 0's version. The same v < minSupportedFBFormatVersion comparison +
+	// FormatVersionReason then applies uniformly. (fbversion is still 4, so a
+	// current v4 segment-set correctly returns false — a no-op today.)
+	r, err := ReaderForDir(dir)
 	if err != nil {
 		return false, ""
 	}
@@ -117,7 +127,18 @@ func FormatVersionReason(found, required int) string {
 //  3. If only graph.json exists, fall back to JSON.
 //  4. If neither exists, return a non-nil error.
 func LoadGraphFromDir(dir string) (*Document, error) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	// #5901 segment-set: when the active graph is the multi-segment gen-dir
+	// layout, materialize the Document from all segments (via the same shared
+	// core the single-file path uses). A corrupt segment-set manifest surfaces
+	// the descriptor error. Everything below is the UNCHANGED single-file /
+	// legacy / json resolution — the common path is byte-identical.
+	if desc, derr := CurrentGraphDescriptor(dir); derr != nil {
+		return nil, derr
+	} else if desc.Kind == GraphSegmentSet {
+		return loadSegmentSetDocument(desc, false)
+	}
+
+	fbPath := CurrentGraphPath(dir)
 	jsonPath := filepath.Join(dir, "graph.json")
 
 	fbInfo, fbErr := os.Stat(fbPath)
@@ -165,12 +186,35 @@ func LoadGraphFromDir(dir string) (*Document, error) {
 // (absent) memory win. Callers that need a full Document (every CLI/full-Doc
 // consumer) must keep using LoadGraphFromDir.
 func LoadGraphHeaderOnlyFromDir(dir string) (*Document, error) {
-	fbPath := filepath.Join(dir, "graph.fb")
+	// #5901 segment-set: header-only load across all segments (counts/meta from
+	// the manifest+first-segment header; Entities/Relationships left empty).
+	if desc, derr := CurrentGraphDescriptor(dir); derr != nil {
+		return nil, derr
+	} else if desc.Kind == GraphSegmentSet {
+		return loadSegmentSetDocument(desc, true)
+	}
+	fbPath := CurrentGraphPath(dir)
 	if _, err := os.Stat(fbPath); err == nil {
 		return loadFBDocumentHeaderOnly(fbPath)
 	}
 	// No graph.fb — no mmap to serve from; full load (graph.json or error).
 	return LoadGraphFromDir(dir)
+}
+
+// loadSegmentSetDocument materializes a *Document from a resolved segment-set
+// descriptor. It opens a MultiReader over every segment (with manifest key
+// routing) and runs the SAME materialize core as the single-file path, so a
+// segment-set Document is byte-identical to the single-file Document that would
+// result from the same entities/relationships written as one file — modulo the
+// (per-segment) header fields the MultiReader sources from segment 0.
+func loadSegmentSetDocument(desc GraphDescriptor, headerOnly bool) (*Document, error) {
+	paths, ranges := segmentOpenArgs(desc.Manifest, desc.GenDir)
+	v, err := fbreader.OpenSegmentsWithRanges(paths, ranges)
+	if err != nil {
+		return nil, fmt.Errorf("graph.loadSegmentSetDocument: open %s: %w", desc.GenDir, err)
+	}
+	defer v.Close()
+	return materializeGraphView(v, headerOnly)
 }
 
 // PersistedStats is a cheap, on-disk view of a repo's index size and
@@ -208,8 +252,17 @@ type PersistedStats struct {
 // Returns ok=false when graph.fb is absent or cannot be opened (in which case
 // callers should treat the repo as genuinely never-indexed via graph.fb).
 func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
-	fbPath := filepath.Join(dir, "graph.fb")
-	r, err := fbreader.Open(fbPath)
+	// #5915 J1 FIX-1: route through the segment-aware descriptor rather than the
+	// flat CurrentGraphPath. ReaderForDir opens fbreader.Open(desc.Path) for a
+	// single-file/legacy graph (byte-identical to the old path — desc.Path ==
+	// CurrentGraphPath(dir) there, and an absent flat path returns the same open
+	// error → ok=false) and a *MultiReader over the gen dir for a segment-set,
+	// whose EntityCount/RelationshipCount already sum across every segment. The
+	// old code opened only the (absent) flat .fb for a segment-set → ok=false →
+	// the "0 entities / never indexed" cascade (statuswriter's status plane, the
+	// incremental.go:331 force-reindex loop, dashboard store, status_stats,
+	// daemon.go:747, index_commit).
+	r, err := ReaderForDir(dir)
 	if err != nil {
 		return PersistedStats{}, false
 	}
@@ -329,7 +382,16 @@ func loadFBDoc(path string, headerOnly bool) (*Document, error) {
 		return nil, fmt.Errorf("graph.loadFBDocument: open %s: %w", path, err)
 	}
 	defer r.Close()
+	return materializeGraphView(r, headerOnly)
+}
 
+// materializeGraphView is the shared materialize core behind BOTH the
+// single-file path (loadFBDoc, over an *fbreader.Reader) and the segment-set
+// path (loadSegmentSetDocument, over an *fbreader.MultiReader). It operates on
+// the fbreader.GraphView contract so the two backings run byte-identical
+// materialize logic — the ONLY thing that differs is how many mmaps sit under
+// the view. It does NOT Close v (the caller owns the view's lifetime).
+func materializeGraphView(r fbreader.GraphView, headerOnly bool) (*Document, error) {
 	// #2370 — refuse to read old-format graph.fb files. grafel is
 	// pre-1.0; there is no on-disk compat path. The user is expected to
 	// rerun `grafel index <repo>` to regenerate graph.fb against the
@@ -503,6 +565,21 @@ func fbEntityToGraphEntity(e *fb.Entity, si *stringInterner) Entity {
 		StartLine:     int(e.SourceLine()),
 	}
 	ent.properties = props
+	// #5915 J2 slice-3 (discovered while testing cleanup.go's embedding-GC
+	// walk): restore the PH8 (#2100) embedding_ref field from its dedicated
+	// FB slot. This was never restored here — every entity loaded via the
+	// FB path (loadFBDocument AND the segment-set loader, which shares this
+	// same conversion) came back with EmbeddingRef == "" regardless of what
+	// fbwriter actually wrote, silently defeating
+	// internal/cli/cleanup.go's collectActiveEmbeddingHashes for every
+	// FB-backed graph (single-file or segment-set) — the embedding TTL sweep
+	// could never see an entity's embedding as "active", so unreferenced-ness
+	// was determined by TTL age alone. Purely additive: EmbeddingRef was
+	// always the zero value before, so this can only ever populate a
+	// previously-empty field, never change an already-non-empty one.
+	if er := string(e.EmbeddingRef()); er != "" {
+		ent.EmbeddingRef = er
+	}
 	// The Module field is stored as a top-level FB scalar by the writer
 	// (see fbwriter.buildEntity). Restore it into Properties["module"]
 	// so callers that read props["module"] continue to work. PropSet keeps
@@ -612,7 +689,7 @@ func fbRelToGraphRel(r *fb.Relationship, si *stringInterner) Relationship {
 // substrings WITHIN one materialized row, and the copied-out strings are
 // independent of any Document-wide interner. Returns the zero Entity when
 // r is nil or i is out of range.
-func MaterializeEntity(r *fbreader.Reader, i int) Entity {
+func MaterializeEntity(r fbreader.GraphView, i int) Entity {
 	if r == nil {
 		return Entity{}
 	}
@@ -629,7 +706,7 @@ func MaterializeEntity(r *fbreader.Reader, i int) Entity {
 // Relationships[i] for the same graph.fb. All strings are copied out of
 // the mmap region, so the result outlives the Reader. Returns the zero
 // Relationship when r is nil or i is out of range.
-func MaterializeRelationship(r *fbreader.Reader, i int) Relationship {
+func MaterializeRelationship(r fbreader.GraphView, i int) Relationship {
 	if r == nil {
 		return Relationship{}
 	}

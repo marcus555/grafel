@@ -309,7 +309,7 @@ func settingsMonorepoInfo(r registry.Repo, repoStack string) *v2MonorepoInfo {
 // graph.fb cheaply via fbreader (no entity/relationship decode). Returns zero
 // values for non-git repos or graphs written before these fields were added.
 func repoGitMeta(stateDir string) (ref, sha string, isWorktree bool, coverageStatus string) {
-	fbPath := filepath.Join(stateDir, "graph.fb")
+	fbPath := graph.CurrentGraphPath(stateDir) // #5891: resolve active gen
 	r, err := fbreader.Open(fbPath)
 	if err != nil {
 		return "", "", false, ""

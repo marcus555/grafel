@@ -58,6 +58,45 @@ func WriteAtomic(outPath string, doc *graph.Document) error {
 	return nil
 }
 
+// WriteGraphGen serializes doc and writes it as a NEW generation file
+// graph.<gen>.fb inside stateDir, then atomically flips the <stateDir>/current
+// pointer at it and best-effort GCs stale generations (issue #5891). It is the
+// gen-layout replacement for WriteAtomic(<dir>/graph.fb, doc) on the producer
+// paths (full-index + incremental): critically, it NEVER renames over an
+// existing (possibly memory-mapped) graph.fb, removing the Windows
+// ERROR_USER_MAPPED_FILE hazard.
+//
+// Like WriteAtomic it marshals the whole buffer up-front (fail-softing an
+// oversized-graph panic into an error) BEFORE touching the filesystem, so a
+// marshal failure leaves the previously-active generation and pointer fully
+// intact. Returns the absolute path of the gen file written — callers pass it
+// to the directory-keyed sidecar writer (graph.WriteSidecar keys on
+// filepath.Dir), so graph-stats.json still lands beside the graph.
+func WriteGraphGen(stateDir string, doc *graph.Document) (genPath string, err error) {
+	// #5902 flag-gated producer. When GRAFEL_STREAM_SEGMENTS is ON, route
+	// through the bounded SegmentedWriter (a single flat file when the graph
+	// fits under the threshold, a graph.<gen>/ segment set otherwise). OFF by
+	// default: fall through to today's single flat-file path, zero behaviour
+	// change. Gating here wires every producer call site (full-index,
+	// incremental, links, enrichment write-back) through one switch.
+	if StreamSegmentsEnabled() {
+		return WriteGraphGenSegmented(stateDir, doc)
+	}
+	return writeGraphGenFlat(stateDir, doc)
+}
+
+// writeGraphGenFlat is the single-flat-file producer core: marshal the whole
+// doc into one buffer (fail-softing an oversized-graph panic into an error) and
+// write it as a new graph.<gen>.fb generation. It is the flag-OFF path and the
+// SegmentedWriter's single-file fast path, so both share byte-identical output.
+func writeGraphGenFlat(stateDir string, doc *graph.Document) (genPath string, err error) {
+	buf, err := Marshal(doc)
+	if err != nil {
+		return "", fmt.Errorf("fbwriter: marshal: %w", err)
+	}
+	return graph.WriteGenGraph(stateDir, buf)
+}
+
 // Marshal serializes doc into a FlatBuffers byte slice. Exported so the
 // indexer and tests can drive it without touching the filesystem.
 //

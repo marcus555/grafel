@@ -32,8 +32,10 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/embed"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/descriptions"
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/flows"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
 
@@ -273,7 +275,7 @@ type LoadedRepo struct {
 	Path      string
 	GraphFile string
 	Doc       *graph.Document
-	Reader    *fbreader.Reader // mmap zero-copy reader (S8, #2159); nil when unavailable
+	Reader    fbreader.GraphView // mmap zero-copy reader (S8, #2159); nil when unavailable. #5912 (h): a *Reader for single-file, a *MultiReader for a segment-set (N segment mmaps behind one GraphView).
 	// handle is the F1 (ADR-0027) deferred-unmap wrapper that OWNS the lifetime
 	// of Reader's mapping. Reader is the (still-dark) read accessor; handle is
 	// what reload/evict/Close route the munmap through so an in-flight borrow can
@@ -291,12 +293,28 @@ type LoadedRepo struct {
 	// bare readerMu at at()) and reload already holds s.mu (reload:
 	// s.mu->...->readerMu), a deref and the munmap of that same mapping can never
 	// interleave and no lock inversion is possible. Its zero value is usable, so a
-	// LoadedRepo needs no explicit init. The wired *LabelIndex holds &readerMu so a
+	// LoadedRepo needs no explicit init. The wired *LabelIndex holds rmu() so a
 	// lookup on a pre-reload-captured index locks the SAME mutex.
-	readerMu   sync.Mutex
-	LabelIndex *LabelIndex
-	BM25       *BM25Index
-	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
+	//
+	// NEVER lock readerMu directly — go through rmu() (below). A keepReader
+	// eviction (issue #5872) builds a cold-shell twin that shares this repo's
+	// *MapHandle but is a DISTINCT *LoadedRepo; both generations MUST serialize
+	// reads-vs-munmap of the shared mapping on ONE mutex, or a retire under the
+	// shell's mutex races an in-flight read under the origin's mutex → data race
+	// on MapHandle.readRetired + SIGSEGV on the munmapped region. rmu() delivers
+	// that single mutex; sharedReaderMu threads it across generations.
+	readerMu sync.Mutex
+	// sharedReaderMu, when non-nil, overrides readerMu as this repo's effective
+	// reads-vs-retire mutex. It is set ONLY by coldShellRepo, to the ORIGIN
+	// generation's rmu(), so every cold-shell/revived *LoadedRepo derived from one
+	// original — all sharing that original's *MapHandle — locks the SAME mutex as
+	// the original and any in-flight reader still holding it (issue #5872, epic
+	// #5850). Nil on every freshly-loaded repo (rmu() then returns &readerMu), so
+	// the zero value stays usable and non-shell construction is unchanged.
+	sharedReaderMu *sync.Mutex
+	LabelIndex     *LabelIndex
+	BM25           *BM25Index
+	Semantic       *embed.Store // per-repo vector index (nil when no embeddings.bin)
 	// TestsEdgeCount is a cheap O(R) count of TESTS-kind relationships, computed
 	// eagerly at reload so grafel_whoami returns it in O(1) (#3325). Kept
 	// eager because it is O(R) with no allocation — far cheaper than the derived
@@ -428,6 +446,33 @@ type LoadedRepo struct {
 	// since the last stamp, regardless of the overlay-file memo. The zero value
 	// means "never stamped", so a freshly-loaded repo is always (re-)stamped.
 	algoStampedMt time.Time
+
+	// descStampedMt / descFileMt / descApplied memoize the DESCRIPTION side-table
+	// apply (#5904 PR-a), mirroring algoStampedMt for the per-repo
+	// <stateDir>/descriptions.json sidecar. descStampedMt is the lr.mtime value at
+	// which applyDescriptionOverlay last PropSet the sidecar's descriptions onto
+	// this repo's entities; descFileMt is the sidecar file's mtime at that stamp.
+	// A re-stamp is needed when EITHER the repo reparsed (lr.mtime advanced past
+	// descStampedMt — a fresh graph.fb dropped any previously-stamped description)
+	// OR the sidecar file changed (a write-back advanced its mtime). The zero
+	// values ("never stamped") always force a (re-)stamp on first load / revive.
+	descStampedMt time.Time
+	descFileMt    time.Time
+	descApplied   bool
+
+	// flowOverlay / flowStampedMt / flowFileMt / flowApplied memoize the FLOW
+	// side-table apply (#5904 PR-b), mirroring descApplied for the per-repo
+	// <stateDir>/flows.json sidecar. flowOverlay is the fresh cross-repo-aware
+	// flow DELTA (nil when the sidecar is absent/corrupt/stale). When non-nil the
+	// read path applies REPLACE semantics: the forEach* iterators SUPPRESS the
+	// baked SCOPE.Process/SCOPE.EventFlow entities and INJECT the sidecar's, and
+	// getStepAdj/getCallsAdj rebuild against the sidecar's step/phantom edges.
+	// Re-stamped when EITHER the repo reparsed (lr.mtime advanced) OR the sidecar
+	// file mtime changed. Zero values ("never stamped") always force a (re-)stamp.
+	flowOverlay   *flows.Sidecar
+	flowStampedMt time.Time
+	flowFileMt    time.Time
+	flowApplied   bool
 }
 
 // resetIndexes re-arms every lazy-index sync.Once and clears the cached
@@ -490,6 +535,21 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.suffixIndexPartial = false
 }
 
+// rmu returns this repo's effective reads-vs-retire mutex: the shared override
+// (a cold-shell twin's link to its origin generation's mutex) when set, else this
+// repo's own readerMu. Every LoadedRepo-receiver mmap-read choke point, every
+// publishHandle/retireHandle munmap, and every LabelIndex readerMu wiring MUST go
+// through this — never lr.readerMu directly — so all generations sharing one
+// *MapHandle serialize on ONE mutex (issue #5872). Cheap: a nil check + address-of
+// on the fast (non-shell) path; never mutated after coldShellRepo, so it needs no
+// lock of its own.
+func (lr *LoadedRepo) rmu() *sync.Mutex {
+	if lr.sharedReaderMu != nil {
+		return lr.sharedReaderMu
+	}
+	return &lr.readerMu
+}
+
 // publishHandle installs nh as the repo's live mmap handle under the F1
 // (ADR-0027) deferred-unmap protocol and retires the predecessor. The ordering
 // is load-bearing: the successor is published (lr.handle / lr.Reader repointed)
@@ -509,7 +569,7 @@ func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
 	// Doc instead of dereferencing the freed region. readerMu is innermost: the
 	// only thing done while holding it is field assignment + old.retire()'s munmap
 	// syscall — no other grafel lock is acquired.
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	old := lr.handle
 	if nh != nil {
 		nh.repo = lr.Repo
@@ -522,7 +582,7 @@ func (lr *LoadedRepo) publishHandle(nh *MapHandle) {
 		old.readRetired = true
 		old.retire()
 	}
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 }
 
 // retireHandle retires the repo's current mmap handle (repo eviction and server
@@ -534,7 +594,7 @@ func (lr *LoadedRepo) retireHandle() {
 	// Same readerMu discipline as publishHandle: flag readRetired then munmap, all
 	// under the strictly-innermost readerMu, so a concurrent flag-on read choke
 	// point cannot deref this mapping while (or after) it is unmapped.
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	old := lr.handle
 	lr.handle = nil
 	lr.Reader = nil
@@ -542,7 +602,7 @@ func (lr *LoadedRepo) retireHandle() {
 		old.readRetired = true
 		old.retire()
 	}
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 }
 
 // getSuffixIndex returns the source-file suffix index (basename -> repo-relative
@@ -756,7 +816,7 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 		// reload's munmap are serialized by the strictly-innermost readerMu, so
 		// the mapping cannot be freed mid-scan. Lock order: idxMu (held) ->
 		// readerMu; the Doc build takes no mmap so readerMu is dropped first.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
@@ -771,9 +831,9 @@ func (lr *LoadedRepo) getBM25() *BM25Index {
 			li := lr.LabelIndex
 			idx.resolve = func(vi int32) *graph.Entity { return li.at(vi) }
 			lr.BM25 = idx
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.BM25 = BuildBM25(lr.Doc)
 		}
 	})
@@ -857,14 +917,14 @@ func (lr *LoadedRepo) getAdjacency() *adjacency {
 		// readRetired is checked for uniformity with at() (lr.handle here is always
 		// the current, non-retired generation). Lock order: idxMu (held) -> readerMu;
 		// the Doc build takes no mmap so readerMu is dropped before it.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.adjacency = buildAdjacencyFromReader(rdr, lr.Repo)
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.adjacency = buildAdjacency(lr.Doc, lr.Repo)
 		}
 	})
@@ -887,15 +947,24 @@ func (lr *LoadedRepo) getCallsAdj() *callsAdjacency {
 		// Document. Flag-gated (default OFF) for the same handler-path munmap
 		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
 		// read + reload munmap are serialized by the strictly-innermost readerMu.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
+		fo := lr.flowOverlay
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.callsAdj = buildCallsAdjacencyFromReader(rdr)
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.callsAdj = buildCallsAdjacency(lr.Doc)
+		}
+		// Flow side-table (#5904 PR-b): ADD the sidecar's phantom cross_repo CALLS
+		// edges (which are NOT baked into graph.fb once the write-back stopped
+		// rewriting the graph) so a query-time CALLS walk (traces follow) still sees
+		// the cross-repo terminal steps it saw pre-PR. Additive is safe: phantom
+		// edges are never in the baked set, so no CALLS edge is doubled.
+		if fo != nil {
+			lr.callsAdj.setExtraFromRels(fo.Relationships)
 		}
 	})
 	return lr.callsAdj
@@ -914,15 +983,24 @@ func (lr *LoadedRepo) getStepAdj() map[string][]stepEdge {
 		// Document. Flag-gated (default OFF) for the same handler-path munmap
 		// SIGBUS reason as getAdjacency. ADR-0027 SIGBUS-safety (#5850): the mmap
 		// read + reload munmap are serialized by the strictly-innermost readerMu.
-		lr.readerMu.Lock()
+		lr.rmu().Lock()
 		rdr := lr.Reader
 		h := lr.handle
+		fo := lr.flowOverlay
 		if rdr != nil && serveFromMMap() && (h == nil || !h.readRetired) {
 			lr.stepAdj = buildStepAdjacencyFromReader(rdr)
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		} else {
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 			lr.stepAdj = buildStepAdjacency(lr.Doc)
+		}
+		// Flow side-table (#5904 PR-b): REPLACE. When a fresh cross-repo flow
+		// overlay is present, the baked STEP_IN_PROCESS adjacency is DISCARDED and
+		// rebuilt purely from the sidecar's step edges — the baked flow entities are
+		// suppressed by forEach*, so their step rows are never queried, and the
+		// cross-repo flows' steps come solely from the sidecar (no doubling).
+		if fo != nil {
+			lr.stepAdj = buildStepAdjacencyFromRels(fo.Relationships)
 		}
 	})
 	return lr.stepAdj
@@ -1214,6 +1292,28 @@ func (s *State) reloadLocked() (int, bool, error) {
 	return s.reloadAllLocked()
 }
 
+// skeletonizeDocRows drops the row-bulk slices of a Document to nil while keeping
+// the Document itself non-nil and every header field intact. This is the #5870
+// PR7bc deretain flip: for a reader-present, flag-ON repo the row bulk (Entities
+// / Relationships / Communities / SurpriseEdges) is redundant — the resident mmap
+// Reader holds every row and the LabelIndex + BM25/adjacency/getByID + overlay
+// side-tables all source from it — so retaining the heap copy doubles the graph's
+// resident footprint. The header fields (Version, GeneratedAt, Repo,
+// IndexerVersion, IsWorktree, CoverageStatus, IndexedRef, IndexedSHA, Stats,
+// AlgorithmStats) are NOT touched: repoIndexedRef, the semantic-sidecar guard,
+// the algo-stamp staleness check, and grafel_whoami keep reading them off the
+// non-nil skeleton. Callers MUST hold s.mu (reload) and must have already run
+// every eager doc-row build (BuildLabelIndexFromReader, reader-sourced counts).
+func skeletonizeDocRows(doc *graph.Document) {
+	if doc == nil {
+		return
+	}
+	doc.Entities = nil
+	doc.Relationships = nil
+	doc.Communities = nil
+	doc.SurpriseEdges = nil
+}
+
 // reloadAllLocked is the reload body; the caller MUST already hold s.mu. Split
 // out of reloadLocked (memory epic #5850 PR1) so the eviction revive path can
 // reload from disk while already holding s.mu (Group -> reviveEvictedLocked)
@@ -1361,10 +1461,55 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					// Doc.Entities entirely). Best-effort: Open failure leaves newRdr
 					// nil and the index falls back to the Document (JSON-only path).
 					// The SAME reader is published via setReader below (F1 protocol).
-					fbPath := filepath.Join(stateDir, "graph.fb")
-					var newRdr *fbreader.Reader
-					if rdr, rErr := fbreader.Open(fbPath); rErr == nil {
-						newRdr = rdr
+					// #5891: open the SAME resolved graph file that was
+					// discovered above (lr.GraphFile, via CurrentGraphPath in
+					// FindGraphFileAnyRef), NOT a re-derived flat graph.fb —
+					// under the gen layout the flat path may not exist, and
+					// re-deriving it would open a stale/absent file. Guard on the
+					// .fb extension exactly as the old hardcoded graph.fb path did
+					// implicitly: lr.GraphFile may be a graph.json (json-only
+					// repo), and handing JSON bytes to fbreader.Open crashes with
+					// an out-of-range slice — the mmap-reader is only meaningful
+					// for the FlatBuffers format (gen graph.<gen>.fb or flat
+					// graph.fb), so a json-only repo correctly leaves newRdr nil.
+					//
+					// #5901 segment-set: when the active graph is the
+					// multi-segment gen-dir layout, lr.GraphFile does NOT carry a
+					// .fb extension (it is a graph.<gen>/ dir or a graph.json
+					// fallback), so newRdr stays nil and this repo is served from
+					// the Document that readDocumentFromDir → LoadGraphFromDir
+					// already materialized segment-aware. The zero-copy mmap
+					// cutover (a resident *MultiReader + LabelIndex/BM25/adjacency
+					// sourcing rows straight from segment mmaps) is a later serve
+					// slice of #5890 — this dark read substrate only guarantees the
+					// segment-set is READABLE (via the Doc), never mis-mmapped as a
+					// single file. filepath.Ext of a gen dir is "" so the guard
+					// below already excludes it; the single-file path is unchanged.
+					// #5912 (h): open the resident mmap read substrate for BOTH graph
+					// layouts through ONE seam — graph.ReaderForDir resolves the
+					// descriptor under stateDir and returns a single-file *Reader
+					// (byte-identical to today's fbreader.Open — the single-file serve
+					// path is preserved) or an N-segment *MultiReader for a segment-set
+					// gen dir. This is the HARD FLIP: before this a no-.fb-ext gen dir
+					// left newRdr nil and the repo was Doc-collapsed (materialized the
+					// whole segment-set onto the heap — the read-RSS regression). The
+					// MultiReader resolves its EntityAt/RelationshipAt/LookupEntityByID
+					// over a global concatenated index → (segment, local) internally, so
+					// every downstream FromReader builder (LabelIndex/BM25/adjacency)
+					// sources rows straight from the segment mmaps.
+					//
+					// A json-only repo (lr.GraphFile is graph.json) has NO FlatBuffers
+					// graph: guard on the .json extension so we never hand JSON bytes to
+					// fbreader.Open (an out-of-range slice crash) — newRdr stays nil and
+					// the repo is served from the materialized Document, exactly as the
+					// old `.fb`-only guard did. (ReaderForDir on a graph-absent dir would
+					// also fail-soft to nil, but the explicit guard keeps intent local.)
+					fbPath := lr.GraphFile
+					var newRdr fbreader.GraphView
+					if filepath.Ext(fbPath) != ".json" {
+						if rdr, rErr := graph.ReaderForDir(stateDir); rErr == nil {
+							newRdr = rdr
+						}
 					}
 					// ADR-0027 SIGBUS-safety (memory epic #5850): build the successor
 					// MapHandle up front so the reader-sourced LabelIndex is FULLY wired
@@ -1377,7 +1522,7 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					if newRdr != nil {
 						newHandle = newMapHandle(newRdr)
 						li := BuildLabelIndexFromReader(newRdr, doc)
-						li.readerMu = &lr.readerMu
+						li.readerMu = lr.rmu()
 						li.handle = newHandle
 						// ADR-0027 SIGBUS-safety (memory epic #5850, Path P PR1 /
 						// view_iter.go): publish lr.LabelIndex under the SAME
@@ -1388,13 +1533,13 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 						// torn/concurrent write to this field. Field assignment
 						// only; no other lock is acquired while held (matches the
 						// readerMu contract documented on LoadedRepo.readerMu).
-						lr.readerMu.Lock()
+						lr.rmu().Lock()
 						lr.LabelIndex = li
-						lr.readerMu.Unlock()
+						lr.rmu().Unlock()
 					} else {
-						lr.readerMu.Lock()
+						lr.rmu().Lock()
 						lr.LabelIndex = BuildLabelIndex(doc)
-						lr.readerMu.Unlock()
+						lr.rmu().Unlock()
 					}
 					// BM25 is NO LONGER built eagerly here (#3377). It tokenizes every
 					// entity (name, path, docstring, discriminators) and dominated
@@ -1445,6 +1590,30 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 					}
 					lr.TestsEdgeCount = testsCount
 					lr.publishHandle(newHandle)
+					// #5870 PR7bc — the deretain flip DROP. For a reader-present repo
+					// with the flag ON, every row is now served from the resident mmap
+					// Reader (LabelIndex.*FromReader builders + at()/forEach materialize
+					// from the Reader; BM25/adjacency/getByID source int32 indices, not
+					// Doc pointers; the group-algo + description overlays build their
+					// side-tables from the Reader — see applyGroupAlgoOverlay /
+					// applyDescriptionOverlay below). Nothing on this path reads the Doc
+					// row bulk anymore, so drop it: serve holds the graph ONCE (mmap),
+					// not twice. This is the read-RSS win.
+					//
+					// Placement: strictly AFTER BuildLabelIndexFromReader (above) and
+					// AFTER the reader-sourced testsCount — the only eager consumers of
+					// doc rows in this loop iteration; the lazy BM25/adjacency getters
+					// build FromReader. The post-loop overlays run later and, on the ON
+					// path, iterate the Reader (their in-place Doc stamp becomes a no-op
+					// over the emptied slices). GATED on serveFromMMap() as well as
+					// newRdr!=nil: with the flag forced OFF a reader may still be
+					// resident, but at()/getBM25/view-materialize serve from the Doc,
+					// so emptying it there would break serving. The nil-reader
+					// (JSON-only / graph-absent) branch NEVER skeletonizes — its Doc is
+					// the only source.
+					if newRdr != nil && serveFromMMap() {
+						skeletonizeDocRows(lr.Doc)
+					}
 					reloaded++
 				}
 			}
@@ -1500,6 +1669,15 @@ func (s *State) reloadAllLocked() (int, bool, error) {
 		// NO behavior change until an overlay exists. Memoized by mtime so a
 		// mid-session atomic swap reloads only the overlay, not the graphs.
 		applyGroupAlgoOverlay(grp)
+		// Description side-table (#5904 PR-a): ADDITIVELY stamp any
+		// <stateDir>/descriptions.json onto the group's entities. Absence-tolerant
+		// and per-repo memoized, exactly like the group-algo overlay above.
+		applyDescriptionOverlay(grp)
+		// Flow side-table (#5904 PR-b): REPLACE-stamp any <stateDir>/flows.json —
+		// suppress the baked SCOPE.Process/SCOPE.EventFlow entities + STEP edges and
+		// substitute the cross-repo-aware sidecar's. Absence/stale → no-op (baked
+		// intra flows served). Per-repo memoized like applyDescriptionOverlay.
+		applyFlowOverlay(grp)
 	}
 	// Recompute the tool-surface signature. If it differs from the previous
 	// value the caller will emit notifications/tools/list_changed (#1772).
@@ -1549,6 +1727,16 @@ func (s *State) Group(name string) *LoadedGroup {
 		// re-materialized group.
 		grp.lastAccess = time.Now()
 		s.refreshGroupAlgoOverlayLocked(grp)
+		// Re-check the per-repo description side-table mtimes on the serving path so
+		// a write-back that advanced <stateDir>/descriptions.json mid-session takes
+		// effect without a full Reload (mirrors refreshGroupAlgoOverlayLocked). The
+		// per-repo memo inside applyDescriptionOverlay keeps the steady state a
+		// cheap stat-and-skip.
+		applyDescriptionOverlay(grp)
+		// Re-check the per-repo flow side-table on the serving path so a phantom
+		// write-back that advanced <stateDir>/flows.json mid-session takes effect
+		// (REPLACE) without a full Reload. Per-repo memoized → cheap stat-and-skip.
+		applyFlowOverlay(grp)
 	}
 	return grp
 }
@@ -1648,12 +1836,20 @@ func (s *State) evictGroupLocked(name string, keepReader bool) bool {
 // path, so the transfer cannot double-free.
 func coldShellRepo(lr *LoadedRepo) *LoadedRepo {
 	return &LoadedRepo{
-		Repo:           lr.Repo,
-		Path:           lr.Path,
-		GraphFile:      lr.GraphFile,
-		Doc:            lr.Doc,
-		Reader:         lr.Reader,
-		handle:         lr.handle,
+		Repo:      lr.Repo,
+		Path:      lr.Path,
+		GraphFile: lr.GraphFile,
+		Doc:       lr.Doc,
+		Reader:    lr.Reader,
+		handle:    lr.handle,
+		// sharedReaderMu is the load-bearing fix for issue #5872: the shell shares
+		// lr's *MapHandle (above), so it MUST serialize reads-vs-munmap of that one
+		// mapping on the SAME mutex as lr and any in-flight reader still holding lr.
+		// Point at lr's EFFECTIVE mutex (rmu(), not a fresh zero-value) so a later
+		// retireHandle on the shell and an old-generation at()/forEach read lock the
+		// identical *sync.Mutex. Threading rmu() (rather than &lr.readerMu) also keeps
+		// a shell-of-a-shell collapsed onto the one origin mutex.
+		sharedReaderMu: lr.rmu(),
 		Semantic:       lr.Semantic,
 		semMtime:       lr.semMtime,
 		TestsEdgeCount: lr.TestsEdgeCount,
@@ -1700,16 +1896,16 @@ func (s *State) reviveEvictedLocked(name string, cold *LoadedGroup) *LoadedGroup
 // re-applied by the caller's refreshGroupAlgoOverlayLocked (forced via the shell's
 // algoApplied=false).
 func (lr *LoadedRepo) rematerializeFromReaderLocked() {
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	if lr.Reader != nil {
 		li := BuildLabelIndexFromReader(lr.Reader, lr.Doc)
-		li.readerMu = &lr.readerMu
+		li.readerMu = lr.rmu()
 		li.handle = lr.handle
 		lr.LabelIndex = li
 	} else {
 		lr.LabelIndex = BuildLabelIndex(lr.Doc)
 	}
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 	lr.resetIndexes()
 }
 
@@ -2235,7 +2431,7 @@ func buildTopKPageRank(doc *graph.Document, k int) []string {
 // overlay's per-entity map keyed by ID, applied at Reader-borrow time rather
 // than only onto lr.Doc), at which point this comment should be replaced.
 // ADR-0027 Cutover PR1.
-func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
+func buildTopKPageRankFromReader(r fbreader.GraphView, k int) []string {
 	if r == nil || r.EntityCount() == 0 {
 		return nil
 	}
@@ -2275,10 +2471,10 @@ func buildTopKPageRankFromReader(r *fbreader.Reader, k int) []string {
 // resident or the mapping was retired (mirrors at()/forEachEntity). readerMu
 // guards the mmap dereference (SIGBUS-safety, memory epic #5850).
 func (lr *LoadedRepo) buildTopKPageRankFromSideTable(k int) []string {
-	lr.readerMu.Lock()
+	lr.rmu().Lock()
 	rdr := lr.Reader
 	if rdr == nil || (lr.handle != nil && lr.handle.readRetired) {
-		lr.readerMu.Unlock()
+		lr.rmu().Unlock()
 		return buildTopKPageRank(lr.Doc, k) // Reader gone → Doc fallback
 	}
 	var overlay map[int32]entityOverlay
@@ -2300,7 +2496,7 @@ func (lr *LoadedRepo) buildTopKPageRankFromSideTable(k int) []string {
 		i++
 		return true
 	})
-	lr.readerMu.Unlock()
+	lr.rmu().Unlock()
 
 	sort.Slice(all, func(a, b int) bool {
 		return all[a].pr > all[b].pr
@@ -2486,7 +2682,7 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 		// touch LabelIndex, so the table persists for this generation's life and is
 		// reassigned on the next re-stamp.
 		if serveFromMMap() {
-			lr.readerMu.Lock()
+			lr.rmu().Lock()
 			var table map[int32]entityOverlay
 			if rdr := lr.Reader; rdr != nil && !(lr.handle != nil && lr.handle.readRetired) {
 				table = buildOverlayTableFromReader(rdr, ov)
@@ -2496,7 +2692,7 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 			if lr.LabelIndex != nil {
 				lr.LabelIndex.overlay = table
 			}
-			lr.readerMu.Unlock()
+			lr.rmu().Unlock()
 		}
 		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
 		// against the freshly-stamped group values rather than stale per-repo
@@ -2534,7 +2730,7 @@ func newEntityOverlay(eo groupalgo.EntityOverlay) entityOverlay {
 // WITH an overlay entry are inserted; a miss leaves the fb sentinel on the read
 // path. Callers MUST hold the owning LoadedRepo's readerMu (the mmap is
 // dereferenced here via IterateEntities).
-func buildOverlayTableFromReader(r *fbreader.Reader, ov *groupalgo.Overlay) map[int32]entityOverlay {
+func buildOverlayTableFromReader(r fbreader.GraphView, ov *groupalgo.Overlay) map[int32]entityOverlay {
 	table := make(map[int32]entityOverlay)
 	if r == nil || ov == nil {
 		return table
@@ -2562,6 +2758,207 @@ func buildOverlayTableFromDoc(doc *graph.Document, ov *groupalgo.Overlay) map[in
 	for i := range doc.Entities {
 		if eo, has := ov.Results[doc.Entities[i].ID]; has {
 			table[int32(i)] = newEntityOverlay(eo)
+		}
+	}
+	return table
+}
+
+// applyDescriptionOverlay stamps the per-repo DESCRIPTION side-table (#5904
+// PR-a) onto a loaded group's entities. For each repo it reads
+// <stateDir>/descriptions.json (absence/corrupt/stale-tolerant) and, for every
+// entity WITH a sidecar entry, ADDITIVELY PropSet-s "description":
+//
+//   - onto lr.Doc.Entities — the flag-OFF read path (LabelIndex.at /
+//     forEachEntity) and the MCP serve surfaces that read PropGet("description")
+//     directly.
+//   - into an entity-INDEX-keyed LabelIndex.descOverlay table for the flag-ON
+//     mmap read path (materializeFromReader / materializeEntityOverlay).
+//
+// ADDITIVE guarantee: a missing sidecar entry leaves whatever description the
+// entity already carried (extractor-native / baked-in from a prior write-back)
+// UNTOUCHED — a miss never clears. Absence/staleness of the whole sidecar is a
+// no-op for the same reason.
+//
+// Memoized PER REPO (mirrors applyGroupAlgoOverlay's #5400/#5401 per-repo memo):
+// a repo is re-stamped when EITHER it reparsed since the last stamp (lr.mtime
+// advanced past lr.descStampedMt — a fresh graph.fb dropped the prior PropSet)
+// OR its sidecar file mtime changed (a write-back landed). The steady state
+// (nothing changed) is a cheap per-repo os.Stat and skip. Caller holds s.mu, the
+// same lock applyGroupAlgoOverlay mutates Doc/LabelIndex under.
+func applyDescriptionOverlay(grp *LoadedGroup) {
+	if grp == nil {
+		return
+	}
+	for _, lr := range grp.Repos {
+		if lr == nil || lr.Doc == nil || lr.Path == "" {
+			continue
+		}
+		stateDir := daemon.StateDirForRepo(lr.Path)
+		var fileMt time.Time
+		if fi, err := os.Stat(descriptions.Path(stateDir)); err == nil {
+			fileMt = fi.ModTime()
+		}
+		// Skip when neither the sidecar file nor this repo's graph changed since
+		// the last stamp. The zero descStampedMt (never stamped) always falls
+		// through to (re-)stamp.
+		if lr.descApplied && lr.mtime.Equal(lr.descStampedMt) && fileMt.Equal(lr.descFileMt) {
+			continue
+		}
+
+		sc, ok := descriptions.Read(stateDir)
+
+		// In-place Doc stamp (flag-OFF read path + PropGet consumers). ADDITIVE:
+		// only entities WITH a sidecar entry are touched; everything else keeps
+		// its existing description.
+		if ok {
+			ents := lr.Doc.Entities
+			for i := range ents {
+				if d, has := sc.Results[ents[i].ID]; has {
+					ents[i].PropSet("description", d)
+				}
+			}
+		}
+
+		// Flag-ON mmap side-table: rebuild the index-keyed description table under
+		// readerMu, mirroring applyGroupAlgoOverlay's overlay-table publish. A
+		// retired/nil Reader falls back to the Doc (where the read path also reads
+		// the Doc, so the table is never consulted there anyway). When the sidecar
+		// is absent/stale (ok==false) the table is cleared to nil so a previously
+		// stamped description does not linger on the mmap path after it went stale.
+		if serveFromMMap() {
+			lr.rmu().Lock()
+			var table map[int32]string
+			if ok {
+				if rdr := lr.Reader; rdr != nil && !(lr.handle != nil && lr.handle.readRetired) {
+					table = buildDescTableFromReader(rdr, sc)
+				} else {
+					table = buildDescTableFromDoc(lr.Doc, sc)
+				}
+			}
+			if lr.LabelIndex != nil {
+				lr.LabelIndex.descOverlay = table
+			}
+			lr.rmu().Unlock()
+		}
+
+		lr.descStampedMt = lr.mtime
+		lr.descFileMt = fileMt
+		lr.descApplied = true
+	}
+}
+
+// applyFlowOverlay stamps the per-repo FLOW side-table (#5904 PR-b) onto a
+// loaded group's repos with REPLACE semantics. For each repo it reads
+// <stateDir>/flows.json (absence/corrupt/stale-tolerant) and publishes the
+// cross-repo-aware flow DELTA into lr.flowOverlay. When set, the read path:
+//
+//   - forEach* iterators SUPPRESS the baked SCOPE.Process/SCOPE.EventFlow
+//     entities (from Doc OR Reader) and INJECT the sidecar's cross-repo-aware
+//     ones (flowFilteredYield + injectFlowEntities in view_iter.go).
+//   - getStepAdj REPLACES the STEP_IN_PROCESS adjacency with the sidecar's step
+//     edges; getCallsAdj ADDS the sidecar's phantom cross_repo CALLS edges.
+//
+// This is REPLACE, not additive: graph.fb still carries the index-baked
+// intra-repo flows, so an additive merge would DOUBLE every flow. On
+// absence/stale (ok==false) the overlay is cleared to nil and the baked
+// intra-repo flows are served unchanged (correct degraded state).
+//
+// Memoized PER REPO exactly like applyDescriptionOverlay: re-stamp when the repo
+// reparsed (lr.mtime advanced) OR the sidecar file mtime changed. Publishing the
+// overlay pointer under readerMu (the flag-ON forEach scans read it under the
+// same lock) + re-arming stepOnce/callsOnce under idxMu (so the adjacencies
+// rebuild against the REPLACE set) mirrors resetIndexes' invalidation. Caller
+// holds s.mu.
+func applyFlowOverlay(grp *LoadedGroup) {
+	if grp == nil {
+		return
+	}
+	for _, lr := range grp.Repos {
+		if lr == nil || lr.Doc == nil || lr.Path == "" {
+			continue
+		}
+		stateDir := daemon.StateDirForRepo(lr.Path)
+		var fileMt time.Time
+		if fi, err := os.Stat(flows.Path(stateDir)); err == nil {
+			fileMt = fi.ModTime()
+		}
+		if lr.flowApplied && lr.mtime.Equal(lr.flowStampedMt) && fileMt.Equal(lr.flowFileMt) {
+			continue
+		}
+
+		var next *flows.Sidecar
+		if sc, ok := flows.Read(stateDir); ok {
+			next = sc
+		}
+
+		// Publish under readerMu (read by the flag-ON forEach scans + the adjacency
+		// builders under the same lock).
+		lr.rmu().Lock()
+		lr.flowOverlay = next
+		lr.rmu().Unlock()
+
+		// Re-arm the step/calls adjacencies so the next getStepAdj/getCallsAdj
+		// rebuild against the REPLACE set (mirrors resetIndexes, under idxMu).
+		lr.idxMu.Lock()
+		lr.stepOnce = sync.Once{}
+		lr.stepAdj = nil
+		lr.callsOnce = sync.Once{}
+		lr.callsAdj = nil
+		lr.idxMu.Unlock()
+
+		lr.flowStampedMt = lr.mtime
+		lr.flowFileMt = fileMt
+		lr.flowApplied = true
+	}
+}
+
+// flowOverlaySnapshot returns the repo's current flow overlay pointer, read
+// under readerMu so it is race-safe against a concurrent applyFlowOverlay
+// publish. The sidecar it points at is immutable after publish, so callers may
+// use the returned pointer lock-free.
+func (lr *LoadedRepo) flowOverlaySnapshot() *flows.Sidecar {
+	if lr == nil {
+		return nil
+	}
+	lr.rmu().Lock()
+	fo := lr.flowOverlay
+	lr.rmu().Unlock()
+	return fo
+}
+
+// buildDescTableFromReader builds the entity-INDEX-keyed description side-table
+// by iterating the resident mmap Reader (NOT lr.Doc), matching each entity to
+// the sidecar by ID. The int32 key is the vector index i in Reader iteration
+// order — identical to the order BuildLabelIndexFromReader assigns and the order
+// materializeFromReader looks the table up by. Callers MUST hold the owning
+// LoadedRepo's readerMu (the mmap is dereferenced here via IterateEntities).
+func buildDescTableFromReader(r fbreader.GraphView, sc *descriptions.Sidecar) map[int32]string {
+	table := make(map[int32]string)
+	if r == nil || sc == nil {
+		return table
+	}
+	var i int32
+	r.IterateEntities(func(e *fb.Entity) bool {
+		if d, has := sc.Results[string(e.Id())]; has {
+			table[i] = d
+		}
+		i++
+		return true
+	})
+	return table
+}
+
+// buildDescTableFromDoc is the Doc-sourced twin used ONLY when no mmap Reader is
+// resident (JSON-only / no graph.fb) on the flag-on path. Keyed by the same
+// vector index i as the Reader path.
+func buildDescTableFromDoc(doc *graph.Document, sc *descriptions.Sidecar) map[int32]string {
+	table := make(map[int32]string)
+	if doc == nil || sc == nil {
+		return table
+	}
+	for i := range doc.Entities {
+		if d, has := sc.Results[doc.Entities[i].ID]; has {
+			table[int32(i)] = d
 		}
 	}
 	return table

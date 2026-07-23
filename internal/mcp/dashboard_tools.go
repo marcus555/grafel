@@ -229,11 +229,18 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 		if r.Doc == nil {
 			continue
 		}
-		// Build subscriber set: topics that appear on the ToID of a SUBSCRIBES_TO edge.
-		subscribers := map[string]bool{}
+		// #5870 PR7a: snapshot BOTH edge-target sets in ONE pre-scan relationship
+		// pass, so the topic scan below reads local maps — never r.Doc raw (which
+		// empties after the flip) nor an rmu-locking helper INSIDE the
+		// forEachEntityOfKinds scan (would self-deadlock flag-ON).
+		subscribers := map[string]bool{} // topics that are a SUBSCRIBES_TO target
+		publishedTo := map[string]bool{} // topics that are a PUBLISHES_TO target
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
-			if rel.Kind == "SUBSCRIBES_TO" {
+			switch rel.Kind {
+			case "SUBSCRIBES_TO":
 				subscribers[rel.ToID] = true
+			case "PUBLISHES_TO":
+				publishedTo[rel.ToID] = true
 			}
 			return true
 		})
@@ -242,7 +249,7 @@ func (s *Server) handleTopologyOrphanPublishers(_ context.Context, req mcpapi.Ca
 		// unchanged.
 		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
 			// Publisher: appears as ToID in a PUBLISHES_TO edge but never as ToID in SUBSCRIBES_TO.
-			if !subscribers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "PUBLISHES_TO") {
+			if !subscribers[e.ID] && publishedTo[e.ID] {
 				out = append(out, item{
 					TopicID:    prefixedID(r.Repo, e.ID),
 					TopicName:  e.Name,
@@ -278,10 +285,16 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 		if r.Doc == nil {
 			continue
 		}
-		publishers := map[string]bool{}
+		// #5870 PR7a: snapshot BOTH edge-target sets in one pre-scan pass (see the
+		// orphan-publishers handler for the rationale).
+		publishers := map[string]bool{}   // topics that are a PUBLISHES_TO target
+		subscribedTo := map[string]bool{} // topics that are a SUBSCRIBES_TO target
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
-			if rel.Kind == "PUBLISHES_TO" {
+			switch rel.Kind {
+			case "PUBLISHES_TO":
 				publishers[rel.ToID] = true
+			case "SUBSCRIBES_TO":
+				subscribedTo[rel.ToID] = true
 			}
 			return true
 		})
@@ -289,7 +302,7 @@ func (s *Server) handleTopologyOrphanSubscribers(_ context.Context, req mcpapi.C
 		// materialization flag-ON); the residual edge-based subscriber filter is
 		// unchanged.
 		r.forEachEntityOfKinds(isTopicKind, func(e *graph.Entity) bool {
-			if !publishers[e.ID] && hasRelationshipTo(r.Doc, e.ID, "SUBSCRIBES_TO") {
+			if !publishers[e.ID] && subscribedTo[e.ID] {
 				out = append(out, item{
 					TopicID:    prefixedID(r.Repo, e.ID),
 					TopicName:  e.Name,
@@ -366,42 +379,53 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		}
 		// Use the canonical entity ID for relationship matching.
 		canonID := topicEnt.ID
-		var publishers, subscribers []participant
+		// #5928 collect-then-process: resolve()→getByIDOne re-locks the same
+		// readerMu the flag-ON forEachRelationship scan holds across its whole
+		// pass, so calling it INSIDE the closure self-deadlocks on the live-Reader
+		// path. Collect the matching FromIDs in-scan (rmu held); resolve them AFTER
+		// the scan returns (rmu released). Append order is preserved, so the
+		// resulting publisher/subscriber order is byte-identical to the old path.
+		var pubFromIDs, subFromIDs []string
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			switch rel.Kind {
 			case "PUBLISHES_TO":
 				if rel.ToID == canonID {
-					if src := resolve(rel.FromID); src != nil {
-						p := participant{
-							EntityID:   prefixedID(r.Repo, src.ID),
-							EntityName: src.Name,
-							Kind:       src.Kind,
-						}
-						if verbose {
-							p.Repo = r.Repo
-							p.SourceFile = src.SourceFile
-						}
-						publishers = append(publishers, p)
-					}
+					pubFromIDs = append(pubFromIDs, rel.FromID)
 				}
 			case "SUBSCRIBES_TO":
 				if rel.ToID == canonID {
-					if src := resolve(rel.FromID); src != nil {
-						p := participant{
-							EntityID:   prefixedID(r.Repo, src.ID),
-							EntityName: src.Name,
-							Kind:       src.Kind,
-						}
-						if verbose {
-							p.Repo = r.Repo
-							p.SourceFile = src.SourceFile
-						}
-						subscribers = append(subscribers, p)
-					}
+					subFromIDs = append(subFromIDs, rel.FromID)
 				}
 			}
 			return true
 		})
+		mkParticipant := func(fromID string) (participant, bool) {
+			src := resolve(fromID)
+			if src == nil {
+				return participant{}, false
+			}
+			p := participant{
+				EntityID:   prefixedID(r.Repo, src.ID),
+				EntityName: src.Name,
+				Kind:       src.Kind,
+			}
+			if verbose {
+				p.Repo = r.Repo
+				p.SourceFile = src.SourceFile
+			}
+			return p, true
+		}
+		var publishers, subscribers []participant
+		for _, fromID := range pubFromIDs {
+			if p, ok := mkParticipant(fromID); ok {
+				publishers = append(publishers, p)
+			}
+		}
+		for _, fromID := range subFromIDs {
+			if p, ok := mkParticipant(fromID); ok {
+				subscribers = append(subscribers, p)
+			}
+		}
 		resp := map[string]any{
 			"topic_id":    prefixedID(r.Repo, topicEnt.ID),
 			"topic_name":  topicEnt.Name,
@@ -657,8 +681,8 @@ func (s *Server) handleDiagnostics(_ context.Context, req mcpapi.CallToolRequest
 			GraphFile: lr.GraphFile,
 		}
 		if lr.Doc != nil {
-			rh.Entities = len(lr.Doc.Entities)
-			rh.Relationships = len(lr.Doc.Relationships)
+			rh.Entities = lr.entityCount()   // #5870 PR7a
+			rh.Relationships = lr.relCount() // #5870 PR7a
 		}
 		repos = append(repos, rh)
 	}
@@ -794,19 +818,28 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 			EntityName string `json:"entity_name"`
 			Kind       string `json:"kind"`
 		}
-		var exemplars []exemplar
+		// #5928 collect-then-process: resolve()→getByIDOne re-locks the same
+		// readerMu the flag-ON forEachRelationship scan holds across its whole
+		// pass, so resolving INSIDE the closure self-deadlocks on the live-Reader
+		// path. Collect exemplar FromIDs in-scan (rmu held); resolve them AFTER the
+		// scan returns (rmu released). Append order is preserved byte-for-byte.
+		var exemplarFromIDs []string
 		r.forEachRelationship(func(rel *graph.Relationship) bool {
 			if (rel.Kind == "EXEMPLIFIES" || rel.Kind == "INSTANCE_OF") && rel.ToID == target {
-				if ex := resolve(rel.FromID); ex != nil {
-					exemplars = append(exemplars, exemplar{
-						EntityID:   prefixedID(r.Repo, ex.ID),
-						EntityName: ex.Name,
-						Kind:       ex.Kind,
-					})
-				}
+				exemplarFromIDs = append(exemplarFromIDs, rel.FromID)
 			}
 			return true
 		})
+		var exemplars []exemplar
+		for _, fromID := range exemplarFromIDs {
+			if ex := resolve(fromID); ex != nil {
+				exemplars = append(exemplars, exemplar{
+					EntityID:   prefixedID(r.Repo, ex.ID),
+					EntityName: ex.Name,
+					Kind:       ex.Kind,
+				})
+			}
+		}
 		return jsonResult(map[string]any{
 			"pattern_id":  prefixedID(r.Repo, e.ID),
 			"name":        e.Name,
@@ -1269,16 +1302,6 @@ func isTopicKind(kind string) bool {
 func hasRelationshipFrom(doc *graph.Document, fromID, edgeKind string) bool {
 	for i := range doc.Relationships {
 		if doc.Relationships[i].FromID == fromID && doc.Relationships[i].Kind == edgeKind {
-			return true
-		}
-	}
-	return false
-}
-
-// hasRelationshipTo returns true if doc has any edge of edgeKind to toID.
-func hasRelationshipTo(doc *graph.Document, toID, edgeKind string) bool {
-	for i := range doc.Relationships {
-		if doc.Relationships[i].ToID == toID && doc.Relationships[i].Kind == edgeKind {
 			return true
 		}
 	}

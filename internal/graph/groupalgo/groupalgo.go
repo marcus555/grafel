@@ -24,11 +24,72 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
 )
+
+// memoMu guards the process-local compute-once guard below. All access to the
+// shared maps goes through it.
+var (
+	memoMu      sync.Mutex
+	memoHashes  = map[string]string{}                  // memoKey -> input hash of the last full compute
+	memoResults = map[string]*graph.AlgorithmResults{} // memoKey -> that full compute's result (read-only after store)
+)
+
+// memoKeyFor returns the process-local guard key for a group. It keys on the
+// resolved overlay path (which embeds GRAFEL_HOME) so distinct daemons / test
+// homes never collide, falling back to the bare group name if the path cannot
+// be resolved.
+func memoKeyFor(group string) string {
+	if p, err := OverlayPath(group); err == nil && p != "" {
+		return p
+	}
+	return "group:" + group
+}
+
+// loadMemoizedGroupResult returns the last full-computed result for group IFF it
+// was computed against the SAME group-version (inputHash). The returned pointer
+// is shared and MUST be treated read-only by callers (same contract as the disk
+// overlay reconstitution — consumers only read it).
+func loadMemoizedGroupResult(group, inputHash string) (*graph.AlgorithmResults, bool) {
+	memoMu.Lock()
+	defer memoMu.Unlock()
+	k := memoKeyFor(group)
+	if memoHashes[k] == inputHash {
+		if res, ok := memoResults[k]; ok && res != nil {
+			return res, true
+		}
+	}
+	return nil, false
+}
+
+// storeMemoizedGroupResult records that group's inputHash version has been fully
+// computed this process, keeping the result so a later reload for the SAME
+// version can reuse it even if the disk overlay never persisted. Recorded BEFORE
+// the caller attempts to write the overlay, so a persist failure cannot reopen
+// the recompute→persist-fail→recompute spin.
+func storeMemoizedGroupResult(group, inputHash string, res *graph.AlgorithmResults) {
+	if res == nil {
+		return
+	}
+	memoMu.Lock()
+	defer memoMu.Unlock()
+	k := memoKeyFor(group)
+	memoHashes[k] = inputHash
+	memoResults[k] = res
+}
+
+// resetGroupAlgoMemo clears the process-local guard. Test-only seam so cases can
+// assert first-compute behaviour deterministically.
+func resetGroupAlgoMemo() {
+	memoMu.Lock()
+	defer memoMu.Unlock()
+	memoHashes = map[string]string{}
+	memoResults = map[string]*graph.AlgorithmResults{}
+}
 
 // GroupAlgoResult wraps the single group-scope algorithm pass.
 //
@@ -116,14 +177,20 @@ func AssembleGroupGraph(group string) (entities []graph.Entity, rels []graph.Rel
 	for _, r := range cfg.Repos {
 		stateDir := daemon.StateDirForRepo(r.Path)
 
-		// Record the graph.fb mtime when present. A repo that was never indexed
-		// has neither graph.fb nor graph.json — skip it (not an error): the
+		// Record the graph mtime when present. A repo that was never indexed
+		// has neither a graph nor graph.json — skip it (not an error): the
 		// union of the remaining repos is still valid.
-		fbPath := filepath.Join(stateDir, "graph.fb")
+		// #5891: resolve the active generation so the recorded mtime is the
+		// gen file's — otherwise the overlay staleness check below (which reads
+		// the same resolved mtime via CurrentSourceMtimes) would see a frozen
+		// legacy graph.fb mtime and treat a fresh overlay as permanently stale.
+		// #5915 J2 P2: graphSourceMtime is segment-set aware — a segment-set
+		// repo (graph.<gen>/ dir + manifest.json, no flat .fb) would otherwise
+		// stat the absent flat path and be wrongly treated as never-indexed.
 		jsonPath := filepath.Join(stateDir, "graph.json")
 		fbExists := false
-		if fi, statErr := os.Stat(fbPath); statErr == nil {
-			srcMtimes[r.Slug] = fi.ModTime().UnixNano()
+		if mt, ok := graphSourceMtime(stateDir); ok {
+			srcMtimes[r.Slug] = mt
 			fbExists = true
 		}
 		if !fbExists {
@@ -243,8 +310,35 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 		}
 	}
 
+	// Process-local compute-once guard. The disk overlay skip above is the fast
+	// path, but it only fires when the overlay could be PERSISTED. If the overlay
+	// is absent because a prior WriteOverlayFromResult FAILED (read-only
+	// ~/.grafel/groups, disk-full, EPERM) — the "sidecars=0" symptom — the disk
+	// skip can never engage, and without this guard every trigger re-ran the full
+	// ~O(V·E) betweenness over the whole group union, pinning the daemon (the
+	// group-scope analog of the per-repo #50 compute→evict spin). This guard makes
+	// the heavy pass run at most once per group-version in a process regardless of
+	// whether the overlay reached disk; a real re-index bumps the input hash and
+	// falls through to exactly one recompute (correctness preserved).
+	if res, ok := loadMemoizedGroupResult(group, inputHash); ok {
+		return &GroupAlgoResult{
+			Group:        group,
+			Results:      res,
+			EntityRepo:   entityRepo,
+			SourceMtimes: srcMtimes,
+			NumEntities:  len(entities),
+			NumRels:      len(rels),
+			NumRepos:     numRepos,
+			InputHash:    inputHash,
+			Skipped:      true,
+		}, nil
+	}
+
 	// Full deterministic recompute (input changed, or no usable prior overlay).
 	res := graph.RunAlgorithms(entities, rels)
+	// Record BEFORE returning (and thus before the caller's overlay write), so a
+	// persist failure cannot cause a re-run for this same version.
+	storeMemoizedGroupResult(group, inputHash, res)
 	return &GroupAlgoResult{
 		Group:        group,
 		Results:      res,
@@ -255,4 +349,24 @@ func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
 		NumRepos:     numRepos,
 		InputHash:    inputHash,
 	}, nil
+}
+
+// graphSourceMtime resolves a repo's freshness mtime for its current-ref
+// stateDir, segment-set aware (#5915 J2 P2). os.Stat(graph.CurrentGraphPath(
+// stateDir)) — the pattern this replaces — only ever names a flat .fb path,
+// which is ABSENT for a segment-set repo (graph.<gen>/ dir + manifest.json,
+// no flat .fb), so that stat would report the repo as never-indexed and
+// silently drop it from the union / freeze its overlay-staleness signal.
+//
+// Delegates to graph.CurrentGraphMtime (#5915 J2 slice-3), the shared
+// descriptor-mtime resolution promoted to internal/graph so every other
+// flat-.fb-only mtime gate (internal/daemon/deadref.go, internal/daemon/algo,
+// internal/cli/branches.go) can reuse it instead of duplicating this
+// descriptor branch.
+func graphSourceMtime(stateDir string) (mtimeNanos int64, ok bool) {
+	mt, ok := graph.CurrentGraphMtime(stateDir)
+	if !ok {
+		return 0, false
+	}
+	return mt.UnixNano(), true
 }

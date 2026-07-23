@@ -53,7 +53,12 @@ type LabelIndex struct {
 	// on the same s.mu-serialized read path that today reads lr.Doc; a reload
 	// rebuilds the whole LabelIndex (fresh reader), so at() never dereferences a
 	// reader across its own generation.
-	reader *fbreader.Reader
+	//
+	// #5912 (h): typed fbreader.GraphView, not the concrete *Reader, so a
+	// segment-set repo backs this index with a *MultiReader (N segment mmaps,
+	// global-index at()/EntityAt resolution) transparently — every at()/count
+	// call below is a GraphView method already implemented identically on both.
+	reader fbreader.GraphView
 
 	// overlay is the ADR-0027 overlay SIDE-TABLE: entity INDEX (int32 vector
 	// position) -> the 5 group-algo values that are NOT authoritative in graph.fb
@@ -71,6 +76,20 @@ type LabelIndex struct {
 	// every overlay re-stamp. nil on the flag-off path and until an overlay is
 	// applied.
 	overlay map[int32]entityOverlay
+
+	// descOverlay is the DESCRIPTION side-table (#5904 PR-a): entity INDEX (int32
+	// vector position) -> the agent-written "description" property that lives in
+	// <stateDir>/descriptions.json rather than in graph.fb (the enrichment
+	// write-back no longer rewrites the graph — the #5915 P1 collapse hazard).
+	// materializeFromReader ADDITIVELY PropSet-s it onto the Reader-materialized
+	// base so a lookup on the mmap path surfaces the description exactly as the
+	// overlaid Doc row does. A miss leaves whatever description graph.fb carried
+	// (extractor-native / baked-in) intact — never cleared. Populated by
+	// applyDescriptionOverlay from the SAME descriptions.json it PropSet-s onto
+	// lr.Doc, keyed by resolving each entity ID to its vector index. Built ONLY
+	// when GRAFEL_SERVE_FROM_MMAP is ON (the flag-off Doc path never consults it);
+	// nil otherwise and until a description sidecar is applied.
+	descOverlay map[int32]string
 
 	// readerMu points at the owning LoadedRepo.readerMu — the strictly-innermost
 	// ADR-0027 SIGBUS-safety mutex (memory epic #5850, "Option B"). Wired by
@@ -215,7 +234,7 @@ func BuildLabelIndex(doc *graph.Document) *LabelIndex {
 // doc is retained as the value-materialization source (at() copies from it) so
 // lookups stay behavior-neutral against in-place overlay stamps — see the
 // LabelIndex type doc for why values are NOT read back from the Reader in PR2.
-func BuildLabelIndexFromReader(r *fbreader.Reader, doc *graph.Document) *LabelIndex {
+func BuildLabelIndexFromReader(r fbreader.GraphView, doc *graph.Document) *LabelIndex {
 	idx, ki := newLabelIndex(r.EntityCount())
 	idx.doc = doc
 	idx.reader = r
@@ -272,13 +291,22 @@ func (l *LabelIndex) at(idx int32) *graph.Entity {
 			l.readerMu.Lock()
 			if l.handle != nil && l.handle.readRetired {
 				l.readerMu.Unlock()
-				// Doc fallback — mapping is gone, so the Doc row count is the only
-				// valid bound left (memory epic #5850 Path P PR6).
-				if int(idx) >= len(l.doc.Entities) {
-					return nil
-				}
-				e := l.doc.Entities[idx]
-				return &e
+				// Retired generation → return nil, do NOT fall back to
+				// l.doc.Entities. This branch fires only for a STALE captured
+				// *LabelIndex (e.g. the lock-free BM25 resolver closure) whose
+				// generation was retired+munmapped by a concurrent reload. Two
+				// reasons the Doc row is no longer a valid source here:
+				//   1. Post-deretain-flip (#5870 PR7bc), reloadLocked skeletonizes
+				//      lr.Doc for reader-present repos — doc.Entities is length 0,
+				//      so indexing it would be an out-of-range panic (and even the
+				//      len-guarded fallback would report every index "not found").
+				//   2. A retired generation's index is stale against the reindexed
+				//      successor generation anyway — a Doc-sourced row from the
+				//      superseded graph is not a meaningful answer.
+				// Callers that resolve indices lock-free (BM25 Search via
+				// idx.resolve → at()) already tolerate a nil entity by skipping
+				// that result row (see scoring.go Search: `if ent == nil { continue }`).
+				return nil
 			}
 			// PR6: the bound is the RESIDENT READER's row count, not
 			// len(l.doc.Entities) — a PR7 Doc-emptying leaves doc.Entities at 0
@@ -325,6 +353,12 @@ func (l *LabelIndex) materializeFromReader(idx int32) *graph.Entity {
 		e.Centrality = ov.Centrality
 		e.IsGodNode = ov.IsGodNode
 		e.IsArticulationPt = ov.IsArticulationPt
+	}
+	// Description side-table (#5904 PR-a): ADDITIVE merge — a present entry sets
+	// (or overrides) the "description" property; a miss leaves the base entity's
+	// own description (extractor-native / baked-in) untouched.
+	if d, ok := l.descOverlay[idx]; ok {
+		e.PropSet("description", d)
 	}
 	return &e
 }

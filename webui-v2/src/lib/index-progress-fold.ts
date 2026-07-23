@@ -474,6 +474,7 @@ export function nestRows(
         row,
         children: [],
         enhancing: row.enhancing,
+        reindexRequired: row.reindexRequired,
       });
     }
   }
@@ -489,6 +490,7 @@ export function nestRows(
       phase,
       children,
       enhancing: bucket.children.some((c) => c.enhancing),
+      reindexRequired: bucket.children.some((c) => c.reindexRequired),
     });
   }
 
